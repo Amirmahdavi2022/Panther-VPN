@@ -13,7 +13,7 @@ public final class AppUpdateManagerTest {
     }
 
     @Test public void checksumFileSelectsExactAsset() {
-        String sums = "aaa  Aethon_1.2_android-arm64.apk\nabcdef  Aethon_1.2_android-universal.apk\n";
-        assertEquals("abcdef", AppUpdateManager.checksumFromFile(sums, "Aethon_1.2_android-universal.apk"));
+        String sums = "aaa  Panther_1.2_android-arm64.apk\nabcdef  Panther_1.2_android-universal.apk\n";
+        assertEquals("abcdef", AppUpdateManager.checksumFromFile(sums, "Panther_1.2_android-universal.apk"));
     }
 }

@@ -6,8 +6,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
-const RELEASE_API: &str = "https://api.github.com/repos/hamvex/AetherGUI/releases?per_page=30";
-const DOWNLOAD_PREFIX: &str = "https://github.com/hamvex/AetherGUI/releases/download/";
+const RELEASE_API: &str = "https://api.github.com/repos/amirmahdavi2023/Panther-VPN/releases?per_page=30";
+const DOWNLOAD_PREFIX: &str = "https://github.com/amirmahdavi2023/Panther-VPN/releases/download/";
 const CHECKSUM_ASSET: &str = "SHA256SUMS.txt";
 
 #[derive(Default)]
@@ -57,7 +57,7 @@ struct UpdateProgress {
 
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("Aethon-Update/2.0.0")
+        .user_agent("Panther-Update/2.0.0")
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|error| error.to_string())
@@ -98,7 +98,7 @@ async fn checksum_from_manifest(
         .find(|asset| asset.name == CHECKSUM_ASSET)
         .ok_or("The release does not provide a SHA-256 checksum")?;
     if !asset.browser_download_url.starts_with(DOWNLOAD_PREFIX) {
-        return Err("The checksum URL is not an official Aethon release URL".into());
+        return Err("The checksum URL is not an official Panther release URL".into());
     }
     let text = http
         .get(&asset.browser_download_url)
@@ -141,20 +141,20 @@ async fn latest_update() -> Result<UpdateInfo, String> {
         .filter_map(|release| {
             let latest = normalized_version(&release.tag_name).to_string();
             if !is_newer_version(&latest, current) { return None; }
-            let installer_name = format!("Aethon-VPN-v{latest}-Windows-x64-Installer.exe");
+            let installer_name = format!("Panther-VPN-v{latest}-Windows-x64-Installer.exe");
             let asset = release.assets.iter().find(|asset| asset.name == installer_name)?;
             Some((release, latest, installer_name, asset))
         })
         .next()
         .or_else(|| releases.iter().filter_map(|release| {
             let latest = normalized_version(&release.tag_name).to_string();
-            let installer_name = format!("Aethon-VPN-v{latest}-Windows-x64-Installer.exe");
+            let installer_name = format!("Panther-VPN-v{latest}-Windows-x64-Installer.exe");
             let asset = release.assets.iter().find(|asset| asset.name == installer_name)?;
             Some((release, latest, installer_name, asset))
         }).next())
         .ok_or("No compatible Windows update package is available")?;
     if !asset.browser_download_url.starts_with(DOWNLOAD_PREFIX) {
-        return Err("The installer URL is not an official Aethon release URL".into());
+        return Err("The installer URL is not an official Panther release URL".into());
     }
     let sha256 = match asset
         .digest
@@ -182,7 +182,7 @@ pub async fn check_for_update(app: AppHandle) -> Result<UpdateInfo, String> {
     if info.available {
         if let Some(tray) = app.tray_by_id("main") {
             let _ = tray.set_tooltip(Some(format!(
-                "Aethon {} update available",
+                "Panther {} update available",
                 info.latest_version
             )));
         }
@@ -197,7 +197,7 @@ pub async fn download_update(
 ) -> Result<String, String> {
     let info = latest_update().await?;
     if !info.available {
-        return Err("Aethon is already up to date".into());
+        return Err("Panther is already up to date".into());
     }
     let directory = app
         .path()
@@ -207,7 +207,7 @@ pub async fn download_update(
     tokio::fs::create_dir_all(&directory)
         .await
         .map_err(|error| error.to_string())?;
-    let filename = format!("Aethon_{}_x64-setup.exe", info.latest_version);
+    let filename = format!("Panther_{}_x64-setup.exe", info.latest_version);
     let final_path = directory.join(&filename);
     let partial_path = directory.join(format!("{filename}.part"));
     let http = client()?;

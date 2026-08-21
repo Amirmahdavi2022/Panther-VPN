@@ -380,7 +380,7 @@ async fn connection_test(settings: Settings) -> Result<String, String> {
         .map_err(display_err)
 }
 fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let show = MenuItem::with_id(app, "show", "Show Aethon", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Show Panther", true, None::<&str>)?;
     let connect = MenuItem::with_id(app, "connect", "Connect", true, None::<&str>)?;
     let disconnect = MenuItem::with_id(app, "disconnect", "Disconnect", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Exit", true, None::<&str>)?;
@@ -506,7 +506,7 @@ pub fn run() {
                         .cloned()
                         .expect("application icon"),
                 )
-                .tooltip("Aethon - Disconnected")
+                .tooltip("Panther - Disconnected")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -555,5 +555,5 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running Aethon");
+        .expect("error while running Panther");
 }

@@ -1,10 +1,10 @@
 AETHON UPDATE — AETHER CORE v1.7.0 + SPECIFIC UI FIXES
 
 Project:
-Aethon VPN
+Panther VPN
 
 Current Android app version:
-Aethon v1.2.1
+Panther v1.2.1
 
 
 ==================================================
@@ -20,7 +20,7 @@ Official releases:
 https://github.com/CluvexStudio/Aether/releases
 
 
-Current integrated Aether core version in Aethon:
+Current integrated Aether core version in Panther:
 
 v1.5.0
 
@@ -31,7 +31,7 @@ Aether v1.7.0
 
 
 IMPORTANT:
-Upgrade the VPN engine used by Aethon from Aether v1.5.0 to Aether v1.7.0.
+Upgrade the VPN engine used by Panther from Aether v1.5.0 to Aether v1.7.0.
 
 
 ==================================================
@@ -40,7 +40,7 @@ CORE INTEGRATION CHECK (REQUIRED)
 
 Before making changes:
 
-Inspect the Aethon project and identify exactly how Aether v1.5.0 is integrated.
+Inspect the Panther project and identify exactly how Aether v1.5.0 is integrated.
 
 Find:
 
@@ -112,12 +112,12 @@ With:
 
 Disconnected:
 
-Aethon Ready
+Panther Ready
 
 
 Connected:
 
-Aethon Active
+Panther Active
 
 
 --------------------------------

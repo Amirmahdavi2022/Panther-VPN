@@ -1,15 +1,15 @@
-# Aethon
+# Panther
 
-Aethon is an independent Windows and Android client for the official [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether) networking core. Windows version 2.0.0 bundles the verified Aether 1.7.0 core and provides system-wide VPN routing or a local SOCKS5 proxy through focused desktop and mobile interfaces.
+Panther is an independent Windows and Android client for the official [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether) networking core. Windows version 2.0.0 bundles the verified Aether 1.7.0 core and provides system-wide VPN routing or a local SOCKS5 proxy through focused desktop and mobile interfaces.
 
-[Releases](https://github.com/hamvex/AetherGUI/releases) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[Releases](https://github.com/amirmahdavi2023/Panther-VPN/releases) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## Windows 2.0.0 release notes
 
 ### Windows routing and settings
 
 - Added transactional, single-session routing-helper and sing-box lifecycle management.
-- Added recovery for stale Aethon-owned TUN adapters and failed routing sessions.
+- Added recovery for stale Panther-owned TUN adapters and failed routing sessions.
 - Preserved sanitized sing-box exit diagnostics and immediate reconnect cleanup.
 - Restored Scan Mode and protocol-specific MASQUE HTTP/3 or HTTP/2 transport controls.
 - Migrated obsolete MASQUE obfuscation values without confusing them with Scan Mode.
@@ -23,7 +23,7 @@ Aethon is an independent Windows and Android client for the official [CluvexStud
 
 ### Application updates
 
-- Added automatic update checks at startup and every 12 hours while Aethon is running.
+- Added automatic update checks at startup and every 12 hours while Panther is running.
 - Added manual **Check for Updates** controls to Android and Windows settings.
 - Added current version, latest version, update status, and GitHub release notes.
 - Added an **Automatically download updates** preference.
@@ -33,7 +33,7 @@ Aethon is an independent Windows and Android client for the official [CluvexStud
 - Added SHA-256 verification on both platforms.
 - Android additionally verifies that the downloaded APK uses the same signing certificate as the installed application.
 - Installation uses Android FileProvider/package installer APIs and the verified Windows setup executable.
-- Update URLs are restricted to the official `hamvex/AetherGUI` GitHub repository.
+- Update URLs are restricted to the official `amirmahdavi2023/Panther-VPN` GitHub repository.
 
 ### Versions and compatibility
 
@@ -49,33 +49,33 @@ Existing VPN services, state management, routing recovery, Smart Connect, and sp
 
 ## Downloads
 
-Download the release files from [Aethon 2.0.0](https://github.com/hamvex/AetherGUI/releases/tag/v2.0.0):
+Download the release files from [Panther 2.0.0](https://github.com/amirmahdavi2023/Panther-VPN/releases/tag/v2.0.0):
 
-- [`Aethon-VPN-v2.0.0-all-platforms.zip`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-all-platforms.zip) — Windows and Android 2.0.0 release archive.
-- [`Aethon-VPN-v2.0.0-Windows-x64-Installer.exe`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-Windows-x64-Installer.exe) — recommended Windows installer.
-- [`Aethon-VPN-v2.0.0-Windows-x64.msi`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-Windows-x64.msi) — Windows MSI.
-- [`Aethon-VPN-v2.0.0-Windows-x64-portable.zip`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-Windows-x64-portable.zip) — portable Windows package.
-- [`Aethon-VPN-v2.0.0-Android-Universal.apk`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-Android-Universal.apk) — Android universal APK containing ARMv7, ARM64, and x86_64 libraries.
-- [`Aethon-VPN-v2.0.0-Android-ARMv7.apk`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-Android-ARMv7.apk) — 32-bit ARM APK.
-- [`Aethon-VPN-v2.0.0-Android-ARM64.apk`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-Android-ARM64.apk) — 64-bit ARM APK.
-- [`Aethon-VPN-v2.0.0-Android-x86_64.apk`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-Android-x86_64.apk) — x86_64 APK.
-- [`Aethon-VPN-v2.0.0-Android-AAB.aab`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/Aethon-VPN-v2.0.0-Android-AAB.aab) — Play App Bundle.
-- [`SHA256SUMS.txt`](https://github.com/hamvex/AetherGUI/releases/download/v2.0.0/SHA256SUMS.txt) — release checksums.
+- [`Panther-VPN-v2.0.0-all-platforms.zip`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-all-platforms.zip) — Windows and Android 2.0.0 release archive.
+- [`Panther-VPN-v2.0.0-Windows-x64-Installer.exe`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Windows-x64-Installer.exe) — recommended Windows installer.
+- [`Panther-VPN-v2.0.0-Windows-x64.msi`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Windows-x64.msi) — Windows MSI.
+- [`Panther-VPN-v2.0.0-Windows-x64-portable.zip`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Windows-x64-portable.zip) — portable Windows package.
+- [`Panther-VPN-v2.0.0-Android-Universal.apk`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-Universal.apk) — Android universal APK containing ARMv7, ARM64, and x86_64 libraries.
+- [`Panther-VPN-v2.0.0-Android-ARMv7.apk`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-ARMv7.apk) — 32-bit ARM APK.
+- [`Panther-VPN-v2.0.0-Android-ARM64.apk`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-ARM64.apk) — 64-bit ARM APK.
+- [`Panther-VPN-v2.0.0-Android-x86_64.apk`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-x86_64.apk) — x86_64 APK.
+- [`Panther-VPN-v2.0.0-Android-AAB.aab`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-AAB.aab) — Play App Bundle.
+- [`SHA256SUMS.txt`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/SHA256SUMS.txt) — release checksums.
 
-Windows binaries are currently unsigned and may trigger a SmartScreen warning. Android release packages are signed with the established Aethon Android signing certificate.
+Windows binaries are currently unsigned and may trigger a SmartScreen warning. Android release packages are signed with the established Panther Android signing certificate.
 
 ## Update source configuration
 
 Both clients use the latest GitHub Release endpoint:
 
 ```text
-https://api.github.com/repos/hamvex/AetherGUI/releases/latest
+https://api.github.com/repos/amirmahdavi2023/Panther-VPN/releases/latest
 ```
 
 Future releases must include:
 
-- `Aethon-VPN-v<version>-Windows-x64-Installer.exe`
-- `Aethon-VPN-v<version>-Android-Universal.apk`
+- `Panther-VPN-v<version>-Windows-x64-Installer.exe`
+- `Panther-VPN-v<version>-Android-Universal.apk`
 - SHA-256 asset digests supplied by GitHub or a `SHA256SUMS.txt` asset
 - Release notes in the GitHub release body
 - Android APKs signed with the same established signing key
@@ -85,7 +85,7 @@ No custom update backend is required. If the Android APK is distributed through 
 ## Windows usage
 
 1. Install the x64 setup package or extract the portable archive.
-2. Launch Aethon.
+2. Launch Panther.
 3. Keep **VPN Mode** selected for system-wide routing, or choose **Manual SOCKS5** for proxy-only use.
 4. Select a protocol and scan mode, then press **Connect**.
 5. Use Diagnostics for live logs, connection testing, and network recovery.
@@ -98,9 +98,9 @@ The local SOCKS5 listener defaults to `127.0.0.1:1819`. VPN mode may request adm
 2. Approve Android VPN permission on first connection.
 3. Select the desired mode and protocol.
 4. Press **Connect**.
-5. Optionally add the **Aethon VPN** Quick Settings tile.
+5. Optionally add the **Panther VPN** Quick Settings tile.
 
-The Android application ID remains `io.github.hamvex.aethergui` for update compatibility.
+The Android application ID remains `io.github.amirmahdavi2023.panther` for update compatibility.
 
 ## Building
 
@@ -132,7 +132,7 @@ Windows output is written under `src-tauri/target/release`.
 Release signing credentials are required for distributable Android builds:
 
 ```powershell
-$env:ANDROID_KEYSTORE_PATH = ".android-signing/firstham-aethergui.jks"
+$env:ANDROID_KEYSTORE_PATH = ".android-signing/release-signing.jks"
 $env:ANDROID_KEYSTORE_PASSWORD = "<password>"
 $env:ANDROID_KEY_ALIAS = "<alias>"
 $env:ANDROID_KEY_PASSWORD = "<password>"
@@ -151,7 +151,7 @@ After both platform builds complete:
 npm run package:release
 ```
 
-This creates Windows x64 installers, portable files, architecture-specific Android packages, checksums, and `Aethon-VPN-v2.0.0-all-platforms.zip` under `release`.
+This creates Windows x64 installers, portable files, architecture-specific Android packages, checksums, and `Panther-VPN-v2.0.0-all-platforms.zip` under `release`.
 
 ## Verification
 
@@ -172,4 +172,4 @@ Set-Location android
 
 ## Attribution
 
-Aethon is an independent frontend and is not the upstream Aether project. Aether remains the networking engine and is distributed under GPL-3.0. See [NOTICE.md](NOTICE.md), [TRADEMARK.md](TRADEMARK.md), and [LICENSE](LICENSE).
+Panther is an independent frontend and is not the upstream Aether project. Aether remains the networking engine and is distributed under GPL-3.0. See [NOTICE.md](NOTICE.md), [TRADEMARK.md](TRADEMARK.md), and [LICENSE](LICENSE).

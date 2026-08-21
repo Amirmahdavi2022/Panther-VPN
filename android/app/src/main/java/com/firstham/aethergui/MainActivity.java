@@ -51,7 +51,7 @@ public final class MainActivity extends AppCompatActivity {
     private static final int VPN_REQUEST = 41;
     private static final int NOTIFICATION_REQUEST = 42;
     private static final int APPS_REQUEST = 43;
-    private static final String INTERNAL_PERMISSION = "io.github.hamvex.aethergui.permission.INTERNAL";
+    private static final String INTERNAL_PERMISSION = "io.github.amirmahdavi2023.panther.permission.INTERNAL";
     private ActivityMainBinding binding;
     private SharedPreferences preferences;
     private String state = "disconnected";
@@ -327,7 +327,7 @@ public final class MainActivity extends AppCompatActivity {
         catch (Exception ignored) { Toast.makeText(this, R.string.tile_add_manual, Toast.LENGTH_LONG).show(); }
     }
     private void openTelegram() {
-        Intent direct = new Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=hamvex"));
+        Intent direct = new Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=parsv2r"));
         for (String packageName : new String[]{"org.telegram.messenger", "org.telegram.messenger.web"}) {
             try {
                 direct.setPackage(packageName);
@@ -335,7 +335,7 @@ public final class MainActivity extends AppCompatActivity {
                 return;
             } catch (ActivityNotFoundException ignored) { }
         }
-        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/hamvex"))); }
+        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/parsv2r"))); }
         catch (ActivityNotFoundException ignored) { Toast.makeText(this, R.string.telegram_fallback, Toast.LENGTH_SHORT).show(); }
     }
     private int selectedIndex(MaterialAutoCompleteTextView view) { Object tag = view.getTag(); return tag instanceof Integer ? (Integer) tag : 0; }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Aethon VPN</title>
+  <title>Panther VPN</title>
   <link rel="stylesheet" href="styles.css">
   <style>
     body[data-theme="light"] { color-scheme:light; color:#152031; background:#edf3f8; --surface:#fff; --surface2:#f4f7fa; --line:#ccd7e2; --muted:#627083; }
@@ -29,7 +29,7 @@
   <div class="app-shell">
     <header class="app-header">
       <button id="menuButton" class="icon-button" type="button" aria-label="Open navigation"><span class="hamburger-icon" aria-hidden="true"></span></button>
-      <strong id="pageTitle">Aethon VPN</strong>
+      <strong id="pageTitle">Panther VPN</strong>
       <button id="telegramButton" class="icon-button telegram" type="button" aria-label="Telegram"><span aria-hidden="true">➤</span></button>
     </header>
 
@@ -37,7 +37,7 @@
     <aside id="drawer" class="drawer" aria-label="Main navigation">
       <div class="drawer-brand">
         <div class="brand-mark">A</div>
-        <div><strong>Aethon VPN</strong><small data-i18n="brand.subtitle">Private network</small></div>
+        <div><strong>Panther VPN</strong><small data-i18n="brand.subtitle">Private network</small></div>
       </div>
       <nav>
         <button class="nav-item active" data-view="connect"><span>◉</span><span data-i18n="nav.connect">Connect</span></button>
@@ -72,14 +72,14 @@
 
       <section id="view-about" class="view scroll-view about-view">
         <h1 data-i18n="about.title">About</h1>
-        <div class="about-hero"><div class="about-mark">A</div><strong>Aethon VPN</strong><small>v2.0.0</small></div>
+        <div class="about-hero"><div class="about-mark">A</div><strong>Panther VPN</strong><small>v2.0.0</small></div>
         <section class="section-block about">
           <b data-i18n="about.original">Original Project: Aether</b>
           <p data-i18n="about.originalCredit">Based on the original Aether project by CluvexStudio.</p>
           <button class="link-button" data-external="https://github.com/CluvexStudio/Aether">github.com/CluvexStudio/Aether</button>
-          <b data-i18n="about.application">Application: Aethon VPN</b>
+          <b data-i18n="about.application">Application: Panther VPN</b>
           <p data-i18n="about.applicationCredit">Android/Windows application and interface developed for Aether.</p>
-          <button class="link-button" data-external="https://github.com/hamvex/AetherGUI">github.com/hamvex/AetherGUI</button>
+          <button class="link-button" data-external="https://github.com/amirmahdavi2023/Panther-VPN">github.com/amirmahdavi2023/Panther-VPN</button>
         </section>
       </section>
 
@@ -104,11 +104,11 @@
         </section>
         <section class="section-block switches">
           <label class="switch-row"><span><b data-i18n="config.reconnect">Auto Reconnect</b><small data-i18n="config.reconnectHelp">Recover after temporary failures</small></span><input id="quickReconnect" type="checkbox" checked></label>
-          <label class="switch-row"><span><b data-i18n="config.dns">Private DNS Routing</b><small data-i18n="config.dnsHelp">Route DNS through Aethon</small></span><input id="dnsLeakProtection" type="checkbox" checked></label>
+          <label class="switch-row"><span><b data-i18n="config.dns">Private DNS Routing</b><small data-i18n="config.dnsHelp">Route DNS through Panther</small></span><input id="dnsLeakProtection" type="checkbox" checked></label>
           <label class="switch-row"><span><b data-i18n="config.kill">Fail Closed</b><small data-i18n="config.killHelp">Block traffic while recovering</small></span><input id="killSwitch" type="checkbox"></label>
         </section>
         <section class="section-block">
-          <label class="switch-row"><span><b data-i18n="split.title">Split Tunneling</b><small data-i18n="split.help">Choose which applications use Aethon</small></span><input id="splitEnabled" type="checkbox"></label>
+          <label class="switch-row"><span><b data-i18n="split.title">Split Tunneling</b><small data-i18n="split.help">Choose which applications use Panther</small></span><input id="splitEnabled" type="checkbox"></label>
           <div id="splitControls" class="hidden">
             <div id="splitMode" class="segmented"><button data-value="split-include" class="active" data-i18n="split.include">Include Apps</button><button data-value="split-exclude" data-i18n="split.exclude">Exclude Apps</button></div>
             <button id="openApps" class="command-button" type="button"><span data-i18n="split.select">Select Applications</span><small id="selectedCount">0 selected</small></button>

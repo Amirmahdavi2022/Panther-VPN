@@ -122,7 +122,7 @@ impl RoutingManager {
         if let Some(dir) = existing_dir {
             match read_status(&dir).map(|status| status.state) {
                 Ok(state) if !matches!(state.as_str(), "error" | "disabled") => {
-                    return Err("An Aethon routing session is already active".into());
+                    return Err("An Panther routing session is already active".into());
                 }
                 _ => {
                     self.session.lock().await.take();
@@ -153,7 +153,7 @@ impl RoutingManager {
         let dir = base.join(&session_id);
         fs::create_dir_all(&dir).map_err(display_err)?;
         let tun_interface = format!(
-            "AethonTun-{}-{}",
+            "PantherTun-{}-{}",
             std::process::id() % 10000,
             session_id
                 .rsplit('-')
@@ -332,9 +332,9 @@ impl RoutingRequest {
                 .tun_interface
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '-')
-            || !self.tun_interface.starts_with("AethonTun-")
+            || !self.tun_interface.starts_with("PantherTun-")
         {
-            return Err("Invalid Aethon TUN interface name".into());
+            return Err("Invalid Panther TUN interface name".into());
         }
         if let Some(previous) = &self.previous_session_dir {
             if previous.parent() != self.session_dir.parent() || previous.file_name().is_none() {
@@ -381,7 +381,7 @@ fn sing_box_config(request: &RoutingRequest) -> Value {
     let mut rules = vec![
         json!({"action":"sniff"}),
         json!({"protocol":"dns","action":"hijack-dns"}),
-        json!({"process_name":["aether.exe","aether-gui.exe","Aethon.exe","Firstham AetherGui.exe","sing-box.exe"],"action":"route","outbound":"direct"}),
+        json!({"process_name":["aether.exe","aether-gui.exe","Panther.exe","Panther.exe","sing-box.exe"],"action":"route","outbound":"direct"}),
     ];
     if request.ipv6_behavior == "block" {
         rules.push(json!({"ip_version":6,"action":"reject"}));
@@ -445,7 +445,7 @@ pub fn helper_main(request_path: &Path) -> Result<(), String> {
         write_status(
             &request.session_dir,
             "starting-adapter",
-            "Starting the Aethon virtual adapter",
+            "Starting the Panther virtual adapter",
             0,
         )?;
         let log = fs::OpenOptions::new()
@@ -588,7 +588,7 @@ fn wait_for_tun_ready(
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!(
-                "Routing engine did not create a ready Aethon TUN adapter.{}",
+                "Routing engine did not create a ready Panther TUN adapter.{}",
                 read_log_tail(log_path)
             ));
         }
@@ -597,8 +597,8 @@ fn wait_for_tun_ready(
 }
 
 /// A competing VPN can install two more-specific /1 routes, which would
-/// bypass the Aethon /0 route even though the TUN adapter is ready. Install
-/// active-session /1 routes on our adapter so system traffic follows Aethon.
+/// bypass the Panther /0 route even though the TUN adapter is ready. Install
+/// active-session /1 routes on our adapter so system traffic follows Panther.
 fn install_takeover_routes(interface_name: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -619,7 +619,7 @@ fn install_takeover_routes(interface_name: &str) -> Result<(), String> {
             let output = command.output().map_err(display_err)?;
             if !output.status.success() {
                 return Err(format!(
-                    "Could not install the Aethon {prefix} route: {}",
+                    "Could not install the Panther {prefix} route: {}",
                     String::from_utf8_lossy(&output.stderr).trim()
                 ));
             }
@@ -637,7 +637,7 @@ fn install_takeover_routes(interface_name: &str) -> Result<(), String> {
         let metric_output = metric_command.output().map_err(display_err)?;
         if !metric_output.status.success() {
             return Err(format!(
-                "Could not prioritize the Aethon TUN interface: {}",
+                "Could not prioritize the Panther TUN interface: {}",
                 String::from_utf8_lossy(&metric_output.stderr).trim()
             ));
         }
@@ -749,11 +749,11 @@ fn acquire_helper_lock() -> Result<HelperLock, String> {
             Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS},
             System::Threading::CreateMutexW,
         };
-        let name = wide("Local\\AethonRoutingHelper");
+        let name = wide("Local\\PantherRoutingHelper");
         for _ in 0..20 {
             let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
             if handle.is_null() {
-                return Err("Could not create the Aethon routing-session lock".into());
+                return Err("Could not create the Panther routing-session lock".into());
             }
             if unsafe { GetLastError() } != ERROR_ALREADY_EXISTS {
                 return Ok(HelperLock(handle));
@@ -761,7 +761,7 @@ fn acquire_helper_lock() -> Result<HelperLock, String> {
             unsafe { CloseHandle(handle) };
             std::thread::sleep(Duration::from_millis(250));
         }
-        Err("Another Aethon routing helper is still active".into())
+        Err("Another Panther routing helper is still active".into())
     }
     #[cfg(not(windows))]
     {
@@ -803,7 +803,7 @@ fn recover_owned_session(session_dir: &Path) {
     let _ = write_status(
         session_dir,
         "disabled",
-        "Previous Aethon routing session was recovered",
+        "Previous Panther routing session was recovered",
         0,
     );
 }
@@ -868,7 +868,7 @@ pub fn repair_cli() -> Result<(), String> {
 }
 fn cli_recovery_path() -> Option<PathBuf> {
     std::env::var_os("LOCALAPPDATA")
-        .map(|v| PathBuf::from(v).join("FirsthamAetherGui-routing-recovery.json"))
+        .map(|v| PathBuf::from(v).join("PantherAetherGui-routing-recovery.json"))
 }
 
 fn launch_elevated(mode: &str, path: &Path) -> Result<(), String> {
@@ -950,14 +950,14 @@ fn terminate_pid(pid: u32) {
     }
 }
 
-/// Remove only adapters Aethon creates. The explicit legacy name is included
+/// Remove only adapters Panther creates. The explicit legacy name is included
 /// for upgrades from earlier releases; physical and third-party adapters are untouched.
 fn cleanup_owned_adapters(keep: Option<&str>) {
     #[cfg(windows)]
     {
         let keep = keep.unwrap_or("").replace('\'', "''");
         let script = format!(
-            "$keep='{keep}'; Get-PnpDevice -Class Net -ErrorAction SilentlyContinue | Where-Object {{ ($_.FriendlyName -eq 'FirsthamAether' -or $_.FriendlyName -like 'AethonTun-*') -and $_.FriendlyName -ne $keep }} | ForEach-Object {{ & pnputil.exe /remove-device $_.InstanceId | Out-Null }}"
+            "$keep='{keep}'; Get-PnpDevice -Class Net -ErrorAction SilentlyContinue | Where-Object {{ ($_.FriendlyName -eq 'PantherAether' -or $_.FriendlyName -like 'PantherTun-*') -and $_.FriendlyName -ne $keep }} | ForEach-Object {{ & pnputil.exe /remove-device $_.InstanceId | Out-Null }}"
         );
         let mut command = Command::new("powershell.exe");
         command.args([
@@ -1068,7 +1068,7 @@ mod tests {
             split_applications: vec![],
             route_exclusions: vec![],
             session_dir: "C:/x".into(),
-            tun_interface: "AethonTun-1-2".into(),
+            tun_interface: "PantherTun-1-2".into(),
             previous_session_dir: None,
         }
     }
@@ -1080,7 +1080,7 @@ mod tests {
         assert!(c.contains("hijack-dns"));
         assert!(c.contains("aether.exe"));
         assert!(c.contains("\"find_process\":true"));
-        assert!(c.contains("AethonTun-1-2"));
+        assert!(c.contains("PantherTun-1-2"));
     }
 
     #[test]

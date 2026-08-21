@@ -1,8 +1,8 @@
 {
     "$schema":  "https://schema.tauri.app/config/2",
-    "productName":  "Aethon",
-    "version":  "2.0.0",
-    "identifier":  "io.github.hamvex.aether-gui",
+    "productName":  "Panther",
+    "version":  "1.0.0",
+    "identifier":  "io.github.amirmahdavi2023.panther",
     "build":  {
                   "frontendDist":  "../dist",
                   "devUrl":  "http://localhost:1420",
@@ -13,7 +13,7 @@
                 "windows":  [
                                 {
                                     "label":  "main",
-                                    "title":  "Aethon",
+                                    "title":  "Panther",
                                     "width":  430,
                                     "height":  860,
                                     "minWidth":  360,
@@ -33,9 +33,9 @@
                                    "nsis",
                                    "msi"
                                ],
-                   "publisher":  "hamvex",
+                   "publisher":  "amirmahdavi2023",
                    "category":  "Utility",
-                   "shortDescription":  "Aethon - a standalone Windows client for Aether",
+                   "shortDescription":  "Panther - a standalone Windows client for Aether",
                    "longDescription":  "Connect Windows through Aether with built-in TUN routing, DNS protection, recovery, and no companion proxy application.",
                    "externalBin":  [
                                        "binaries/aether",

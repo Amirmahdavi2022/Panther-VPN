@@ -1,4 +1,4 @@
-# Aethon for Android
+# Panther for Android
 
 The Android client is a native Java application using Android `VpnService`. It runs the official Aether 1.7.0 Android executable as a supervised local SOCKS5 core and routes the VPN file descriptor through HEV Socks5 Tunnel 2.16.0.
 
@@ -24,4 +24,4 @@ The fetch script recursively clones and verifies HEV 2.16.0, expands Windows sym
 .\gradlew.bat assembleRelease lintRelease
 ```
 
-Fresh installations use Turbo scan mode and gool / WARP-in-WARP. User selections are persisted. The application uses Android package names for Include/Exclude split tunneling. Android's system VPN permission is requested only when VPN Mode starts; Quick Settings permission prompts open the existing Aethon activity.
+Fresh installations use Turbo scan mode and gool / WARP-in-WARP. User selections are persisted. The application uses Android package names for Include/Exclude split tunneling. Android's system VPN permission is requested only when VPN Mode starts; Quick Settings permission prompts open the existing Panther activity.

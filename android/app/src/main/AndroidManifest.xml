@@ -5,8 +5,8 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
-    <permission android:name="io.github.hamvex.aethergui.permission.INTERNAL" android:protectionLevel="signature" />
-    <uses-permission android:name="io.github.hamvex.aethergui.permission.INTERNAL" />
+    <permission android:name="io.github.amirmahdavi2023.panther.permission.INTERNAL" android:protectionLevel="signature" />
+    <uses-permission android:name="io.github.amirmahdavi2023.panther.permission.INTERNAL" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -50,7 +50,7 @@
         </receiver>
         <service android:name=".AetherVpnService" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="false" android:foregroundServiceType="specialUse" android:stopWithTask="false">
             <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Aethon VPN tunnel" />
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Panther VPN tunnel" />
         </service>
         <service
             android:name=".AethonTileService"

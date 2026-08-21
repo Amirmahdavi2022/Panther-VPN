@@ -120,13 +120,13 @@ final class AppUpdateManager {
         }
         if (release == null || apk == null || tag.isEmpty()) throw new IOException("No Android update package is available");
         String downloadUrl = apk.optString("browser_download_url", "");
-        if (!downloadUrl.startsWith(UpdateConfig.RELEASE_DOWNLOAD_PREFIX)) throw new IOException("The update URL is not an official Aethon release");
+        if (!downloadUrl.startsWith(UpdateConfig.RELEASE_DOWNLOAD_PREFIX)) throw new IOException("The update URL is not an official Panther release");
         String checksum = apk.optString("digest", "").replaceFirst("^sha256:", "");
         if (checksum.isEmpty()) {
             JSONObject sums = findAsset(release.optJSONArray("assets"), UpdateConfig.CHECKSUM_ASSET);
             if (sums != null) {
                 String sumsUrl = sums.optString("browser_download_url", "");
-                if (!sumsUrl.startsWith(UpdateConfig.RELEASE_DOWNLOAD_PREFIX)) throw new IOException("The checksum URL is not an official Aethon release");
+                if (!sumsUrl.startsWith(UpdateConfig.RELEASE_DOWNLOAD_PREFIX)) throw new IOException("The checksum URL is not an official Panther release");
                 checksum = checksumFromFile(getText(sumsUrl), apk.optString("name"));
             }
         }
@@ -286,7 +286,7 @@ final class AppUpdateManager {
     }
     private static String getText(String url) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-        connection.setConnectTimeout(15_000); connection.setReadTimeout(30_000); connection.setRequestProperty("User-Agent", "Aethon-Android"); connection.setRequestProperty("Accept", "application/vnd.github+json");
+        connection.setConnectTimeout(15_000); connection.setReadTimeout(30_000); connection.setRequestProperty("User-Agent", "Panther-Android"); connection.setRequestProperty("Accept", "application/vnd.github+json");
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
             StringBuilder result = new StringBuilder(); String line; while ((line = reader.readLine()) != null) result.append(line).append('\n'); return result.toString();
         } finally { connection.disconnect(); }
