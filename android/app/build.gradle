@@ -20,6 +20,9 @@ def releaseSigningAvailable = keystorePath && keystorePassword && keyAliasName &
 def releaseRequested = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
 
 android {
+    lint {
+        disable 'MissingTranslation'
+    }
     namespace 'com.firstham.aethergui'
     compileSdk 35
 
