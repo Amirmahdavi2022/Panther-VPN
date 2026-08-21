@@ -18,7 +18,7 @@ on:
 
 permissions:
   contents: write
-
+  workflows: write
 jobs:
   rebrand:
     runs-on: ubuntu-latest
