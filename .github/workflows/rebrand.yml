@@ -1,0 +1,329 @@
+name: One-shot rebrand
+
+# Run this ONCE, right after forking. Actions -> "One-shot rebrand" -> Run workflow.
+# It rewrites the fork's identity and commits the result back to this branch.
+# After it succeeds you can delete this file.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App name (letters only)'
+        required: true
+        default: 'Panther'
+      telegram:
+        description: 'Your Telegram channel URL (e.g. https://t.me/yourchannel)'
+        required: true
+        default: 'https://t.me/'
+
+permissions:
+  contents: write
+
+jobs:
+  rebrand:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rewrite branding, application ID and update endpoints
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          TELEGRAM: ${{ inputs.telegram }}
+          GH_OWNER: ${{ github.repository_owner }}
+          GH_REPO: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+
+          SLUG="$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]')"
+          OWNER_LC="$(echo "$GH_OWNER" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]')"
+          APP_ID="io.github.${OWNER_LC}.${SLUG}"
+          TG_HANDLE="$(echo "$TELEGRAM" | sed -E 's|.*t\.me/||; s|/$||')"
+
+          # Never touch LICENSE / NOTICE.md / TRADEMARK.md / third-party/ / package-lock.json.
+          mapfile -t FILES < <(git ls-files \
+            '*.java' '*.xml' '*.gradle' '*.json' '*.yml' '*.js' '*.mjs' '*.html' '*.rs' '*.md' \
+            | grep -vE '^(LICENSE|NOTICE\.md|TRADEMARK\.md|package-lock\.json)$' \
+            | grep -vE '^third-party/' \
+            | grep -vE '^\.github/' \
+            | grep -vE '^tests/')
+
+          sedall() { sed -i "$1" "${FILES[@]}"; }
+
+          # 0. Protect Java identifiers that must NOT be renamed.
+          sedall 's/AethonTileService/__TILE_SVC__/g'
+
+          # 1. Application ID + the hardcoded signature-level permission.
+          sedall "s|io\.github\.hamvex\.aethergui|${APP_ID}|g"
+          sedall "s|io\.github\.hamvex\.aether-gui|${APP_ID}|g"
+          sedall "s|@hamvex/aether-gui|@${OWNER_LC}/${SLUG}|g"
+
+          # 2. Self-update endpoints -> this repository.
+          sedall "s|hamvex/AetherGUI|${GH_OWNER}/${GH_REPO}|g"
+
+          # 3. Release asset names and signing-key filename.
+          sedall "s|Aethon-VPN-v|${APP_NAME}-VPN-v|g"
+          sedall "s|Firstham-AetherGui-Windows-Android|${APP_NAME}-Windows-Android|g"
+          sedall "s|firstham-aethergui\.jks|release-signing.jks|g"
+
+          # 4. Display name.
+          sedall "s|Aethon VPN|${APP_NAME} VPN|g"
+          sedall "s|Aethon|${APP_NAME}|g"
+          sedall "s|Firstham AetherGui|${APP_NAME}|g"
+          sedall "s|Firstham|${APP_NAME}|g"
+          sedall "s|AetherGUI|${APP_NAME}|g"
+
+          # 5. Restore protected identifiers.
+          sedall 's/__TILE_SVC__/AethonTileService/g'
+
+          # 6. Contact links and installer publisher.
+          sedall "s|tg://resolve?domain=hamvex|tg://resolve?domain=${TG_HANDLE}|g"
+          sedall "s|https://t\.me/hamvex|${TELEGRAM}|g"
+          sedall "s|@hamvex|@${TG_HANDLE}|g"
+          sed -i "s|\"publisher\":  \"hamvex\"|\"publisher\":  \"${GH_OWNER}\"|" src-tauri/tauri.conf.json
+
+          # 7. Version reset — this is a new app with a fresh install base.
+          sed -i "s/versionCode 24/versionCode 1/; s/versionName '2\.0\.0'/versionName '1.0.0'/" android/app/build.gradle
+          sed -i 's/"version":  "2.0.0"/"version":  "1.0.0"/' package.json src-tauri/tauri.conf.json
+          sed -i 's|<string name="app_version" translatable="false">v2.0.0</string>|<string name="app_version" translatable="false">v1.0.0</string>|' \
+            android/app/src/main/res/values/strings.xml android/app/src/main/res/values-fa/strings.xml
+          sed -i 's/^version = "2\.0\.0"/version = "1.0.0"/' src-tauri/Cargo.toml
+          sed -i 's/let current = "2\.0\.0";/let current = "1.0.0";/' src-tauri/src/update.rs
+          sed -i 's/v2\.0\.0/v1.0.0/g' src/index.html
+
+          # 7b. tests/ is excluded from the generic pass above (its expectations
+          # are written as JS regex literals with escaped dots/slashes that plain
+          # sed does not match char-for-char, and a careless global replace can
+          # corrupt unrelated fixture numbers in the same file). Fix each exact
+          # known expectation explicitly instead, generated via repr() to avoid
+          # hand-escaping mistakes.
+          if [ -f tests/frontend.test.mjs ]; then
+            python3 - "$GH_OWNER" "$GH_REPO" "$TG_HANDLE" <<'PYFIX'
+          import sys
+          owner, repo, tg = sys.argv[1], sys.argv[2], sys.argv[3]
+          f = "tests/frontend.test.mjs"
+          t = open(f).read()
+          reps = [
+              ('hamvex\\/AetherGUI'.format(owner=owner, repo=repo, tg=tg), '{owner}\\/{repo}'.format(owner=owner, repo=repo, tg=tg)),
+              ('tg:\\/\\/resolve\\?domain=hamvex'.format(owner=owner, repo=repo, tg=tg), 'tg:\\/\\/resolve\\?domain={tg}'.format(owner=owner, repo=repo, tg=tg)),
+              ('https:\\/\\/t\\.me\\/hamvex'.format(owner=owner, repo=repo, tg=tg), 'https:\\/\\/t\\.me\\/{tg}'.format(owner=owner, repo=repo, tg=tg)),
+              ("'tg://resolve?domain=hamvex'".format(owner=owner, repo=repo, tg=tg), "'tg://resolve?domain={tg}'".format(owner=owner, repo=repo, tg=tg)),
+              ("'https://t.me/hamvex'".format(owner=owner, repo=repo, tg=tg), "'https://t.me/{tg}'".format(owner=owner, repo=repo, tg=tg)),
+              ("'https://github.com/hamvex/AetherGUI'".format(owner=owner, repo=repo, tg=tg), "'https://github.com/{owner}/{repo}'".format(owner=owner, repo=repo, tg=tg)),
+              ("JSON.parse(pkg).version, '2.0.0'".format(owner=owner, repo=repo, tg=tg), "JSON.parse(pkg).version, '1.0.0'".format(owner=owner, repo=repo, tg=tg)),
+              ("JSON.parse(tauri).version, '2.0.0'".format(owner=owner, repo=repo, tg=tg), "JSON.parse(tauri).version, '1.0.0'".format(owner=owner, repo=repo, tg=tg)),
+              ('cargo, /version = "2\\.0\\.0"/'.format(owner=owner, repo=repo, tg=tg), 'cargo, /version = "1.0.0"/'.format(owner=owner, repo=repo, tg=tg)),
+              ('html, /v2\\.0\\.0/'.format(owner=owner, repo=repo, tg=tg), 'html, /v1.0.0/'.format(owner=owner, repo=repo, tg=tg)),
+              ('update, /let current = "2\\.0\\.0"/'.format(owner=owner, repo=repo, tg=tg), 'update, /let current = "1.0.0"/'.format(owner=owner, repo=repo, tg=tg)),
+              ("gradle, /versionName '2\\.0\\.0'/".format(owner=owner, repo=repo, tg=tg), "gradle, /versionName '1.0.0'/".format(owner=owner, repo=repo, tg=tg)),
+          ]
+          for old, new in reps:
+              if old not in t:
+                  print(f"::warning::rebrand test-fixup did not find: {old!r}")
+                  continue
+              t = t.replace(old, new)
+          open(f, "w").write(t)
+          PYFIX
+          fi
+          # 8. AGPL-3.0 attribution. Appended, never replacing the upstream notice.
+          {
+            echo ""
+            echo "## Fork notice"
+            echo ""
+            echo "${APP_NAME} is an independent fork of https://github.com/hamvex/AetherGUI"
+            echo "(released as \"Aethon\"), which is itself an independent client for the"
+            echo "CluvexStudio/Aether networking core."
+            echo ""
+            echo "${APP_NAME} is not affiliated with, endorsed by, or supported by the Aethon"
+            echo "or Aether projects. Do not report ${APP_NAME} issues to them."
+            echo ""
+            echo "Distributed under the same AGPL-3.0 license as the upstream project."
+            echo "Complete corresponding source: https://github.com/${GH_OWNER}/${GH_REPO}"
+          } >> NOTICE.md
+
+          echo "app name      : ${APP_NAME}"
+          echo "applicationId : ${APP_ID}"
+          echo "update repo   : ${GH_OWNER}/${GH_REPO}"
+
+      - name: Generate the icon set from brand/logo.png
+        run: |
+          if [ ! -f brand/logo.png ]; then
+            echo "::error::brand/logo.png is missing. Upload the logo to brand/logo.png first."
+            exit 1
+          fi
+          pip install --quiet pillow
+          python3 - <<'PYICONS'
+          import math, os
+          from PIL import Image
+
+          R = "."
+          AND = f"{R}/android/app/src/main/res"
+          WIN = f"{R}/src-tauri/icons"
+          SRC = f"{R}/brand/logo.png"
+
+          RIM = (1, 87, 227, 255)   # outer-rim blue sampled from the logo
+          RIM_HEX = "#0157E3"
+
+          src = Image.open(SRC).convert("RGBA")
+          b = src.getbbox()
+          if b:
+              src = src.crop(b)
+          w, h = src.size
+          s = max(w, h)
+          sq = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+          sq.alpha_composite(src, ((s - w) // 2, (s - h) // 2))
+          src = sq
+
+
+          def mark(size, frac):
+              """The logo centred on a transparent canvas, at `frac` of the canvas width."""
+              px = max(1, int(size * frac))
+              m = src.resize((px, px), Image.LANCZOS)
+              img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+              img.alpha_composite(m, ((size - px) // 2, (size - px) // 2))
+              return img
+
+
+          def rounded_square(size, radius_frac, colour):
+              from PIL import ImageDraw
+              ss = 4
+              img = Image.new("RGBA", (size * ss, size * ss), (0, 0, 0, 0))
+              ImageDraw.Draw(img).rounded_rectangle(
+                  [0, 0, size * ss - 1, size * ss - 1],
+                  radius=int(size * ss * radius_frac), fill=colour)
+              return img.resize((size, size), Image.LANCZOS)
+
+
+          def circle(size, colour):
+              from PIL import ImageDraw
+              ss = 4
+              img = Image.new("RGBA", (size * ss, size * ss), (0, 0, 0, 0))
+              ImageDraw.Draw(img).ellipse([0, 0, size * ss - 1, size * ss - 1], fill=colour)
+              return img.resize((size, size), Image.LANCZOS)
+
+
+          # ---- monochrome silhouette (Quick Settings tile + themed-icon layer) --------
+          SHIELD_H, SHIELD_W, TOP_R = 1190.0, 980.0, 0.16
+
+
+          def half_width(t):
+              if t < TOP_R:
+                  u = (TOP_R - t) / TOP_R
+                  f_top = math.sqrt(max(0.0, 1.0 - u * u))
+              else:
+                  f_top = 1.0
+              if t <= 0.46:
+                  f_bot = 1.0
+              else:
+                  u = (t - 0.46) / 0.54
+                  f_bot = max(0.0, 1.0 - u ** 1.7) ** 0.42
+              return min(f_top, f_bot)
+
+
+          def bezier_circle(cx, cy, r):
+              k = 0.5522847498 * r
+              return (f"M{cx:.2f},{cy - r:.2f} "
+                      f"C{cx + k:.2f},{cy - r:.2f} {cx + r:.2f},{cy - k:.2f} {cx + r:.2f},{cy:.2f} "
+                      f"C{cx + r:.2f},{cy + k:.2f} {cx + k:.2f},{cy + r:.2f} {cx:.2f},{cy + r:.2f} "
+                      f"C{cx - k:.2f},{cy + r:.2f} {cx - r:.2f},{cy + k:.2f} {cx - r:.2f},{cy:.2f} "
+                      f"C{cx - r:.2f},{cy - k:.2f} {cx - k:.2f},{cy - r:.2f} {cx:.2f},{cy - r:.2f} Z ")
+
+
+          def shield_path(vp=24.0, hf=0.86, n=72):
+              hh = vp * hf
+              ww = hh * (SHIELD_W / SHIELD_H)
+              cx = cy = vp / 2
+              right, left = [], []
+              for i in range(n + 1):
+                  t = i / n
+                  x = ww / 2 * half_width(t)
+                  y = cy - hh / 2 + t * hh
+                  right.append((cx + x, y))
+                  left.append((cx - x, y))
+              pts = right + left[::-1]
+              d = "M{:.2f},{:.2f} ".format(*pts[0])
+              d += " ".join("L{:.2f},{:.2f}".format(x, y) for x, y in pts[1:]) + " Z "
+              sc = hh / 1190.0
+              for rx, ry, ro, ri in [
+                  (cx - 168 * sc, cy - 238 * sc, 122 * sc, 55 * sc),
+                  (cx + 158 * sc, cy - 48 * sc, 138 * sc, 62 * sc),
+                  (cx - 88 * sc, cy + 196 * sc, 116 * sc, 52 * sc),
+              ]:
+                  d += bezier_circle(rx, ry, ro)
+                  d += bezier_circle(rx, ry, ri)
+              return d.strip()
+
+
+          def vector_file(size_dp, hf):
+              return ('<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+                      f'    android:width="{size_dp}dp"\n    android:height="{size_dp}dp"\n'
+                      f'    android:viewportWidth="{size_dp}"\n    android:viewportHeight="{size_dp}">\n'
+                      '    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"\n'
+                      f'        android:pathData="{shield_path(float(size_dp), hf)}" />\n</vector>\n')
+
+
+          # --------------------------------------------------------------------- output
+          DENS = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
+
+          for name, mult in DENS.items():
+              fg = int(108 * mult)
+              lg = int(48 * mult)
+              # Adaptive foreground. The logo bleeds past the 72dp safe circle, but only
+              # its blue rim does — and the background is that same blue, so no mask can
+              # cut anything meaningful. The shield stays well inside the safe zone.
+              mark(fg, 0.86).save(f"{AND}/mipmap-{name}/ic_launcher_foreground.png")
+              # Legacy icons: the logo is already a finished disc, so it is used as-is on
+              # transparency. No plate is drawn behind it — any flat plate colour would
+              # clash with the rim's gradient at the corners.
+              legacy = mark(lg, 1.0)
+              legacy.save(f"{AND}/mipmap-{name}/ic_launcher.png")
+              legacy.save(f"{AND}/mipmap-{name}/ic_launcher_round.png")
+
+          os.makedirs(f"{AND}/drawable", exist_ok=True)
+          # Quick Settings tile glyph
+          with open(f"{AND}/drawable/ic_aethon_mono.xml", "w") as f:
+              f.write(vector_file(24, 0.86))
+          # themed-icon layer for the adaptive icon
+          with open(f"{AND}/drawable/ic_launcher_monochrome.xml", "w") as f:
+              f.write(vector_file(108, 0.52))
+
+          with open(f"{AND}/mipmap-anydpi-v26/ic_launcher.xml", "w") as f:
+              f.write('<?xml version="1.0" encoding="utf-8"?>\n'
+                      '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                      '  <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n'
+                      '  <background android:drawable="@color/ic_launcher_background"/>\n'
+                      '  <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>\n'
+                      '</adaptive-icon>\n')
+
+          with open(f"{AND}/values/ic_launcher_background.xml", "w") as f:
+              f.write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
+                      f'  <color name="ic_launcher_background">{RIM_HEX}</color>\n</resources>\n')
+
+          # Windows / Tauri — transparent background, the logo is already a disc.
+          for px, out in ((32, "32x32.png"), (64, "64x64.png"), (128, "128x128.png"),
+                          (256, "128x128@2x.png"), (512, "icon.png")):
+              mark(px, 1.0).save(f"{WIN}/{out}")
+
+          sizes = (16, 24, 32, 48, 64, 128, 256)
+          mark(256, 1.0).save(f"{WIN}/icon.ico", format="ICO", sizes=[(p, p) for p in sizes])
+
+          print("icons written from", SRC)
+
+          PYICONS
+
+      - name: Verify no upstream branding remains
+        run: |
+          LEFT=$(grep -rIn "hamvex\|Firstham\|Aethon VPN\|AetherGUI" \
+            --include="*.java" --include="*.xml" --include="*.gradle" \
+            --include="*.json" --include="*.yml" --include="*.js" --include="*.html" . \
+            | grep -v package-lock | grep -v NOTICE.md | grep -v "com.firstham" | grep -v '^\./\.github/' || true)
+          if [ -n "$LEFT" ]; then echo "$LEFT"; echo "::error::branding left over"; exit 1; fi
+          python3 -c "import json;[json.load(open(f)) for f in ['package.json','src-tauri/tauri.conf.json','src-tauri/capabilities/default.json']];print('json ok')"
+          echo "clean"
+
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m "Rebrand fork as ${{ inputs.app_name }}"
+          git push
