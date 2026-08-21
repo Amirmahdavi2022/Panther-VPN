@@ -20,3 +20,15 @@ or Aether projects. Do not report Panther issues to them.
 
 Distributed under the same AGPL-3.0 license as the upstream project.
 Complete corresponding source: https://github.com/amirmahdavi2023/Panther-VPN
+
+## Fork notice
+
+Panther is an independent fork of https://github.com/hamvex/AetherGUI
+(released as "Aethon"), which is itself an independent client for the
+CluvexStudio/Aether networking core.
+
+Panther is not affiliated with, endorsed by, or supported by the Aethon
+or Aether projects. Do not report Panther issues to them.
+
+Distributed under the same AGPL-3.0 license as the upstream project.
+Complete corresponding source: https://github.com/amirmahdavi2023/Panther-VPN

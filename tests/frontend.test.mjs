@@ -108,28 +108,28 @@ test('updates remain centralized, verified, silent on startup, and manually avai
 test('About, Telegram, and opener permissions are complete', async () => {
   const [html, app, capability] = await Promise.all([read('../src/index.html'), read('../src/app.js'), read('../src-tauri/capabilities/default.json')]);
   assert.match(html, /CluvexStudio\/Aether/);
-  assert.match(html, /hamvex\/AetherGUI/);
-  assert.match(app, /tg:\/\/resolve\?domain=hamvex/);
-  assert.match(app, /https:\/\/t\.me\/hamvex/);
+  assert.match(html, /amirmahdavi2023\/Panther-VPN/);
+  assert.match(app, /tg:\/\/resolve\?domain=parsv2r/);
+  assert.match(app, /https:\/\/t\.me\/parsv2r/);
   assert.doesNotMatch(html, /(?:src|href)="https?:/);
   const opener = JSON.parse(capability).permissions.find(item => item.identifier === 'opener:allow-open-url');
-  for (const url of ['tg://resolve?domain=hamvex', 'https://t.me/hamvex', 'https://github.com/CluvexStudio/Aether', 'https://github.com/hamvex/AetherGUI']) assert.ok(opener.allow.some(item => item.url === url));
+  for (const url of ['tg://resolve?domain=parsv2r', 'https://t.me/parsv2r', 'https://github.com/CluvexStudio/Aether', 'https://github.com/amirmahdavi2023/Panther-VPN']) assert.ok(opener.allow.some(item => item.url === url));
 });
 
 test('application metadata and visible release version are 2.0.0', async () => {
   const [pkg, tauri, cargo, html, app] = await Promise.all([
     read('../package.json'), read('../src-tauri/tauri.conf.json'), read('../src-tauri/Cargo.toml'), read('../src/index.html'), read('../src/app.js')
   ]);
-  assert.equal(JSON.parse(pkg).version, '2.0.0');
-  assert.equal(JSON.parse(tauri).version, '2.0.0');
-  assert.match(cargo, /version = "2\.0\.0"/);
+  assert.equal(JSON.parse(pkg).version, '1.0.0');
+  assert.equal(JSON.parse(tauri).version, '1.0.0');
+  assert.match(cargo, /version = "1.0.0"/);
   assert.doesNotMatch(html + app, /1\.11\.[12]/);
-  assert.match(html, /v2\.0\.0/);
+  assert.match(html, /v1.0.0/);
 });
 
 test('release version comparison advances from v1.11.1 to v2.0.0', async () => {
   const update = await read('../src-tauri/src/update.rs');
-  assert.match(update, /let current = "2\.0\.0"/);
+  assert.match(update, /let current = "1.0.0"/);
   assert.match(update, /is_newer_version\("1\.11\.1", "1\.11\.0"\)/);
   assert.match(update, /is_newer_version\("2\.0\.0", "1\.11\.1"\)/);
 });
@@ -160,6 +160,6 @@ test('Android reference remains v2.0.0 with VPNService, RTL, and application pic
   assert.match(service, /addAllowedApplication/);
   assert.match(service, /addDisallowedApplication/);
   assert.match(picker, /loadIcon/);
-  assert.match(gradle, /versionName '2\.0\.0'/);
+  assert.match(gradle, /versionName '1.0.0'/);
   assert.match(manifest + activity + service, /supportsRtl|LocaleListCompat/);
 });
