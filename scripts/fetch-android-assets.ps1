@@ -4,11 +4,6 @@ $aetherVersion = if ($env:AETHER_CORE_VERSION) { $env:AETHER_CORE_VERSION } else
 $hevVersion = "2.16.0"
 $hevCommit = "0a05221275a51a884d93328c55fc2fbc9e9b6974"
 $ndkVersion = "27.2.12479018"
-# warp-plus provides the fixed-country (Psiphon) core. Upstream publishes an Android build for
-# arm64 only, so the fixed-country options in the app are gated to arm64-v8a devices.
-$warpPlusVersion = "v1.2.6"
-$warpPlusArchive = "warp-plus_android-arm64.zip"
-$warpPlusSha256 = "585f6f8579d8f5df0c26c874fc1730c4f4298085dbed815ad2d559c8a07c6af5"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $destination = Join-Path $root "android/app/src/main/jniLibs"
 $nativeBase = if ($env:PUBLIC) { Join-Path $env:PUBLIC "FirsthamAetherGuiNative" } else { Join-Path ([System.IO.Path]::GetTempPath()) "FirsthamAetherGuiNative" }
@@ -101,18 +96,6 @@ try {
         Copy-Item -LiteralPath $core.FullName -Destination (Join-Path $abiDir "libaether.so") -Force
         Write-Host "Prepared verified Aether core for $($target.Abi)"
     }
-
-    $warpArchivePath = Join-Path $temp $warpPlusArchive
-    Invoke-WebRequest -UseBasicParsing "https://github.com/bepass-org/warp-plus/releases/download/$warpPlusVersion/$warpPlusArchive" -OutFile $warpArchivePath
-    $warpActual = Get-Sha256 $warpArchivePath
-    if ($warpActual -ne $warpPlusSha256) { throw "warp-plus checksum mismatch: expected $warpPlusSha256, got $warpActual." }
-    $warpExpanded = Join-Path $temp "warp-plus"
-    New-Item -ItemType Directory -Force $warpExpanded | Out-Null
-    Expand-Archive -LiteralPath $warpArchivePath -DestinationPath $warpExpanded -Force
-    $warpBinary = Get-ChildItem -LiteralPath $warpExpanded -Recurse -File -Filter "warp-plus" | Select-Object -First 1
-    if (-not $warpBinary) { throw "warp-plus executable was not found in $warpPlusArchive." }
-    Copy-Item -LiteralPath $warpBinary.FullName -Destination (Join-Path $destination "arm64-v8a/libwarpplus.so") -Force
-    Write-Host "Prepared verified warp-plus core for arm64-v8a"
 
     $hevSource = Join-Path $temp "hev-socks5-tunnel"
     & git clone --quiet --branch $hevVersion --depth 1 --recurse-submodules https://github.com/heiher/hev-socks5-tunnel.git $hevSource

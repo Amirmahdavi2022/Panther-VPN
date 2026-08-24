@@ -15,15 +15,9 @@ final class VpnConnectionController {
     private static final String[] ROUTING = {"bypass-local", "full", "split-include", "split-exclude"};
 
     static Intent startIntent(Context context, SharedPreferences preferences) {
-        String location = Locations.normalize(preferences.getString("location", Locations.AUTO));
-        if (Locations.usesPsiphon(location) && !Locations.fixedCountriesSupported()) location = Locations.AUTO;
-        // Smart Connect benchmarks the Aether protocols, which the warp-plus core does not expose.
-        String connectionMode = preferences.getString("mode", "vpn");
-        if (Locations.usesPsiphon(location) && "smart".equals(connectionMode)) connectionMode = "vpn";
         return new Intent(context, AetherVpnService.class)
                 .setAction(AetherVpnService.ACTION_START)
-                .putExtra("location", location)
-                .putExtra("connectionMode", connectionMode)
+                .putExtra("connectionMode", preferences.getString("mode", "vpn"))
                 .putExtra("protocol", value(PROTOCOLS, preferences.getInt("protocol", ConnectionDefaults.PROTOCOL_INDEX), ConnectionDefaults.PROTOCOL))
                 .putExtra("scan", value(SCANS, preferences.getInt("scan", ConnectionDefaults.SCAN_INDEX), ConnectionDefaults.SCAN))
                 .putExtra("transport", preferences.getInt("transport", 0) == 1 ? "h2" : "h3")

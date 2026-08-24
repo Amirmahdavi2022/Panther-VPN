@@ -5,8 +5,6 @@ Aethon is an independent graphical frontend maintained by hamvex.
 This application bundles the Aether executable from https://github.com/CluvexStudio/Aether.
 Aether is licensed under GNU AGPL v3.0. The bundled executable is downloaded from the official v1.5.0 release and verified against the publisher-provided SHA-256 checksum during reproducible builds. Aether and its marks are subject to the upstream project's TRADEMARK.md policy; Firstham AetherGui is an independent frontend and is not endorsed by CluvexStudio.
 
-System-wide VPN Mode bundles sing-box v1.13.14 from https://github.com/SagerNet/sing-box as the TUN and SOCKS5 routing engine. sing-box is licensed under GPL-3.0-or-later. Its unmodified official Windows archive is pinned to SHA-256 `f580782c6dd10f7691c66cea1d7c421813c5fbf7e305d1ee7ce0c3a40d196341`; the license is distributed at `third-party/sing-box-LICENSE.txt`. Update the version, digest, generated-configuration tests, and this notice together.
-
 The Android application bundles official Aether v1.5.0 Android cores for ARMv7, ARM64, and x86_64, verified against upstream SHA-256 files. Android VPN routing uses HEV Socks5 Tunnel v2.16.0 from https://github.com/heiher/hev-socks5-tunnel under the MIT license. The pinned native-library hashes and license are maintained in `scripts/fetch-android-assets.ps1` and `third-party/hev-socks5-tunnel-LICENSE.txt`.
 
 ## Fork notice
@@ -69,19 +67,3 @@ or Aether projects. Do not report Panther issues to them.
 Distributed under the same AGPL-3.0 license as the upstream project.
 Complete corresponding source: https://github.com/amirmahdavi2023/Panther-VPN
 
-## warp-plus (fixed-country exit locations)
-
-The "United States" and "Germany" exit locations run bepass-org/warp-plus,
-bundled as a native binary (libwarpplus.so, arm64 only) and fetched from its
-official release by checksum at build time.
-
-warp-plus is MIT licensed; its license text is in
-third-party/warp-plus-LICENSE.txt. It embeds Psiphon
-(github.com/Psiphon-Labs/psiphon-tunnel-core), which is GPL-3.0 licensed and
-therefore compatible with Panther's AGPL-3.0 terms.
-
-Upstream: https://github.com/bepass-org/warp-plus
-Psiphon:  https://github.com/Psiphon-Labs/psiphon-tunnel-core
-
-Panther is not affiliated with, endorsed by, or supported by the warp-plus or
-Psiphon projects. Do not report Panther issues to them.

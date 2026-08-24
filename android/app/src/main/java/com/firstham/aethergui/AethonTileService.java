@@ -11,10 +11,6 @@ import android.service.quicksettings.TileService;
 import android.annotation.SuppressLint;
 
 public final class AethonTileService extends TileService {
-    @Override protected void attachBaseContext(Context base) {
-        super.attachBaseContext(LocaleManager.wrap(base));
-    }
-
     public static final String EXTRA_CONNECT_FROM_TILE = "connect_from_tile";
 
     @Override public void onStartListening() {

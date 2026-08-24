@@ -43,10 +43,6 @@ public final class AppSelectionActivity extends AppCompatActivity {
     private final Set<String> selected = new LinkedHashSet<>();
     private AppAdapter adapter;
 
-    @Override protected void attachBaseContext(Context base) {
-        super.attachBaseContext(LocaleManager.wrap(base));
-    }
-
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         binding = ActivityAppSelectionBinding.inflate(getLayoutInflater());

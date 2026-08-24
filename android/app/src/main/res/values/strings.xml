@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Panther VPN</string>
-    <string name="app_version" translatable="false">v1.5.0</string>
+    <string name="app_version" translatable="false">v2.0.0</string>
     <string name="version_format" translatable="false">v%1$s</string>
     <string name="channel_url" translatable="false">https://t.me/parsv2r</string>
     <string name="default_socks_address" translatable="false">127.0.0.1:1819</string>
@@ -95,7 +95,6 @@
     <plurals name="app_picker_selected_count"><item quantity="one">%1$d app selected</item><item quantity="other">%1$d apps selected</item></plurals>
 
     <string name="theme">Theme</string>
-    <string name="language">Language</string>
     <string name="notifications">Notifications</string>
     <string name="notifications_summary">Manage VPN and update notifications</string>
     <string name="manage_notifications">Manage Notifications</string>
@@ -182,11 +181,4 @@
     <string name="install_permission_required">Allow Panther VPN to install updates, then try again.</string>
     <string name="update_download_started">Update download started.</string>
     <string name="update_no_download">No verified update is ready to install.</string>
-    <string name="location_title">Exit location</string>
-    <string name="location_hint">Location</string>
-    <string name="location_summary_auto">Connects through the nearest Cloudflare gateway. Fastest, but the exit country follows your network.</string>
-    <string name="location_summary_fixed">Routes through a relay network so traffic leaves in this country. Slower than automatic, and the address rotates within the country.</string>
-    <string name="location_summary_custom">Uses the endpoint you entered under Advanced settings.</string>
-    <string name="location_unavailable">Fixed countries need a 64-bit device.</string>
-    <string name="location_unsupported_abi">Fixed-country mode is not available on this device architecture.</string>
 </resources>

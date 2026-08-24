@@ -49,10 +49,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import hev.htproxy.TProxyService;
 
 public final class AetherVpnService extends VpnService {
-    @Override protected void attachBaseContext(Context base) {
-        super.attachBaseContext(LocaleManager.wrap(base));
-    }
-
     public static final String ACTION_START = "com.firstham.aethergui.START";
     public static final String ACTION_STOP = "com.firstham.aethergui.STOP";
     public static final String ACTION_QUERY = "com.firstham.aethergui.QUERY";
@@ -268,12 +264,6 @@ public final class AetherVpnService extends VpnService {
     }
 
     private void startAether(Intent request) throws Exception {
-        String location = Locations.normalize(value(request, "location", Locations.AUTO));
-        if (Locations.usesPsiphon(location)) {
-            startWarpPlus(request, location);
-            return;
-        }
-
         File executable = new File(getApplicationInfo().nativeLibraryDir, "libaether.so");
         if (!executable.isFile()) throw new IllegalStateException("Aether core is missing for this device architecture");
 
@@ -306,97 +296,6 @@ public final class AetherVpnService extends VpnService {
         Thread logs = new Thread(() -> readAetherLogs(process, protocol, transport), "aether-log-reader");
         logs.setDaemon(true);
         logs.start();
-    }
-
-    /**
-     * Fixed-country mode. warp-plus chains Cloudflare WARP into the Psiphon network and egresses
-     * in the requested country, so it needs no server of our own. It speaks the same contract as
-     * the Aether core - a native binary that opens a SOCKS5 listener - so everything downstream
-     * (the TUN bridge, monitoring, quick reconnect) is unchanged.
-     */
-    private void startWarpPlus(Intent request, String location) throws Exception {
-        File executable = new File(getApplicationInfo().nativeLibraryDir, Locations.CORE_LIBRARY);
-
-        // Diagnostics first: a silent failure here is indistinguishable from "the country option
-        // does nothing", so state plainly what is on disk before trying to run anything.
-        sendLog("Fixed-country mode requested: " + Locations.countryCode(location));
-        sendLog("Device ABIs: " + java.util.Arrays.toString(Build.SUPPORTED_ABIS));
-        sendLog("Native library dir: " + getApplicationInfo().nativeLibraryDir);
-        File[] shipped = new File(getApplicationInfo().nativeLibraryDir).listFiles();
-        if (shipped != null) {
-            StringBuilder names = new StringBuilder();
-            for (File file : shipped) {
-                if (names.length() > 0) names.append(", ");
-                names.append(file.getName()).append(" (").append(file.length()).append("B)");
-            }
-            sendLog("Cores present: " + names);
-        }
-
-        if (!executable.isFile()) {
-            throw new IllegalStateException("warp-plus core (" + Locations.CORE_LIBRARY
-                    + ") is not in this APK for " + Build.SUPPORTED_ABIS[0]
-                    + ". Fixed countries cannot run; use Automatic or Custom.");
-        }
-        if (!executable.canExecute()) {
-            throw new IllegalStateException("warp-plus core is present (" + executable.length()
-                    + " bytes) but not executable at " + executable.getAbsolutePath());
-        }
-
-        String socks = value(request, "socks", "127.0.0.1:1819");
-        File cacheDir = new File(getFilesDir(), "warpplus");
-        cacheDir.mkdirs();
-
-        List<String> command = new ArrayList<>();
-        command.add(executable.getAbsolutePath());
-        command.add("--bind");
-        command.add(socks);
-        command.add("--cfon");
-        command.add("--country");
-        command.add(Locations.countryCode(location));
-        command.add("--cache-dir");
-        command.add(cacheDir.getAbsolutePath());
-        command.add("-v");
-        if ("v6".equals(value(request, "ipMode", "v4"))) command.add("-6");
-        else command.add("-4");
-
-        sendLog("Launching: " + android.text.TextUtils.join(" ", command));
-
-        ProcessBuilder builder = new ProcessBuilder(command);
-        builder.directory(getFilesDir());
-        builder.redirectErrorStream(true);
-        builder.environment().put("TMPDIR", getCacheDir().getAbsolutePath());
-
-        masqueH3GatewayUnavailable = false;
-
-        synchronized (runtimeLock) {
-            aetherProcess = builder.start();
-        }
-        Process process = aetherProcess;
-        Thread logs = new Thread(() -> readWarpPlusLogs(process), "warpplus-log-reader");
-        logs.setDaemon(true);
-        logs.start();
-    }
-
-    private void readWarpPlusLogs(Process process) {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sendLog("[warp-plus] " + line);
-                String lower = line.toLowerCase(Locale.US);
-                if (smartBenchmarking) continue;
-                if (lower.contains("psiphon mode enabled") || lower.contains("creating new identity")) {
-                    updateState("scanning", getString(R.string.service_identity_ready));
-                }
-                if (lower.contains("using warp endpoints") || lower.contains("scanning")) {
-                    updateState("scanning", getString(R.string.service_testing_gateways));
-                }
-                if (lower.contains("serving proxy") || lower.contains("starting proxy")) {
-                    updateState("securing", getString(R.string.service_gateway_verified));
-                }
-            }
-        } catch (Exception error) {
-            if (!stopping) sendLog("warp-plus log stream closed: " + safeMessage(error));
-        }
     }
 
     private void readAetherLogs(Process process, String protocol, String transport) {

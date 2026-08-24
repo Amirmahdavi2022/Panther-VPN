@@ -1,4 +1,4 @@
-name: Windows and Android release
+name: Android release
 
 on:
   push:
@@ -16,10 +16,6 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -34,30 +30,14 @@ jobs:
             Select-Object -First 1 -ExpandProperty FullName
           if (-not $sdkManager) { throw 'Android sdkmanager.bat was not found on the hosted runner.' }
           & $sdkManager 'ndk;27.2.12479018'
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
 
-      - name: Install dependencies
-        run: npm ci
-      - name: Fetch and verify Aether core
-        run: npm run fetch:core
-      - name: Fetch and verify routing engine
-        run: npm run fetch:routing
-      - name: Test frontend
-        run: npm test
-      - name: Test Rust backend
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
-      - name: Build application and installers
-        run: npm run build
 
       - name: Fetch verified Android native assets
         run: npm run fetch:android
       - name: Verify every native core landed in jniLibs
         shell: pwsh
         run: |
-          # The country options failed silently once because libwarpplus.so was never actually
-          # written here while the build still went green. Fail loudly instead.
+          # A green build once shipped with a core missing from it. Fail loudly instead.
           $missing = @()
           foreach ($abi in @('arm64-v8a','armeabi-v7a','x86_64')) {
             foreach ($lib in @('libaether.so','libhev-socks5-tunnel.so')) {
@@ -65,8 +45,6 @@ jobs:
               if (-not (Test-Path $p)) { $missing += $p } else { Write-Host "$p $((Get-Item $p).Length) bytes" }
             }
           }
-          $warp = 'android/app/src/main/jniLibs/arm64-v8a/libwarpplus.so'
-          if (-not (Test-Path $warp)) { $missing += $warp } else { Write-Host "$warp $((Get-Item $warp).Length) bytes" }
           if ($missing.Count) { throw "Native cores missing: $($missing -join ', ')" }
 
       - name: Prepare Android signing key
@@ -101,32 +79,20 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          New-Item -ItemType Directory -Force portable | Out-Null
-          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
-          Copy-Item src-tauri/target/release/bundle/nsis/*-setup.exe "release/Panther-VPN-v${version}-Windows-x64-Installer.exe"
-          Copy-Item src-tauri/target/release/bundle/msi/*.msi "release/Panther-VPN-v${version}-Windows-x64.msi"
-          Copy-Item src-tauri/target/release/aether-gui.exe "portable/Panther.exe"
-          Copy-Item src-tauri/binaries/aether-x86_64-pc-windows-msvc.exe portable/aether.exe
-          Copy-Item src-tauri/binaries/sing-box-x86_64-pc-windows-msvc.exe portable/sing-box.exe
-          Copy-Item LICENSE,NOTICE.md,TRADEMARK.md,third-party/sing-box-LICENSE.txt portable/
-          Compress-Archive -Path portable/* -DestinationPath "release/Panther-VPN-v${version}-Windows-x64-portable.zip"
-          Copy-Item android/app/build/outputs/apk/release/app-universal-release.apk "release/Panther-VPN-v${version}-Android-Universal.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "release/Panther-VPN-v${version}-Android-ARMv7.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-arm64-v8a-release.apk "release/Panther-VPN-v${version}-Android-ARM64.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-x86_64-release.apk "release/Panther-VPN-v${version}-Android-x86_64.apk"
-          Copy-Item android/app/build/outputs/bundle/release/app-release.aab "release/Panther-VPN-v${version}-Android-AAB.aab"
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          Copy-Item android/app/build/outputs/apk/release/app-universal-release.apk   "release/Panther-VPN-v${version}-Universal.apk"
+          Copy-Item android/app/build/outputs/apk/release/app-arm64-v8a-release.apk   "release/Panther-VPN-v${version}-ARM64.apk"
+          Copy-Item android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "release/Panther-VPN-v${version}-ARMv7.apk"
+          Copy-Item android/app/build/outputs/apk/release/app-x86_64-release.apk      "release/Panther-VPN-v${version}-x86_64.apk"
+          Copy-Item android/app/build/outputs/bundle/release/app-release.aab          "release/Panther-VPN-v${version}.aab"
           Get-ChildItem release -File | ForEach-Object {
             $hash = Get-FileHash $_.FullName -Algorithm SHA256
             "$($hash.Hash.ToLower())  $($_.Name)" | Add-Content release/SHA256SUMS.txt
           }
-          $bundle = "release/Panther-VPN-v${version}-all-platforms.zip"
-          Compress-Archive -Path (Get-ChildItem release -File | Select-Object -ExpandProperty FullName) -DestinationPath $bundle
-          $bundleHash = Get-FileHash $bundle -Algorithm SHA256
-          "$($bundleHash.Hash.ToLower())  $([System.IO.Path]::GetFileName($bundle))" | Add-Content release/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Panther-VPN-Windows-Android
+          name: Panther-VPN-Android
           path: release/*
           if-no-files-found: error
 
@@ -139,16 +105,8 @@ jobs:
           body: |
             # Panther VPN
 
-            Windows and Android release.
+            Android release.
 
-            - Exit-location picker with 31 Psiphon egress countries
-            - warp-plus core now built from source for arm64, ARMv7 and x86_64
-            - New UI experience
-            - Aether Core upgraded to v1.7.0
-            - Improved VPN stability and performance
-            - Improved Split Tunneling
-            - Improved update system
-            - Better connection experience
-
-            The bundled Aether Core and sing-box routing engine are fetched from official releases and SHA-256 verified during the build.
-            Windows 10/11 x64 and Android 8.0+ are supported. Windows binaries are unsigned and may trigger a SmartScreen warning; Android APKs are release-signed.
+            The bundled Aether Core is fetched from its official release and
+            SHA-256 verified during the build. Android 8.0+ is supported and
+            APKs are release-signed.
