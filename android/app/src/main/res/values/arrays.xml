@@ -7,4 +7,5 @@
     <string-array name="log_labels"><item>Info</item><item>Warning</item><item>Error</item><item>Debug</item><item>Trace</item></string-array>
     <string-array name="theme_labels"><item>System default</item><item>Light</item><item>Dark</item></string-array>
     <string-array name="language_labels"><item>English</item><item>فارسی</item></string-array>
+    <string-array name="location_labels"><item>Automatic (fastest)</item><item>United States</item><item>Germany</item><item>Custom endpoint</item></string-array>
 </resources>

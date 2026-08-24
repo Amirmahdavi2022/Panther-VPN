@@ -68,3 +68,20 @@ or Aether projects. Do not report Panther issues to them.
 
 Distributed under the same AGPL-3.0 license as the upstream project.
 Complete corresponding source: https://github.com/amirmahdavi2023/Panther-VPN
+
+## warp-plus (fixed-country exit locations)
+
+The "United States" and "Germany" exit locations run bepass-org/warp-plus,
+bundled as a native binary (libwarpplus.so, arm64 only) and fetched from its
+official release by checksum at build time.
+
+warp-plus is MIT licensed; its license text is in
+third-party/warp-plus-LICENSE.txt. It embeds Psiphon
+(github.com/Psiphon-Labs/psiphon-tunnel-core), which is GPL-3.0 licensed and
+therefore compatible with Panther's AGPL-3.0 terms.
+
+Upstream: https://github.com/bepass-org/warp-plus
+Psiphon:  https://github.com/Psiphon-Labs/psiphon-tunnel-core
+
+Panther is not affiliated with, endorsed by, or supported by the warp-plus or
+Psiphon projects. Do not report Panther issues to them.

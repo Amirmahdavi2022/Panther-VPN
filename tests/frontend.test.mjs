@@ -120,16 +120,16 @@ test('application metadata and visible release version are 2.0.0', async () => {
   const [pkg, tauri, cargo, html, app] = await Promise.all([
     read('../package.json'), read('../src-tauri/tauri.conf.json'), read('../src-tauri/Cargo.toml'), read('../src/index.html'), read('../src/app.js')
   ]);
-  assert.equal(JSON.parse(pkg).version, '1.4.0');
-  assert.equal(JSON.parse(tauri).version, '1.4.0');
-  assert.match(cargo, /version = "1.4.0"/);
+  assert.equal(JSON.parse(pkg).version, '1.5.0');
+  assert.equal(JSON.parse(tauri).version, '1.5.0');
+  assert.match(cargo, /version = "1.5.0"/);
   assert.doesNotMatch(html + app, /1\.11\.[12]/);
-  assert.match(html, /v1.4.0/);
+  assert.match(html, /v1.5.0/);
 });
 
 test('release version comparison advances from v1.11.1 to v2.0.0', async () => {
   const update = await read('../src-tauri/src/update.rs');
-  assert.match(update, /let current = "1.4.0"/);
+  assert.match(update, /let current = "1.5.0"/);
   assert.match(update, /is_newer_version\("1\.11\.1", "1\.11\.0"\)/);
   assert.match(update, /is_newer_version\("2\.0\.0", "1\.11\.1"\)/);
 });
@@ -160,6 +160,6 @@ test('Android reference remains v2.0.0 with VPNService, RTL, and application pic
   assert.match(service, /addAllowedApplication/);
   assert.match(service, /addDisallowedApplication/);
   assert.match(picker, /loadIcon/);
-  assert.match(gradle, /versionName '1.4.0'/);
+  assert.match(gradle, /versionName '1.5.0'/);
   assert.match(manifest + activity + service, /supportsRtl|LocaleListCompat/);
 });

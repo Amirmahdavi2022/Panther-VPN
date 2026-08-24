@@ -7,4 +7,5 @@
     <string-array name="log_labels"><item>اطلاعات</item><item>هشدار</item><item>خطا</item><item>اشکال‌زدایی</item><item>ردیابی</item></string-array>
     <string-array name="theme_labels"><item>پیش‌فرض سیستم</item><item>روشن</item><item>تیره</item></string-array>
     <string-array name="language_labels"><item>English</item><item>فارسی</item></string-array>
+    <string-array name="location_labels"><item>خودکار (سریع‌ترین)</item><item>آمریکا</item><item>آلمان</item><item>نقطه پایانی سفارشی</item></string-array>
 </resources>

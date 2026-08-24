@@ -124,6 +124,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void setupDropdowns() {
+        setAdapter(binding.locationInput, R.array.location_labels);
         setAdapter(binding.protocolInput, R.array.protocol_labels);
         setAdapter(binding.scanInput, R.array.scan_labels);
         setAdapter(binding.transportInput, R.array.transport_labels);
@@ -132,6 +133,15 @@ public final class MainActivity extends AppCompatActivity {
         setAdapter(binding.logInput, R.array.log_labels);
         setAdapter(binding.themeInput, R.array.theme_labels);
         setAdapter(binding.languageInput, R.array.language_labels);
+        binding.locationInput.setOnItemClickListener((p, v, position, id) -> {
+            binding.locationInput.setTag(position);
+            if (Locations.usesPsiphon(Locations.fromIndex(position)) && !Locations.fixedCountriesSupported()) {
+                Toast.makeText(this, R.string.location_unavailable, Toast.LENGTH_LONG).show();
+                setSelection(binding.locationInput, 0, R.array.location_labels);
+            }
+            updateLocationUi();
+            saveSettings();
+        });
         binding.protocolInput.setOnItemClickListener((p, v, position, id) -> { binding.protocolInput.setTag(position); updateModeUi(); saveSettings(); });
         binding.scanInput.setOnItemClickListener((p, v, position, id) -> { binding.scanInput.setTag(position); saveSettings(); });
         binding.transportInput.setOnItemClickListener((p, v, position, id) -> { binding.transportInput.setTag(position); saveSettings(); });
@@ -225,6 +235,8 @@ public final class MainActivity extends AppCompatActivity {
         setSelection(binding.themeInput, "theme", 2, R.array.theme_labels);
         setSelection(binding.languageInput, LocaleManager.index(LocaleManager.stored(this)), R.array.language_labels);
         binding.socksInput.setText(preferences.getString("socks", getString(R.string.default_socks_address)));
+        setSelection(binding.locationInput, Locations.index(preferences.getString("location", Locations.AUTO)), R.array.location_labels);
+        updateLocationUi();
         binding.peerInput.setText(preferences.getString("peer", "")); binding.mtuInput.setText(preferences.getString("mtu", getString(R.string.default_mtu)));
         binding.dnsSwitch.setChecked(preferences.getBoolean("dnsLeak", true)); binding.killswitchSwitch.setChecked(preferences.getBoolean("killSwitch", false)); binding.reconnectSwitch.setChecked(preferences.getBoolean("quickReconnect", true));
         boolean split = preferences.getInt("routing", 0) >= 2; binding.splitSwitch.setChecked(split); binding.splitContainer.setVisibility(split ? View.VISIBLE : View.GONE); binding.routingGroup.check(preferences.getInt("routing", 2) == 3 ? R.id.exclude_apps_radio : R.id.include_apps_radio); updateModeUi(); updateSelectedCount();
@@ -309,10 +321,25 @@ public final class MainActivity extends AppCompatActivity {
         binding.locationValue.setText(R.string.connection_location_unavailable);
     }
 
+    private void updateLocationUi() {
+        String location = Locations.fromIndex(selectedIndex(binding.locationInput));
+        int summary = R.string.location_summary_auto;
+        if (Locations.usesPsiphon(location)) summary = R.string.location_summary_fixed;
+        else if (Locations.CUSTOM.equals(location)) summary = R.string.location_summary_custom;
+        binding.locationSummary.setText(summary);
+        boolean aetherTunables = !Locations.usesPsiphon(location);
+        binding.protocolLayout.setEnabled(aetherTunables);
+        binding.scanLayout.setEnabled(aetherTunables);
+        binding.transportLayout.setEnabled(aetherTunables);
+        binding.protocolLayout.setAlpha(aetherTunables ? 1f : 0.45f);
+        binding.scanLayout.setAlpha(aetherTunables ? 1f : 0.45f);
+        binding.transportLayout.setAlpha(aetherTunables ? 1f : 0.45f);
+    }
+
     private void saveSettings() {
         int routing = binding.splitSwitch.isChecked() ? (binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? 3 : 2) : 0;
         String include = preferences.getString("splitIncludeApps", ""); String exclude = preferences.getString("splitExcludeApps", "");
-        preferences.edit().putInt("protocol", selectedIndex(binding.protocolInput)).putInt("scan", selectedIndex(binding.scanInput)).putInt("transport", selectedIndex(binding.transportInput)).putInt("ip", selectedIndex(binding.ipInput)).putInt("obfuscation", selectedIndex(binding.obfuscationInput)).putInt("log", selectedIndex(binding.logInput)).putInt("theme", selectedIndex(binding.themeInput)).putInt("routing", routing).putString("splitApps", routing == 3 ? exclude : include).putString("socks", text(binding.socksInput)).putString("peer", text(binding.peerInput)).putString("mtu", text(binding.mtuInput)).putBoolean("dnsLeak", binding.dnsSwitch.isChecked()).putBoolean("killSwitch", binding.killswitchSwitch.isChecked()).putBoolean("quickReconnect", binding.reconnectSwitch.isChecked()).apply();
+        preferences.edit().putString("location", Locations.fromIndex(selectedIndex(binding.locationInput))).putInt("protocol", selectedIndex(binding.protocolInput)).putInt("scan", selectedIndex(binding.scanInput)).putInt("transport", selectedIndex(binding.transportInput)).putInt("ip", selectedIndex(binding.ipInput)).putInt("obfuscation", selectedIndex(binding.obfuscationInput)).putInt("log", selectedIndex(binding.logInput)).putInt("theme", selectedIndex(binding.themeInput)).putInt("routing", routing).putString("splitApps", routing == 3 ? exclude : include).putString("socks", text(binding.socksInput)).putString("peer", text(binding.peerInput)).putString("mtu", text(binding.mtuInput)).putBoolean("dnsLeak", binding.dnsSwitch.isChecked()).putBoolean("killSwitch", binding.killswitchSwitch.isChecked()).putBoolean("quickReconnect", binding.reconnectSwitch.isChecked()).apply();
     }
 
     private Set<String> selectedPackages() { Set<String> result = new LinkedHashSet<>(); String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; AppSelectionActivity.parsePackages(preferences.getString(key, ""), result); return result; }
