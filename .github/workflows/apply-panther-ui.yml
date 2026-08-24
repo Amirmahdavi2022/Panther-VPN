@@ -254,13 +254,7 @@ jobs:
       - name: Generate brand logo drawable
         run: |
           mkdir -p android/app/src/main/res/drawable-nodpi
-          python3 - <<'PY'
-          from PIL import Image
-          im = Image.open('brand/logo.png').convert('RGBA')
-          im.resize((256, 256), Image.LANCZOS).save(
-              'android/app/src/main/res/drawable-nodpi/ic_brand_logo.png', optimize=True)
-          print('logo drawable written')
-          PY
+          cp brand/logo.png android/app/src/main/res/drawable-nodpi/ic_brand_logo.png
           ls -la android/app/src/main/res/drawable-nodpi/
 
       - name: Verify
