@@ -153,7 +153,12 @@ public final class MainActivity extends AppCompatActivity {
             String language = LocaleManager.fromIndex(position);
             if (language.equals(LocaleManager.stored(this))) return;
             LocaleManager.store(this, language);
-            recreate();
+            // Recreating from inside the item-click callback tears the activity down while the
+            // dropdown's popup window is still attached, which leaves the rebuilt activity with a
+            // dead popup and swallows every later tab and dropdown tap. Dismiss the popup first
+            // and recreate on the next frame, once the window is really gone.
+            binding.languageInput.dismissDropDown();
+            binding.root.post(this::recreate);
         });
     }
 

@@ -12,50 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  warpplus:
-    name: Build warp-plus cores (all ABIs)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache: false
-      - name: Build warp-plus for each ABI
-        run: |
-          set -euo pipefail
-          git clone --depth 1 https://github.com/bepass-org/warp-plus.git wp
-          cd wp
-          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-}}"
-          test -n "$NDK" && test -d "$NDK" || { echo "::error::Android NDK not found on runner"; exit 1; }
-          BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          OUT="$GITHUB_WORKSPACE/warpplus"
-          build() {
-            echo "--- $1"
-            mkdir -p "$OUT/$1"
-            # -checklinkname=0: warp-plus pulls in github.com/wlynxg/anet, which uses a
-            # //go:linkname into net.zoneCache to work around golang/go#40569 on Android.
-            # Go 1.23+ rejects that linkname by default (link: invalid reference to
-            # net.zoneCache) unless this flag opts back in. anet has no newer release that
-            # drops the linkname (latest tag is still v0.0.5), so this is the flag its own
-            # docs prescribe for Go 1.23+, not a workaround we're inventing.
-            env CGO_ENABLED=1 GOOS=android GOARCH="$2" $4 CC="$BIN/$3" go build -trimpath -ldflags="-s -w -checklinkname=0" -o "$OUT/$1/libwarpplus.so" ./cmd/warp-plus
-          }
-          build arm64-v8a arm64 aarch64-linux-android26-clang ""
-          build armeabi-v7a arm armv7a-linux-androideabi26-clang "GOARM=7"
-          build x86_64 amd64 x86_64-linux-android26-clang ""
-          for abi in arm64-v8a armeabi-v7a x86_64; do
-            f="$OUT/$abi/libwarpplus.so"
-            test -s "$f" || { echo "::error::missing $f"; exit 1; }
-            echo "$abi $(stat -c%s "$f") bytes"
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: warpplus-cores
-          path: warpplus/**
-          if-no-files-found: error
-
   build:
-    needs: warpplus
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,22 +53,6 @@ jobs:
 
       - name: Fetch verified Android native assets
         run: npm run fetch:android
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: warpplus-cores
-          path: warpplus
-      - name: Install warp-plus cores for every ABI
-        shell: pwsh
-        run: |
-          foreach ($abi in @('arm64-v8a','armeabi-v7a','x86_64')) {
-            $src = "warpplus/$abi/libwarpplus.so"
-            if (-not (Test-Path $src)) { throw "warp-plus core missing for $abi" }
-            $dest = "android/app/src/main/jniLibs/$abi"
-            New-Item -ItemType Directory -Force $dest | Out-Null
-            Copy-Item -LiteralPath $src -Destination (Join-Path $dest 'libwarpplus.so') -Force
-            Write-Host "Installed warp-plus core for $abi"
-          }
 
       - name: Prepare Android signing key
         if: github.event_name != 'pull_request'

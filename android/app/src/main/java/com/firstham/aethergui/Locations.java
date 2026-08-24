@@ -15,7 +15,10 @@ import java.util.Locale;
  * inside that country, so the country is fixed but the address is not.
  *
  * The country list is the egress set warp-plus supports (psiphon/p.go upstream).
- * warp-plus is now built from source for every shipped ABI, so no architecture gate applies.
+ *
+ * warp-plus ships an official Android build for arm64 only (there is no armeabi-v7a or x86_64
+ * release), so libwarpplus.so is fetched pre-built and checksum-verified for arm64-v8a and the
+ * named countries are gated to that ABI - they fall back to Automatic elsewhere.
  */
 final class Locations {
     static final String AUTO = "auto";
@@ -98,8 +101,11 @@ final class Locations {
         return at < 0 ? 0 : at + 1;
     }
 
-    /** Every shipped ABI now carries the warp-plus core. */
+    /** Only arm64 devices carry the warp-plus core. */
     static boolean fixedCountriesSupported() {
-        return true;
+        for (String abi : android.os.Build.SUPPORTED_ABIS) {
+            if ("arm64-v8a".equals(abi)) return true;
+        }
+        return false;
     }
 }
