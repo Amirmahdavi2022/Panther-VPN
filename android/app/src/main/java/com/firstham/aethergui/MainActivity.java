@@ -57,6 +57,7 @@ public final class MainActivity extends AppCompatActivity {
     private String state = "disconnected";
     private String page = "connect";
     private boolean receiverRegistered;
+    private boolean syncingNav;
     private String endpoint = "";
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
     private final Runnable updateProgressPoll = new Runnable() {
@@ -97,7 +98,8 @@ public final class MainActivity extends AppCompatActivity {
             android.view.ViewGroup.LayoutParams params = binding.toolbar.getLayoutParams();
             params.height = toolbarHeight + bars.top;
             binding.toolbar.setLayoutParams(params);
-            binding.pageContainer.setPadding(0, 0, 0, bars.bottom);
+            binding.pageContainer.setPadding(0, 0, 0, 0);
+            binding.bottomNav.setPadding(0, 0, 0, bars.bottom);
             return insets;
         });
         setupDropdowns();
@@ -149,6 +151,8 @@ public final class MainActivity extends AppCompatActivity {
         });
         binding.navigationView.setNavigationItemSelectedListener(item -> { selectPage(item); binding.root.closeDrawer(GravityCompat.START); return true; });
         binding.navigationView.setCheckedItem(R.id.nav_connect);
+        binding.bottomNav.setOnItemSelectedListener(item -> { if (!syncingNav) selectPage(item); return true; });
+        binding.bottomNav.setSelectedItemId(R.id.nav_connect);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
                 if (binding.root.isDrawerOpen(GravityCompat.START)) {
@@ -173,6 +177,7 @@ public final class MainActivity extends AppCompatActivity {
         binding.aboutPage.setVisibility("about".equals(page) ? View.VISIBLE : View.GONE);
         int checked = "configurations".equals(page) ? R.id.nav_configurations : "settings".equals(page) ? R.id.nav_settings : "about".equals(page) ? R.id.nav_about : R.id.nav_connect;
         binding.navigationView.setCheckedItem(checked);
+        if (checked != R.id.nav_about) { syncingNav = true; binding.bottomNav.setSelectedItemId(checked); syncingNav = false; }
         int title = "configurations".equals(page) ? R.string.configurations_title : "settings".equals(page) ? R.string.settings_title : "about".equals(page) ? R.string.about : R.string.app_name;
         binding.toolbar.setTitle("");
         binding.toolbarTitle.setText(title);
@@ -198,6 +203,7 @@ public final class MainActivity extends AppCompatActivity {
         binding.notificationSettingsButton.setOnClickListener(v -> openNotificationSettings());
         binding.addTileButton.setOnClickListener(v -> requestQuickSettingsTile());
         binding.telegramCard.setOnClickListener(v -> openTelegram());
+        binding.aboutTelegramCard.setOnClickListener(v -> openTelegram());
     }
 
     private void restoreSettings() {

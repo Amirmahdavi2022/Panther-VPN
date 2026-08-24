@@ -17,92 +17,118 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="@color/surface"
+            android:background="@color/background"
             android:titleTextColor="@color/text"
             app:menu="@menu/main_toolbar"
             app:navigationIcon="@drawable/ic_menu">
-            <TextView android:id="@+id/toolbar_title" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="@string/app_name" android:textColor="@color/text" android:textSize="17sp" android:textStyle="bold" android:letterSpacing="0.08" />
+            <TextView android:id="@+id/toolbar_title" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="@string/app_name" android:textColor="@color/text" android:textSize="17sp" android:textStyle="bold" android:letterSpacing="0.06" />
         </com.google.android.material.appbar.MaterialToolbar>
 
         <FrameLayout android:id="@+id/page_container" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
-            <LinearLayout
+
+            <androidx.core.widget.NestedScrollView
                 android:id="@+id/home_page"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="@drawable/home_atmosphere"
-                android:gravity="center_horizontal"
-                android:orientation="vertical"
-                android:paddingHorizontal="24dp"
-                    android:paddingTop="18dp"
-                android:paddingBottom="24dp">
-
-                <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="0.22" />
-
-                <com.firstham.aethergui.ConnectionOrbView
-                    android:id="@+id/connect_button"
-                    android:layout_width="match_parent"
-                    android:layout_height="286dp"
-                    android:contentDescription="@string/connect"
-                    android:minWidth="240dp"
-                    android:minHeight="240dp" />
-
+                android:fillViewport="true">
                 <LinearLayout
-                    android:id="@+id/connection_status_pill"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:gravity="center"
-                    android:orientation="horizontal">
-                    <View android:id="@+id/status_dot" android:layout_width="8dp" android:layout_height="8dp" android:layout_marginEnd="9dp" android:background="@drawable/status_dot" />
-                    <TextView android:id="@+id/connection_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/status_disconnected" android:textColor="@color/text" android:textSize="14sp" android:textStyle="bold" />
-                </LinearLayout>
-
-                <ProgressBar
-                    android:id="@+id/progress"
-                    style="?android:attr/progressBarStyleSmall"
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:layout_marginTop="20dp"
-                    android:indeterminateTint="@color/blue_600"
-                    android:visibility="gone" />
-
-                <LinearLayout
-                    android:id="@+id/connection_info"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="22dp"
-                    android:gravity="center"
+                    android:gravity="center_horizontal"
                     android:orientation="vertical"
-                    android:visibility="visible">
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="@string/session_label" android:textColor="@color/muted" android:textSize="11sp" android:letterSpacing="0.18" />
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:orientation="horizontal">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginEnd="5dp" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
-                            <TextView android:id="@+id/download_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/download_label" android:textColor="@color/muted" android:textSize="12sp" />
-                            <TextView android:id="@+id/download_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:gravity="center" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+                    android:paddingHorizontal="18dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="26dp">
+
+                    <com.firstham.aethergui.ConnectionOrbView
+                        android:id="@+id/connect_button"
+                        android:layout_width="match_parent"
+                        android:layout_height="268dp"
+                        android:contentDescription="@string/connect"
+                        android:minWidth="240dp"
+                        android:minHeight="240dp" />
+
+                    <LinearLayout
+                        android:id="@+id/connection_status_pill"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/card_background"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingVertical="14dp">
+                        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center" android:orientation="horizontal">
+                            <View android:id="@+id/status_dot" android:layout_width="9dp" android:layout_height="9dp" android:layout_marginEnd="9dp" android:background="@drawable/status_dot" />
+                            <TextView android:id="@+id/connection_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/status_disconnected" android:textColor="@color/text" android:textSize="15sp" android:textStyle="bold" />
                         </LinearLayout>
-                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="5dp" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
-                            <TextView android:id="@+id/upload_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/upload_label" android:textColor="@color/muted" android:textSize="12sp" />
-                            <TextView android:id="@+id/upload_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:gravity="center" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="@string/state_label" android:textColor="@color/muted" android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <ProgressBar
+                        android:id="@+id/progress"
+                        style="?android:attr/progressBarStyleSmall"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_marginTop="14dp"
+                        android:indeterminateTint="@color/blue_600"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:id="@+id/connection_info"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="visible">
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/card_background" android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp" android:background="@drawable/icon_badge_blue">
+                                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_globe" />
+                            </FrameLayout>
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="13dp" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:id="@+id/location_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2" android:text="@string/connection_location_unavailable" android:textColor="@color/text" android:textSize="15sp" android:textStyle="bold" />
+                                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/node_label" android:textColor="@color/muted" android:textSize="12sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal">
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginEnd="5dp" android:layout_weight="1" android:background="@drawable/card_background" android:orientation="vertical" android:padding="14dp">
+                                <FrameLayout android:layout_width="34dp" android:layout_height="34dp" android:background="@drawable/icon_badge_blue">
+                                    <ImageView android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_download_arrow" />
+                                </FrameLayout>
+                                <TextView android:id="@+id/download_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="@string/download_label" android:textColor="@color/muted" android:textSize="12sp" />
+                                <TextView android:id="@+id/download_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/metric_unavailable" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+                            </LinearLayout>
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="5dp" android:layout_weight="1" android:background="@drawable/card_background" android:orientation="vertical" android:padding="14dp">
+                                <FrameLayout android:layout_width="34dp" android:layout_height="34dp" android:background="@drawable/icon_badge_green">
+                                    <ImageView android:layout_width="18dp" android:layout_height="18dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_upload_arrow" />
+                                </FrameLayout>
+                                <TextView android:id="@+id/upload_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="@string/upload_label" android:textColor="@color/muted" android:textSize="12sp" />
+                                <TextView android:id="@+id/upload_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/metric_unavailable" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/card_background" android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp" android:background="@drawable/icon_badge_violet">
+                                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_pulse" />
+                            </FrameLayout>
+                            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="13dp" android:layout_weight="1" android:text="@string/latency_label" android:textColor="@color/muted" android:textSize="13sp" />
+                            <TextView android:id="@+id/ping_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/accent_violet" android:textSize="16sp" android:textStyle="bold" />
                         </LinearLayout>
                     </LinearLayout>
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:gravity="center" android:text="@string/latency_label" android:textColor="@color/muted" android:textSize="11sp" android:letterSpacing="0.18" />
-                    <TextView android:id="@+id/ping_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:gravity="center" android:textColor="@color/blue_600" android:textSize="14sp" android:textStyle="bold" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:gravity="center" android:text="@string/node_label" android:textColor="@color/muted" android:textSize="11sp" android:letterSpacing="0.18" />
-                    <TextView android:id="@+id/location_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:gravity="center" android:maxLines="2" android:textColor="@color/text" android:textSize="15sp" />
-                </LinearLayout>
 
-                <TextView
-                    android:id="@+id/connection_message"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:gravity="center"
-                    android:maxLines="3"
-                    android:text="@string/status_ready_message"
-                    android:textColor="@color/muted"
-                    android:textSize="14sp" />
-                <Space android:layout_width="1dp" android:layout_height="0dp" android:layout_weight="0.78" />
-            </LinearLayout>
+                    <TextView
+                        android:id="@+id/connection_message"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center"
+                        android:maxLines="3"
+                        android:text="@string/status_ready_message"
+                        android:textColor="@color/muted"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </androidx.core.widget.NestedScrollView>
 
             <androidx.core.widget.NestedScrollView
                 android:id="@+id/configurations_page"
@@ -165,16 +191,44 @@
                 android:layout_height="match_parent"
                 android:fillViewport="true"
                 android:visibility="gone">
-                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_horizontal" android:orientation="vertical" android:padding="22dp" android:paddingBottom="40dp">
-                    <ImageView android:layout_width="68dp" android:layout_height="68dp" android:layout_marginTop="18dp" android:src="@drawable/ic_aethon_mono" app:tint="@color/blue_600" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="@string/app_name" android:textColor="@color/text" android:textSize="24sp" android:textStyle="bold" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/app_version" android:textColor="@color/muted" android:textSize="13sp" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="30dp" android:text="@string/original_project" android:textColor="@color/text" android:textStyle="bold" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="@string/aether_credit" android:textColor="@color/muted" android:textSize="13sp" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:autoLink="web" android:text="@string/aether_repository" android:textColor="@color/blue_600" android:textSize="13sp" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:text="@string/application_project" android:textColor="@color/text" android:textStyle="bold" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="@string/aethon_credit" android:textColor="@color/muted" android:textSize="13sp" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:autoLink="web" android:text="@string/aethon_repository" android:textColor="@color/blue_600" android:textSize="13sp" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_horizontal" android:orientation="vertical" android:padding="20dp" android:paddingBottom="40dp">
+                    <ImageView android:layout_width="104dp" android:layout_height="104dp" android:layout_marginTop="18dp" android:contentDescription="@null" android:src="@drawable/ic_brand_logo" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="@string/app_name" android:textColor="@color/text" android:textSize="24sp" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/chip_background" android:paddingHorizontal="12dp" android:paddingVertical="4dp" android:text="@string/app_version" android:textColor="@color/blue_600" android:textSize="12sp" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:gravity="center" android:text="@string/about_tagline" android:textColor="@color/muted" android:textSize="14sp" />
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:background="@drawable/card_background" android:orientation="horizontal" android:paddingVertical="16dp">
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp" android:background="@drawable/icon_badge_amber">
+                                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_bolt" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/feature_fast" android:textColor="@color/muted" android:textSize="12sp" />
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp" android:background="@drawable/icon_badge_blue">
+                                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_lock" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/feature_secure" android:textColor="@color/muted" android:textSize="12sp" />
+                        </LinearLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+                            <FrameLayout android:layout_width="38dp" android:layout_height="38dp" android:background="@drawable/icon_badge_green">
+                                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_shield_check" />
+                            </FrameLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/feature_stable" android:textColor="@color/muted" android:textSize="12sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout android:id="@+id/about_telegram_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/card_background" android:clickable="true" android:focusable="true" android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
+                        <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/icon_badge_blue">
+                            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_telegram" />
+                        </FrameLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="13dp" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/telegram_title" android:textColor="@color/text" android:textSize="15sp" android:textStyle="bold" />
+                            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/telegram_handle" android:textColor="@color/muted" android:textSize="13sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="26dp" android:gravity="center" android:text="@string/license_line" android:textColor="@color/muted" android:textSize="11sp" />
                 </LinearLayout>
             </androidx.core.widget.NestedScrollView>
 
@@ -182,8 +236,8 @@
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp" android:paddingBottom="40dp">
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/settings_title" android:textColor="@color/text" android:textSize="26sp" android:textStyle="bold" />
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/settings_summary" android:textColor="@color/muted" android:textSize="14sp" />
-                    <com.google.android.material.textfield.TextInputLayout style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:hint="@string/theme"><com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/theme_input" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" /></com.google.android.material.textfield.TextInputLayout>
-                    <com.google.android.material.textfield.TextInputLayout style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/language"><com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/language_input" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" /></com.google.android.material.textfield.TextInputLayout>
+                    <com.google.android.material.textfield.TextInputLayout style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:hint="@string/theme" android:visibility="gone"><com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/theme_input" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" /></com.google.android.material.textfield.TextInputLayout>
+                    <com.google.android.material.textfield.TextInputLayout style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:hint="@string/language"><com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/language_input" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="none" /></com.google.android.material.textfield.TextInputLayout>
                     <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="24dp" android:background="@color/border" />
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/notifications" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/notifications_summary" android:textColor="@color/muted" android:textSize="12sp" />
@@ -192,25 +246,48 @@
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/quick_settings_summary" android:textColor="@color/muted" android:textSize="12sp" />
                     <com.google.android.material.button.MaterialButton android:id="@+id/add_tile_button" style="@style/Widget.Material3.Button.TonalButton" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="12dp" android:text="@string/add_quick_settings_tile" />
                     <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="24dp" android:background="@color/border" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/app_updates" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/current_version" android:textColor="@color/muted" /><TextView android:id="@+id/current_version_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text" android:textStyle="bold" /></LinearLayout>
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/latest_version" android:textColor="@color/muted" /><TextView android:id="@+id/latest_version_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/not_checked" android:textColor="@color/text" android:textStyle="bold" /></LinearLayout>
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/update_status" android:textColor="@color/muted" /><TextView android:id="@+id/update_status_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/not_checked" android:textColor="@color/text" android:textStyle="bold" /></LinearLayout>
-                    <ProgressBar android:id="@+id/update_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:max="100" android:visibility="gone" />
-                    <TextView android:id="@+id/release_notes_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:maxLines="6" android:textColor="@color/muted" android:visibility="gone" />
-                    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/auto_download_switch" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="@string/automatic_updates" android:textColor="@color/text" />
-                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/automatic_updates_summary" android:textColor="@color/muted" android:textSize="12sp" />
-                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:gravity="end"><com.google.android.material.button.MaterialButton android:id="@+id/download_update_button" style="@style/Widget.Material3.Button.TonalButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/download_update" android:visibility="gone" /><com.google.android.material.button.MaterialButton android:id="@+id/check_updates_button" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/check_for_updates" /></LinearLayout>
-                    <LinearLayout android:id="@+id/telegram_card" android:layout_width="match_parent" android:layout_height="72dp" android:background="?attr/selectableItemBackground" android:clickable="true" android:focusable="true" android:gravity="center_vertical" android:paddingHorizontal="8dp"><ImageView android:layout_width="40dp" android:layout_height="40dp" android:contentDescription="@null" android:src="@drawable/ic_telegram" /><LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="14dp" android:layout_weight="1" android:orientation="vertical"><TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/telegram_title" android:textColor="@color/text" android:textStyle="bold" /><TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="@string/telegram_summary" android:textColor="@color/muted" android:textSize="12sp" /></LinearLayout></LinearLayout>
+
+                    <LinearLayout android:id="@+id/update_section" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/app_updates" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/current_version" android:textColor="@color/muted" /><TextView android:id="@+id/current_version_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text" android:textStyle="bold" /></LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/latest_version" android:textColor="@color/muted" /><TextView android:id="@+id/latest_version_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/not_checked" android:textColor="@color/text" android:textStyle="bold" /></LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/update_status" android:textColor="@color/muted" /><TextView android:id="@+id/update_status_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/not_checked" android:textColor="@color/text" android:textStyle="bold" /></LinearLayout>
+                        <ProgressBar android:id="@+id/update_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:max="100" android:visibility="gone" />
+                        <TextView android:id="@+id/release_notes_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:maxLines="6" android:textColor="@color/muted" android:visibility="gone" />
+                        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/auto_download_switch" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="@string/automatic_updates" android:textColor="@color/text" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/automatic_updates_summary" android:textColor="@color/muted" android:textSize="12sp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:gravity="end"><com.google.android.material.button.MaterialButton android:id="@+id/download_update_button" style="@style/Widget.Material3.Button.TonalButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/download_update" android:visibility="gone" /><com.google.android.material.button.MaterialButton android:id="@+id/check_updates_button" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/check_for_updates" /></LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout android:id="@+id/telegram_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/card_background" android:clickable="true" android:focusable="true" android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
+                        <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/icon_badge_blue">
+                            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_telegram" />
+                        </FrameLayout>
+                        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="13dp" android:layout_weight="1" android:orientation="vertical">
+                            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/telegram_title" android:textColor="@color/text" android:textStyle="bold" />
+                            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="@string/telegram_summary" android:textColor="@color/muted" android:textSize="12sp" />
+                        </LinearLayout>
+                    </LinearLayout>
                     <TextView android:id="@+id/status_version" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:gravity="center" android:textColor="@color/muted" android:textSize="12sp" />
                 </LinearLayout>
             </androidx.core.widget.NestedScrollView>
         </FrameLayout>
+
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            android:id="@+id/bottom_nav"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/surface"
+            app:elevation="0dp"
+            app:itemIconTint="@color/bottom_nav_item"
+            app:itemTextColor="@color/bottom_nav_item"
+            app:labelVisibilityMode="labeled"
+            app:menu="@menu/bottom_menu" />
     </LinearLayout>
 
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/navigation_view"
-        android:layout_width="280dp"
+        android:layout_width="288dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:background="@color/surface"

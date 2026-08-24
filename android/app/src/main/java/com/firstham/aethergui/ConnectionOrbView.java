@@ -7,7 +7,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
-import android.graphics.Path;
+import android.graphics.DashPathEffect;
 import android.graphics.Shader;
 import android.graphics.SweepGradient;
 import android.util.AttributeSet;
@@ -29,7 +29,7 @@ public final class ConnectionOrbView extends View {
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF arc = new RectF();
-    private final Path sphere = new Path();
+    private final DashPathEffect dashes = new DashPathEffect(new float[]{7f, 12f}, 0f);
     private final Paint particlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final float[] particleAngles = new float[18];
     private final float[] particleRadii = new float[18];
@@ -85,62 +85,70 @@ public final class ConnectionOrbView extends View {
         float height = getHeight();
         float cx = width / 2f;
         float cy = height / 2f;
-        float radius = Math.min(width, height) * 0.39f;
-        float breath = state == CONNECTED ? 1f + 0.018f * (float) Math.sin(phase * Math.PI * 2) : state == CONNECTING ? 1f + 0.028f * (float) Math.sin(phase * Math.PI * 2) : state == DISCONNECTED ? 1f + 0.012f * (float) Math.sin(phase * Math.PI * 2) : 1f;
+        float radius = Math.min(width, height) * 0.36f;
+        float breath = state == CONNECTED ? 1f + 0.014f * (float) Math.sin(phase * Math.PI * 2)
+                : state == CONNECTING ? 1f + 0.022f * (float) Math.sin(phase * Math.PI * 2)
+                : state == DISCONNECTED ? 1f + 0.008f * (float) Math.sin(phase * Math.PI * 2) : 1f;
         radius *= breath;
 
         int start = startColor();
         int end = endColor();
 
+        // Outer glow: two soft halos instead of the old wobbling blob.
         paint.setShader(null);
-        paint.setColor(withAlpha(end, state == DISCONNECTED ? 24 : 42));
-        canvas.drawPath(spherePath(cx, cy, radius * 1.24f), paint);
-        paint.setColor(withAlpha(start, state == DISCONNECTED ? 30 : 58));
-        canvas.drawPath(spherePath(cx, cy, radius * 1.12f), paint);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(withAlpha(end, state == DISCONNECTED ? 16 : 30));
+        canvas.drawCircle(cx, cy, radius * 1.34f, paint);
+        paint.setColor(withAlpha(start, state == DISCONNECTED ? 20 : 38));
+        canvas.drawCircle(cx, cy, radius * 1.18f, paint);
 
-        // A restrained particle field makes the core feel alive without becoming a dashboard effect.
-        if (state != ERROR) {
-            particlePaint.setColor(state == CONNECTED ? Color.rgb(37, 215, 242) : Color.rgb(115, 103, 236));
-            for (int i = 0; i < particleAngles.length; i++) {
-                float angle = particleAngles[i] + phase * (state == CONNECTING ? 1.8f : .45f);
-                float orbit = radius * particleRadii[i];
-                float px = cx + (float) Math.cos(angle) * orbit;
-                float py = cy + (float) Math.sin(angle) * orbit;
-                int alpha = (int) (35 + 45 * (0.5f + 0.5f * (float) Math.sin(angle * 2 + phase * 6)));
-                particlePaint.setAlpha(alpha);
-                canvas.drawCircle(px, py, Math.max(2f, radius * (i % 3 == 0 ? .016f : .009f)), particlePaint);
-            }
-        }
-
-        paint.setShader(ringShader);
+        // Track ring.
         paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(radius * 0.075f);
-        canvas.save();
-        canvas.rotate((state == CONNECTING ? phase * 360f : state == CONNECTED ? phase * 35f : 0f) - 90f, cx, cy);
-        canvas.drawPath(spherePath(cx, cy, radius), paint);
-        canvas.restore();
+        paint.setStrokeWidth(radius * 0.055f);
+        paint.setColor(withAlpha(start, 46));
+        canvas.drawCircle(cx, cy, radius * 1.1f, paint);
 
+        // Dashed progress arc sweeping around the track.
+        arc.set(cx - radius * 1.1f, cy - radius * 1.1f, cx + radius * 1.1f, cy + radius * 1.1f);
+        paint.setShader(null);
+        paint.setColor(state == ERROR ? end : start);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        paint.setPathEffect(dashes);
+        float sweep = state == CONNECTED ? 300f : state == CONNECTING ? 110f : state == ERROR ? 60f : 82f;
+        float rotation = state == CONNECTING ? phase * 360f : state == CONNECTED ? phase * 45f : -phase * 20f;
+        canvas.drawArc(arc, rotation - 90f, sweep, false, paint);
+        paint.setPathEffect(null);
+
+        // Neon rim.
+        paint.setShader(ringShader);
+        paint.setStrokeWidth(radius * 0.085f);
+        canvas.save();
+        canvas.rotate((state == CONNECTING ? phase * 360f : state == CONNECTED ? phase * 30f : 0f) - 90f, cx, cy);
+        canvas.drawCircle(cx, cy, radius, paint);
+        canvas.restore();
+        paint.setShader(null);
+
+        // Core.
         paint.setStyle(Paint.Style.FILL);
         paint.setShader(bodyShader);
-        canvas.drawPath(spherePath(cx, cy, radius * .91f), paint);
-
+        canvas.drawCircle(cx, cy, radius * 0.93f, paint);
         paint.setShader(highlightShader);
-        canvas.drawPath(spherePath(cx, cy, radius * .88f), paint);
+        canvas.drawCircle(cx, cy, radius * 0.9f, paint);
         paint.setShader(null);
 
-        float iconY = cy - radius * .23f;
-        iconPaint.setStrokeWidth(Math.max(5f, radius * .035f));
-        canvas.drawLine(cx, iconY - radius * .25f, cx, iconY - radius * .02f, iconPaint);
-        arc.set(cx - radius * .22f, iconY - radius * .17f, cx + radius * .22f, iconY + radius * .27f);
+        float iconY = cy - radius * .22f;
+        iconPaint.setStrokeWidth(Math.max(5f, radius * .04f));
+        canvas.drawLine(cx, iconY - radius * .26f, cx, iconY - radius * .02f, iconPaint);
+        arc.set(cx - radius * .23f, iconY - radius * .18f, cx + radius * .23f, iconY + radius * .28f);
         canvas.drawArc(arc, -43f, 266f, false, iconPaint);
 
-        textPaint.setTextSize(Math.max(18f, radius * .145f));
+        textPaint.setTextSize(Math.max(18f, radius * .15f));
         textPaint.getFontMetrics(fontMetrics);
         float baseline = cy + radius * .38f - (fontMetrics.ascent + fontMetrics.descent) / 2f;
         canvas.drawText(label, cx, baseline, textPaint);
-        textPaint.setTextSize(Math.max(10f, radius * .07f));
-        textPaint.setColor(Color.rgb(100, 119, 148));
-        canvas.drawText(getContext().getString(R.string.tap_to_secure), cx, baseline + radius * .18f, textPaint);
+        textPaint.setTextSize(Math.max(10f, radius * .072f));
+        textPaint.setColor(Color.argb(190, 200, 216, 245));
+        canvas.drawText(getContext().getString(R.string.tap_to_secure), cx, baseline + radius * .19f, textPaint);
         textPaint.setColor(Color.WHITE);
     }
 
@@ -169,34 +177,14 @@ public final class ConnectionOrbView extends View {
     }
 
     private void stopMotion() { if (motion != null) { motion.cancel(); motion = null; } }
-    private Path spherePath(float cx, float cy, float radius) {
-        sphere.reset();
-        final int points = 16;
-        float[] xs = new float[points];
-        float[] ys = new float[points];
-        for (int i = 0; i < points; i++) {
-            double angle = -Math.PI / 2 + i * Math.PI * 2 / points;
-            float wobble = 1f + 0.055f * (float) Math.sin(i * 2.37f + phase * 0.18f)
-                    + 0.025f * (float) Math.cos(i * 4.11f - phase * 0.11f);
-            xs[i] = cx + radius * wobble * (float) Math.cos(angle);
-            ys[i] = cy + radius * wobble * (float) Math.sin(angle);
-        }
-        sphere.moveTo((xs[0] + xs[points - 1]) * .5f, (ys[0] + ys[points - 1]) * .5f);
-        for (int i = 0; i < points; i++) {
-            int next = (i + 1) % points;
-            sphere.quadTo(xs[i], ys[i], (xs[i] + xs[next]) * .5f, (ys[i] + ys[next]) * .5f);
-        }
-        sphere.close();
-        return sphere;
-    }
     @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); restartMotion(); }
     @Override protected void onDetachedFromWindow() { stopMotion(); super.onDetachedFromWindow(); }
     @Override protected void onWindowVisibilityChanged(int visibility) { super.onWindowVisibilityChanged(visibility); if (visibility == VISIBLE) restartMotion(); else stopMotion(); }
 
     private static int withAlpha(int color, int alpha) { return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color)); }
     private static int lighten(int color, float amount) { return Color.rgb((int) (Color.red(color) + (255 - Color.red(color)) * amount), (int) (Color.green(color) + (255 - Color.green(color)) * amount), (int) (Color.blue(color) + (255 - Color.blue(color)) * amount)); }
-    private int startColor() { return state == CONNECTED ? Color.rgb(23, 221, 255) : state == CONNECTING ? Color.rgb(24, 215, 244) : state == DISCONNECTING ? Color.rgb(98, 120, 203) : state == ERROR ? Color.rgb(215, 65, 92) : Color.rgb(62, 156, 255); }
-    private int endColor() { return state == CONNECTED ? Color.rgb(126, 73, 255) : state == CONNECTING ? Color.rgb(126, 73, 255) : state == DISCONNECTING ? Color.rgb(239, 83, 111) : state == ERROR ? Color.rgb(121, 36, 74) : Color.rgb(36, 68, 164); }
+    private int startColor() { return state == CONNECTED ? Color.rgb(34, 211, 238) : state == CONNECTING ? Color.rgb(34, 211, 238) : state == DISCONNECTING ? Color.rgb(124, 92, 255) : state == ERROR ? Color.rgb(255, 92, 114) : Color.rgb(46, 125, 255); }
+    private int endColor() { return state == CONNECTED ? Color.rgb(124, 92, 255) : state == CONNECTING ? Color.rgb(124, 92, 255) : state == DISCONNECTING ? Color.rgb(160, 70, 190) : state == ERROR ? Color.rgb(120, 30, 60) : Color.rgb(124, 92, 255); }
     private void updateShaders() {
         if (getWidth() == 0 || getHeight() == 0) return;
         float cx = getWidth() / 2f;
@@ -204,9 +192,9 @@ public final class ConnectionOrbView extends View {
         float radius = Math.min(getWidth(), getHeight()) * .39f;
         int start = startColor();
         int end = endColor();
-        int highlight = Color.argb(state == DISCONNECTED ? 70 : 155, 255, 255, 255);
+        int highlight = Color.argb(state == DISCONNECTED ? 90 : 165, 255, 255, 255);
         ringShader = new SweepGradient(cx, cy, new int[]{start, end, highlight, start}, new float[]{0f, .46f, .72f, 1f});
-        bodyShader = new RadialGradient(cx - radius * .28f, cy - radius * .34f, radius * 1.45f, new int[]{lighten(start, .28f), start, end, Color.rgb(17, 20, 38)}, new float[]{0f, .32f, .74f, 1f}, Shader.TileMode.CLAMP);
-        highlightShader = new RadialGradient(cx - radius * .34f, cy - radius * .42f, radius * .7f, new int[]{Color.argb(105, 255, 255, 255), Color.TRANSPARENT}, null, Shader.TileMode.CLAMP);
+        bodyShader = new RadialGradient(cx - radius * .26f, cy - radius * .32f, radius * 1.5f, new int[]{lighten(start, .18f), start, end, Color.rgb(11, 16, 34)}, new float[]{0f, .28f, .66f, 1f}, Shader.TileMode.CLAMP);
+        highlightShader = new RadialGradient(cx - radius * .32f, cy - radius * .4f, radius * .72f, new int[]{Color.argb(70, 255, 255, 255), Color.TRANSPARENT}, null, Shader.TileMode.CLAMP);
     }
 }

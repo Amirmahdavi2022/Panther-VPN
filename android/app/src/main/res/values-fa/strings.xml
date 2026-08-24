@@ -21,12 +21,12 @@
     <string name="add_quick_settings_tile">افزودن کاشی Panther VPN</string>
     <string name="tile_add_requested">درخواست افزودن کاشی تنظیمات سریع باز شد.</string>
     <string name="tile_add_manual">حالت ویرایش تنظیمات سریع را باز کنید و Panther VPN را اضافه کنید.</string>
+    <string name="nav_home">خانه</string>
+    <string name="state_label">وضعیت</string>
+    <string name="about_tagline">یک VPN سریع، امن و پایدار</string>
+    <string name="feature_fast">سریع</string>
+    <string name="feature_secure">امن</string>
+    <string name="feature_stable">پایدار</string>
     <string name="about">درباره</string>
     <string name="about_summary">Panther VPN برای اندروید</string>
-    <string name="original_project">پروژه اصلی: Aether</string>
-    <string name="aether_credit">بر پایه پروژه اصلی Aether توسط CluvexStudio.</string>
-    <string name="aether_repository" translatable="false">https://github.com/CluvexStudio/Aether</string>
-    <string name="application_project">برنامه: Panther VPN</string>
-    <string name="aethon_credit">برنامه و رابط اندروید توسعه‌یافته برای Aether.</string>
-    <string name="aethon_repository" translatable="false">https://github.com/amirmahdavi2023/Panther-VPN</string>
 </resources>

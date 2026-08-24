@@ -135,7 +135,7 @@ async fn latest_update() -> Result<UpdateInfo, String> {
         .json::<Vec<GithubRelease>>()
         .await
         .map_err(|error| format!("Invalid update metadata: {error}"))?;
-    let current = "1.0.0";
+    let current = "1.4.0";
     let (release, latest, installer_name, asset) = releases
         .iter()
         .filter_map(|release| {

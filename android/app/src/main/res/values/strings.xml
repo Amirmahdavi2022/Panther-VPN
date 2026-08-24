@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Panther VPN</string>
-    <string name="app_version" translatable="false">v1.0.0</string>
+    <string name="app_version" translatable="false">v1.4.0</string>
     <string name="version_format" translatable="false">v%1$s</string>
     <string name="channel_url" translatable="false">https://t.me/parsv2r</string>
     <string name="default_socks_address" translatable="false">127.0.0.1:1819</string>
@@ -104,14 +104,16 @@
     <string name="add_quick_settings_tile">Add Panther VPN Tile</string>
     <string name="tile_add_requested">Quick Settings tile request opened.</string>
     <string name="tile_add_manual">Open Quick Settings edit mode and add Panther VPN.</string>
+    <string name="nav_home">Home</string>
+    <string name="state_label">Status</string>
+    <string name="about_tagline">A fast, secure and stable VPN</string>
+    <string name="feature_fast">Fast</string>
+    <string name="feature_secure">Secure</string>
+    <string name="feature_stable">Stable</string>
+    <string name="telegram_handle" translatable="false">@parsv2r</string>
+    <string name="license_line" translatable="false">AGPL-3.0 · github.com/amirmahdavi2023/Panther-VPN</string>
     <string name="about">About</string>
     <string name="about_summary">Panther VPN for Android</string>
-    <string name="original_project">Original Project: Aether</string>
-    <string name="aether_credit">Based on the original Aether project by CluvexStudio.</string>
-    <string name="aether_repository" translatable="false">https://github.com/CluvexStudio/Aether</string>
-    <string name="application_project">Application: Panther VPN</string>
-    <string name="aethon_credit">Android application/interface developed for Aether.</string>
-    <string name="aethon_repository" translatable="false">https://github.com/amirmahdavi2023/Panther-VPN</string>
     <string name="telegram_title">Panther on Telegram</string>
     <string name="telegram_summary">Updates, tips, and new releases from @parsv2r.</string>
     <string name="open_channel">Open channel</string>
