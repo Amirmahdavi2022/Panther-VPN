@@ -9,6 +9,14 @@
         <item name="colorOnSurface">@color/text</item>
         <item name="colorOnSurfaceVariant">@color/muted</item>
         <item name="colorSurfaceVariant">@color/blue_50</item>
+        <item name="colorSurfaceContainerLowest">@color/background</item>
+        <item name="colorSurfaceContainerLow">@color/surface</item>
+        <item name="colorSurfaceContainer">@color/card</item>
+        <item name="colorSurfaceContainerHigh">@color/card</item>
+        <item name="colorSurfaceContainerHighest">@color/blue_100</item>
+        <item name="colorSurfaceDim">@color/background</item>
+        <item name="colorSurfaceBright">@color/card</item>
+        <item name="android:colorBackground">@color/background</item>
         <item name="colorOutline">@color/border</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:windowBackground">@color/background</item>
