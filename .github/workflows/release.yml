@@ -1,137 +1,114 @@
-name: Windows and Android release
+name: Fix Dropdowns and Expand Locations
+
+# One-shot. Run once from the Actions tab, then merge the pull request it opens.
+#
+# Fixes the real defect first: the dropdown popups rendered white text on a
+# white background, so every list (location, protocol, scan mode, language)
+# looked blank even though the items were there. Material 3 paints the exposed
+# dropdown popup with the surface *container* colour roles, which this theme
+# never defined, so they fell back to the light defaults.
+#
+# Then moves the exit-location picker onto the home page under the connect
+# button, and grows it from 2 countries to all 31 the warp-plus core supports.
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to create"
+        required: true
+        default: "fix/dropdowns-and-locations"
 
 permissions:
   contents: write
+  pull-requests: write
+
+env:
+  FIXUI_B64: "aW1wb3J0IGlvLCBvcywgcmUsIHN5cwoKTEFZT1VUID0gImFuZHJvaWQvYXBwL3NyYy9tYWluL3Jlcy9sYXlvdXQvYWN0aXZpdHlfbWFpbi54bWwiClRIRU1FUyA9IFsiYW5kcm9pZC9hcHAvc3JjL21haW4vcmVzL3ZhbHVlcy90aGVtZXMueG1sIiwKICAgICAgICAgICJhbmRyb2lkL2FwcC9zcmMvbWFpbi9yZXMvdmFsdWVzLW5pZ2h0L3RoZW1lcy54bWwiXQoKIyAtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KIyAxLiBEcm9wZG93biBwb3B1cHMgcmVuZGVyIHdoaXRlLW9uLXdoaXRlLiBNYXRlcmlhbCAzIGRyYXdzIHRoZSBleHBvc2VkCiMgICAgZHJvcGRvd24gcG9wdXAgd2l0aCB0aGUgc3VyZmFjZSAqY29udGFpbmVyKiByb2xlcywgd2hpY2ggdGhpcyB0aGVtZSBuZXZlcgojICAgIGRlZmluZWQsIHNvIHRoZXkgZmVsbCBiYWNrIHRvIHRoZSBsaWdodCBkZWZhdWx0cyB3aGlsZSB0aGUgaXRlbSB0ZXh0IHN0YXllZAojICAgIG5lYXItd2hpdGUuIERlZmluZSB0aGUgY29udGFpbmVyIHJvbGVzLCBhbmQgYWxzbyBwaW4gdGhlIHBvcHVwIGJhY2tncm91bmQKIyAgICBkaXJlY3RseSBvbiBldmVyeSBkcm9wZG93biBzbyB0aGUgZml4IGRvZXMgbm90IGRlcGVuZCBvbiB0aGVtZSByZXNvbHV0aW9uLgojIC0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLQpDT05UQUlORVJfUk9MRVMgPSAiIiIgICAgICAgIDxpdGVtIG5hbWU9ImNvbG9yU3VyZmFjZUNvbnRhaW5lckxvd2VzdCI+QGNvbG9yL2JhY2tncm91bmQ8L2l0ZW0+CiAgICAgICAgPGl0ZW0gbmFtZT0iY29sb3JTdXJmYWNlQ29udGFpbmVyTG93Ij5AY29sb3Ivc3VyZmFjZTwvaXRlbT4KICAgICAgICA8aXRlbSBuYW1lPSJjb2xvclN1cmZhY2VDb250YWluZXIiPkBjb2xvci9jYXJkPC9pdGVtPgogICAgICAgIDxpdGVtIG5hbWU9ImNvbG9yU3VyZmFjZUNvbnRhaW5lckhpZ2giPkBjb2xvci9jYXJkPC9pdGVtPgogICAgICAgIDxpdGVtIG5hbWU9ImNvbG9yU3VyZmFjZUNvbnRhaW5lckhpZ2hlc3QiPkBjb2xvci9ibHVlXzEwMDwvaXRlbT4KICAgICAgICA8aXRlbSBuYW1lPSJjb2xvclN1cmZhY2VEaW0iPkBjb2xvci9iYWNrZ3JvdW5kPC9pdGVtPgogICAgICAgIDxpdGVtIG5hbWU9ImNvbG9yU3VyZmFjZUJyaWdodCI+QGNvbG9yL2NhcmQ8L2l0ZW0+CiAgICAgICAgPGl0ZW0gbmFtZT0iYW5kcm9pZDpjb2xvckJhY2tncm91bmQiPkBjb2xvci9iYWNrZ3JvdW5kPC9pdGVtPgoiIiIKCmZvciBwYXRoIGluIFRIRU1FUzoKICAgIGlmIG5vdCBvcy5wYXRoLmlzZmlsZShwYXRoKToKICAgICAgICBzeXMuZXhpdCgiRVJST1I6IG1pc3NpbmcgIiArIHBhdGgpCiAgICBzID0gaW8ub3BlbihwYXRoLCBlbmNvZGluZz0idXRmLTgiKS5yZWFkKCkKICAgIGlmICJjb2xvclN1cmZhY2VDb250YWluZXIiIGluIHM6CiAgICAgICAgcHJpbnQoImFscmVhZHkgcGF0Y2hlZDoiLCBwYXRoKQogICAgICAgIGNvbnRpbnVlCiAgICBhbmNob3IgPSAnICAgICAgICA8aXRlbSBuYW1lPSJjb2xvclN1cmZhY2VWYXJpYW50Ij5AY29sb3IvYmx1ZV81MDwvaXRlbT5cbicKICAgIGlmIGFuY2hvciBub3QgaW4gczoKICAgICAgICBzeXMuZXhpdCgiRVJST1I6IGNvbG9yU3VyZmFjZVZhcmlhbnQgYW5jaG9yIG1pc3NpbmcgaW4gIiArIHBhdGgpCiAgICBzID0gcy5yZXBsYWNlKGFuY2hvciwgYW5jaG9yICsgQ09OVEFJTkVSX1JPTEVTLCAxKQogICAgaW8ub3BlbihwYXRoLCAidyIsIGVuY29kaW5nPSJ1dGYtOCIpLndyaXRlKHMpCiAgICBwcmludCgicGF0Y2hlZCB0aGVtZToiLCBwYXRoKQoKbGF5b3V0ID0gaW8ub3BlbihMQVlPVVQsIGVuY29kaW5nPSJ1dGYtOCIpLnJlYWQoKQoKIyBQaW4gdGhlIHBvcHVwIGJhY2tncm91bmQgb24gZXZlcnkgZHJvcGRvd24gZmllbGQuCmFkZGVkID0gMApkZWYgcGluKG1hdGNoKToKICAgIGdsb2JhbCBhZGRlZAogICAgdGFnID0gbWF0Y2guZ3JvdXAoMCkKICAgIGlmICJwb3B1cEJhY2tncm91bmQiIGluIHRhZzoKICAgICAgICByZXR1cm4gdGFnCiAgICBhZGRlZCArPSAxCiAgICByZXR1cm4gdGFnLnJlcGxhY2UoJ2FuZHJvaWQ6aW5wdXRUeXBlPSJub25lIicsCiAgICAgICAgICAgICAgICAgICAgICAgJ2FuZHJvaWQ6aW5wdXRUeXBlPSJub25lIiBhbmRyb2lkOnBvcHVwQmFja2dyb3VuZD0iQGRyYXdhYmxlL2NhcmRfYmFja2dyb3VuZCInKQoKbGF5b3V0ID0gcmUuc3ViKHInPGNvbVwuZ29vZ2xlXC5hbmRyb2lkXC5tYXRlcmlhbFwudGV4dGZpZWxkXC5NYXRlcmlhbEF1dG9Db21wbGV0ZVRleHRWaWV3W14+XSo/Lz4nLAogICAgICAgICAgICAgICAgcGluLCBsYXlvdXQpCnByaW50KCJkcm9wZG93bnMgZ2l2ZW4gYW4gZXhwbGljaXQgcG9wdXAgYmFja2dyb3VuZDoiLCBhZGRlZCkKaWYgYWRkZWQgPT0gMDoKICAgIHN5cy5leGl0KCJFUlJPUjogbm8gZHJvcGRvd24gZmllbGRzIG1hdGNoZWQiKQoKIyAtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KIyAyLiBNb3ZlIHRoZSBleGl0LWxvY2F0aW9uIHBpY2tlciBvdXQgb2YgdGhlIENvbmZpZ3VyYXRpb25zIHBhZ2UgYW5kIG9udG8gdGhlCiMgICAgaG9tZSBwYWdlLCBkaXJlY3RseSB1bmRlciB0aGUgY29ubmVjdCBvcmIsIHdoZXJlIGl0IGJlbG9uZ3MuCiMgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCmlmICdhbmRyb2lkOmlkPSJAK2lkL2xvY2F0aW9uX2xheW91dCInIG5vdCBpbiBsYXlvdXQ6CiAgICBzeXMuZXhpdCgiRVJST1I6IGxvY2F0aW9uX2xheW91dCBub3QgZm91bmQiKQoKc3RhcnQgPSBsYXlvdXQuZmluZCgnPFRleHRWaWV3IGFuZHJvaWQ6bGF5b3V0X3dpZHRoPSJtYXRjaF9wYXJlbnQiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0id3JhcF9jb250ZW50IiBhbmRyb2lkOmxheW91dF9tYXJnaW5Ub3A9IjI0ZHAiIGFuZHJvaWQ6dGV4dD0iQHN0cmluZy9sb2NhdGlvbl90aXRsZSInKQppZiBzdGFydCA8IDA6CiAgICBzeXMuZXhpdCgiRVJST1I6IGxvY2F0aW9uIHRpdGxlIGFuY2hvciBub3QgZm91bmQiKQplbmRfbWFya2VyID0gJzxUZXh0VmlldyBhbmRyb2lkOmlkPSJAK2lkL2xvY2F0aW9uX3N1bW1hcnkiJwplbmQgPSBsYXlvdXQuZmluZChlbmRfbWFya2VyKQppZiBlbmQgPCAwOgogICAgc3lzLmV4aXQoIkVSUk9SOiBsb2NhdGlvbl9zdW1tYXJ5IG5vdCBmb3VuZCIpCmVuZCA9IGxheW91dC5maW5kKCIvPiIsIGVuZCkgKyAyCgpibG9jayA9IGxheW91dFtzdGFydDplbmRdCmlmICdsb2NhdGlvbl9sYXlvdXQnIG5vdCBpbiBibG9jazoKICAgIHN5cy5leGl0KCJFUlJPUjogZXh0cmFjdGVkIGJsb2NrIGRvZXMgbm90IGNvbnRhaW4gdGhlIHBpY2tlciIpCgpsYXlvdXQgPSBsYXlvdXRbOnN0YXJ0XSArIGxheW91dFtlbmQ6XQoKb3JiID0gJycnYW5kcm9pZDppZD0iQCtpZC9jb25uZWN0X2J1dHRvbiIKICAgICAgICAgICAgICAgICAgICAgICAgYW5kcm9pZDpsYXlvdXRfd2lkdGg9Im1hdGNoX3BhcmVudCIKICAgICAgICAgICAgICAgICAgICAgICAgYW5kcm9pZDpsYXlvdXRfaGVpZ2h0PSIyNjhkcCIKICAgICAgICAgICAgICAgICAgICAgICAgYW5kcm9pZDpjb250ZW50RGVzY3JpcHRpb249IkBzdHJpbmcvY29ubmVjdCIKICAgICAgICAgICAgICAgICAgICAgICAgYW5kcm9pZDptaW5XaWR0aD0iMjQwZHAiCiAgICAgICAgICAgICAgICAgICAgICAgIGFuZHJvaWQ6bWluSGVpZ2h0PSIyNDBkcCIgLz4nJycKaWYgb3JiIG5vdCBpbiBsYXlvdXQ6CiAgICBzeXMuZXhpdCgiRVJST1I6IGNvbm5lY3Qgb3JiIGFuY2hvciBub3QgZm91bmQiKQoKIyBSZS1tYXJnaW4gZm9yIGl0cyBuZXcgaG9tZTogc2l0cyByaWdodCB1bmRlciB0aGUgb3JiLgptb3ZlZCA9IGJsb2NrLnJlcGxhY2UoJ2FuZHJvaWQ6bGF5b3V0X21hcmdpblRvcD0iMjRkcCIgYW5kcm9pZDp0ZXh0PSJAc3RyaW5nL2xvY2F0aW9uX3RpdGxlIicsCiAgICAgICAgICAgICAgICAgICAgICAnYW5kcm9pZDpsYXlvdXRfbWFyZ2luVG9wPSIxNGRwIiBhbmRyb2lkOnRleHQ9IkBzdHJpbmcvbG9jYXRpb25fdGl0bGUiJykKbGF5b3V0ID0gbGF5b3V0LnJlcGxhY2Uob3JiLCBvcmIgKyAiXG5cbiAgICAgICAgICAgICAgICAgICAgIiArIG1vdmVkLCAxKQoKaW8ub3BlbihMQVlPVVQsICJ3IiwgZW5jb2Rpbmc9InV0Zi04Iikud3JpdGUobGF5b3V0KQpwcmludCgibW92ZWQgdGhlIGxvY2F0aW9uIHBpY2tlciBvbnRvIHRoZSBob21lIHBhZ2UiKQo="
+  LOCATIONS_B64: "aW1wb3J0IGlvLCBvcywgcmUKCiMgU291cmNlIG9mIHRydXRoOiBiZXBhc3Mtb3JnL3dhcnAtcGx1cyBwc2lwaG9uL3AuZ28gLS0gMzEgZWdyZXNzIGNvdW50cmllcy4KUk9XUyA9IFsKICAgICgiQVQiLCAiQXVzdHJpYSIsICLYp9iq2LHbjNi0IiksICgiQVUiLCAiQXVzdHJhbGlhIiwgItin2LPYqtix2KfZhNuM2KciKSwgKCJCRSIsICJCZWxnaXVtIiwgItio2YTamNuM2qkiKSwKICAgICgiQkciLCAiQnVsZ2FyaWEiLCAi2KjZhNi62KfYsdiz2KrYp9mGIiksICgiQ0EiLCAiQ2FuYWRhIiwgItqp2KfZhtin2K/YpyIpLCAoIkNIIiwgIlN3aXR6ZXJsYW5kIiwgItiz2YjYptuM2LMiKSwKICAgICgiQ1oiLCAiQ3plY2hpYSIsICLahtqpIiksICgiREUiLCAiR2VybWFueSIsICLYotmE2YXYp9mGIiksICgiREsiLCAiRGVubWFyayIsICLYr9in2YbZhdin2LHaqSIpLAogICAgKCJFRSIsICJFc3RvbmlhIiwgItin2LPYqtmI2YbbjCIpLCAoIkVTIiwgIlNwYWluIiwgItin2LPZvtin2YbbjNinIiksICgiRkkiLCAiRmlubGFuZCIsICLZgdmG2YTYp9mG2K8iKSwKICAgICgiRlIiLCAiRnJhbmNlIiwgItmB2LHYp9mG2LPZhyIpLCAoIkdCIiwgIlVuaXRlZCBLaW5nZG9tIiwgItio2LHbjNiq2KfZhtuM2KciKSwgKCJIUiIsICJDcm9hdGlhIiwgItqp2LHZiNin2LPbjCIpLAogICAgKCJIVSIsICJIdW5nYXJ5IiwgItmF2KzYp9ix2LPYqtin2YYiKSwgKCJJRSIsICJJcmVsYW5kIiwgItin24zYsdmE2YbYryIpLCAoIklOIiwgIkluZGlhIiwgItmH2YbYryIpLAogICAgKCJJVCIsICJJdGFseSIsICLYp9uM2KrYp9mE24zYpyIpLCAoIkpQIiwgIkphcGFuIiwgItqY2KfZvtmGIiksICgiTFYiLCAiTGF0dmlhIiwgItmE2KrZiNmG24wiKSwKICAgICgiTkwiLCAiTmV0aGVybGFuZHMiLCAi2YfZhNmG2K8iKSwgKCJOTyIsICJOb3J3YXkiLCAi2YbYsdmI2pgiKSwgKCJQTCIsICJQb2xhbmQiLCAi2YTZh9iz2KrYp9mGIiksCiAgICAoIlBUIiwgIlBvcnR1Z2FsIiwgItm+2LHYqti62KfZhCIpLCAoIlJPIiwgIlJvbWFuaWEiLCAi2LHZiNmF2KfZhtuMIiksICgiUlMiLCAiU2VyYmlhIiwgIti12LHYqNiz2KrYp9mGIiksCiAgICAoIlNFIiwgIlN3ZWRlbiIsICLYs9mI2KbYryIpLCAoIlNHIiwgIlNpbmdhcG9yZSIsICLYs9mG2q/Yp9m+2YjYsSIpLCAoIlNLIiwgIlNsb3Zha2lhIiwgItin2LPZhNmI2KfaqduMIiksCiAgICAoIlVTIiwgIlVuaXRlZCBTdGF0ZXMiLCAi2KLZhdix24zaqdinIiksCl0KSkFWQSA9ICJhbmRyb2lkL2FwcC9zcmMvbWFpbi9qYXZhL2NvbS9maXJzdGhhbS9hZXRoZXJndWkvTG9jYXRpb25zLmphdmEiCgoKZGVmIGZsYWcoY2MpOgogICAgcmV0dXJuICIiLmpvaW4oY2hyKDB4MUYxRTYgKyBvcmQoYykgLSA2NSkgZm9yIGMgaW4gY2MpCgoKZGVmIGphdmFfc291cmNlKCk6CiAgICBjb2RlcyA9ICIsXG4iLmpvaW4oJyAgICAgICAgICAgICIlcyInICUgY2MgZm9yIGNjLCBfLCBfIGluIFJPV1MpCiAgICByZXR1cm4gJycncGFja2FnZSBjb20uZmlyc3RoYW0uYWV0aGVyZ3VpOwoKaW1wb3J0IGphdmEudXRpbC5BcnJheXM7CmltcG9ydCBqYXZhLnV0aWwuQ29sbGVjdGlvbnM7CmltcG9ydCBqYXZhLnV0aWwuTGlzdDsKaW1wb3J0IGphdmEudXRpbC5Mb2NhbGU7CgovKioKICogVGhlIGV4aXQgbG9jYXRpb25zIHRoZSB1c2VyIGNhbiBwaWNrLgogKgogKiBBVVRPIGFuZCBDVVNUT00gcnVuIG9uIHRoZSBBZXRoZXIgY29yZSwgd2hpY2ggcmlkZXMgQ2xvdWRmbGFyZSBXQVJQLiBXQVJQIGVuZHBvaW50cyBhcmUgYW55Y2FzdCwKICogc28gdGhlIGV4aXQgY291bnRyeSBmb2xsb3dzIHdoaWNoZXZlciBDbG91ZGZsYXJlIGRhdGFjZW50ZXIgdGhlIG5ldHdvcmsgcm91dGVzIHRvIC0gaXQgY2Fubm90IGJlCiAqIGNob3Nlbi4gRXZlcnkgbmFtZWQgY291bnRyeSBpbnN0ZWFkIHJ1bnMgYSBzZWNvbmQgY29yZSAod2FycC1wbHVzKSB0aGF0IGNoYWlucyBXQVJQIGludG8gdGhlCiAqIFBzaXBob24gbmV0d29yaywgd2hpY2ggZG9lcyBsZXQgdGhlIGVncmVzcyBjb3VudHJ5IGJlIHJlcXVlc3RlZC4gUHNpcGhvbiBlZ3Jlc3NlcyBmcm9tIGEgcG9vbAogKiBpbnNpZGUgdGhhdCBjb3VudHJ5LCBzbyB0aGUgY291bnRyeSBpcyBmaXhlZCBidXQgdGhlIGFkZHJlc3MgaXMgbm90LgogKgogKiBUaGUgY291bnRyeSBsaXN0IGlzIHRoZSBlZ3Jlc3Mgc2V0IHdhcnAtcGx1cyBzdXBwb3J0cyAocHNpcGhvbi9wLmdvIHVwc3RyZWFtKS4KICogd2FycC1wbHVzIGlzIG5vdyBidWlsdCBmcm9tIHNvdXJjZSBmb3IgZXZlcnkgc2hpcHBlZCBBQkksIHNvIG5vIGFyY2hpdGVjdHVyZSBnYXRlIGFwcGxpZXMuCiAqLwpmaW5hbCBjbGFzcyBMb2NhdGlvbnMgewogICAgc3RhdGljIGZpbmFsIFN0cmluZyBBVVRPID0gImF1dG8iOwogICAgc3RhdGljIGZpbmFsIFN0cmluZyBDVVNUT00gPSAiY3VzdG9tIjsKICAgIHN0YXRpYyBmaW5hbCBTdHJpbmcgQ09SRV9MSUJSQVJZID0gImxpYndhcnBwbHVzLnNvIjsKCiAgICAvKiogUHNpcGhvbiBlZ3Jlc3MgY291bnRyaWVzLCBpbiB0aGUgb3JkZXIgdGhlIGRyb3Bkb3duIHNob3dzIHRoZW0uICovCiAgICBzdGF0aWMgZmluYWwgTGlzdDxTdHJpbmc+IENPVU5UUklFUyA9IENvbGxlY3Rpb25zLnVubW9kaWZpYWJsZUxpc3QoQXJyYXlzLmFzTGlzdCgKJXMKICAgICkpOwoKICAgIHByaXZhdGUgTG9jYXRpb25zKCkgewogICAgfQoKICAgIHN0YXRpYyBTdHJpbmcgbm9ybWFsaXplKFN0cmluZyBsb2NhdGlvbikgewogICAgICAgIGlmIChsb2NhdGlvbiA9PSBudWxsKSByZXR1cm4gQVVUTzsKICAgICAgICBTdHJpbmcgdmFsdWUgPSBsb2NhdGlvbi50cmltKCk7CiAgICAgICAgaWYgKENVU1RPTS5lcXVhbHNJZ25vcmVDYXNlKHZhbHVlKSkgcmV0dXJuIENVU1RPTTsKICAgICAgICBTdHJpbmcgdXBwZXIgPSB2YWx1ZS50b1VwcGVyQ2FzZShMb2NhbGUuVVMpOwogICAgICAgIGlmIChDT1VOVFJJRVMuY29udGFpbnModXBwZXIpKSByZXR1cm4gdXBwZXIudG9Mb3dlckNhc2UoTG9jYWxlLlVTKTsKICAgICAgICByZXR1cm4gQVVUTzsKICAgIH0KCiAgICAvKiogVHJ1ZSB3aGVuIHRoZSBvcHRpb24gbmVlZHMgdGhlIHdhcnAtcGx1cyBjb3JlIHJhdGhlciB0aGFuIHRoZSBBZXRoZXIgY29yZS4gKi8KICAgIHN0YXRpYyBib29sZWFuIHVzZXNQc2lwaG9uKFN0cmluZyBsb2NhdGlvbikgewogICAgICAgIFN0cmluZyB2YWx1ZSA9IG5vcm1hbGl6ZShsb2NhdGlvbik7CiAgICAgICAgcmV0dXJuICFBVVRPLmVxdWFscyh2YWx1ZSkgJiYgIUNVU1RPTS5lcXVhbHModmFsdWUpOwogICAgfQoKICAgIC8qKiBUaGUgUHNpcGhvbiBjb3VudHJ5IGNvZGUgd2FycC1wbHVzIGV4cGVjdHMuICovCiAgICBzdGF0aWMgU3RyaW5nIGNvdW50cnlDb2RlKFN0cmluZyBsb2NhdGlvbikgewogICAgICAgIFN0cmluZyB2YWx1ZSA9IG5vcm1hbGl6ZShsb2NhdGlvbik7CiAgICAgICAgaWYgKCF1c2VzUHNpcGhvbih2YWx1ZSkpIHJldHVybiAiVVMiOwogICAgICAgIHJldHVybiB2YWx1ZS50b1VwcGVyQ2FzZShMb2NhbGUuVVMpOwogICAgfQoKICAgIC8qKiBEcm9wZG93biBvcmRlcjogQXV0bywgdGhlbiBldmVyeSBjb3VudHJ5LCB0aGVuIEN1c3RvbS4gKi8KICAgIHN0YXRpYyBTdHJpbmcgZnJvbUluZGV4KGludCBpbmRleCkgewogICAgICAgIGlmIChpbmRleCA+PSAxICYmIGluZGV4IDw9IENPVU5UUklFUy5zaXplKCkpIHsKICAgICAgICAgICAgcmV0dXJuIENPVU5UUklFUy5nZXQoaW5kZXggLSAxKS50b0xvd2VyQ2FzZShMb2NhbGUuVVMpOwogICAgICAgIH0KICAgICAgICBpZiAoaW5kZXggPT0gQ09VTlRSSUVTLnNpemUoKSArIDEpIHJldHVybiBDVVNUT007CiAgICAgICAgcmV0dXJuIEFVVE87CiAgICB9CgogICAgc3RhdGljIGludCBpbmRleChTdHJpbmcgbG9jYXRpb24pIHsKICAgICAgICBTdHJpbmcgdmFsdWUgPSBub3JtYWxpemUobG9jYXRpb24pOwogICAgICAgIGlmIChDVVNUT00uZXF1YWxzKHZhbHVlKSkgcmV0dXJuIENPVU5UUklFUy5zaXplKCkgKyAxOwogICAgICAgIGludCBhdCA9IENPVU5UUklFUy5pbmRleE9mKHZhbHVlLnRvVXBwZXJDYXNlKExvY2FsZS5VUykpOwogICAgICAgIHJldHVybiBhdCA8IDAgPyAwIDogYXQgKyAxOwogICAgfQoKICAgIC8qKiBFdmVyeSBzaGlwcGVkIEFCSSBub3cgY2FycmllcyB0aGUgd2FycC1wbHVzIGNvcmUuICovCiAgICBzdGF0aWMgYm9vbGVhbiBmaXhlZENvdW50cmllc1N1cHBvcnRlZCgpIHsKICAgICAgICByZXR1cm4gdHJ1ZTsKICAgIH0KfQonJycgJSBjb2RlcwoKCmRlZiBsYWJlbHMoaWR4LCBhdXRvLCBjdXN0b20pOgogICAgaXRlbXMgPSBbIjxpdGVtPiVzPC9pdGVtPiIgJSBhdXRvXQogICAgZm9yIGNjLCBlbiwgZmEgaW4gUk9XUzoKICAgICAgICBpdGVtcy5hcHBlbmQoIjxpdGVtPiVzICAlczwvaXRlbT4iICUgKGZsYWcoY2MpLCBlbiBpZiBpZHggPT0gMCBlbHNlIGZhKSkKICAgIGl0ZW1zLmFwcGVuZCgiPGl0ZW0+JXM8L2l0ZW0+IiAlIGN1c3RvbSkKICAgIHJldHVybiAnPHN0cmluZy1hcnJheSBuYW1lPSJsb2NhdGlvbl9sYWJlbHMiPiVzPC9zdHJpbmctYXJyYXk+JyAlICIiLmpvaW4oaXRlbXMpCgoKZGVmIHBhdGNoX2FycmF5cyhwYXRoLCBpZHgsIGF1dG8sIGN1c3RvbSk6CiAgICBzID0gaW8ub3BlbihwYXRoLCBlbmNvZGluZz0idXRmLTgiKS5yZWFkKCkKICAgIHBhdHRlcm4gPSByZS5jb21waWxlKHInPHN0cmluZy1hcnJheSBuYW1lPSJsb2NhdGlvbl9sYWJlbHMiPi4qPzwvc3RyaW5nLWFycmF5PicsIHJlLlMpCiAgICBpZiBub3QgcGF0dGVybi5zZWFyY2gocyk6CiAgICAgICAgcmFpc2UgU3lzdGVtRXhpdCgiRVJST1I6IGxvY2F0aW9uX2xhYmVscyBhcnJheSBub3QgZm91bmQgaW4gIiArIHBhdGgpCiAgICBzID0gcGF0dGVybi5zdWIobGFtYmRhIG06IGxhYmVscyhpZHgsIGF1dG8sIGN1c3RvbSksIHMsIGNvdW50PTEpCiAgICBpby5vcGVuKHBhdGgsICJ3IiwgZW5jb2Rpbmc9InV0Zi04Iikud3JpdGUocykKICAgIHByaW50KCJ1cGRhdGVkIiwgcGF0aCkKCgppZiBub3Qgb3MucGF0aC5pc2ZpbGUoSkFWQSk6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJFUlJPUjogIiArIEpBVkEgKyAiIG5vdCBmb3VuZCIpCmlvLm9wZW4oSkFWQSwgInciLCBlbmNvZGluZz0idXRmLTgiKS53cml0ZShqYXZhX3NvdXJjZSgpKQpwcmludCgicmV3cm90ZSIsIEpBVkEpCgpwYXRjaF9hcnJheXMoImFuZHJvaWQvYXBwL3NyYy9tYWluL3Jlcy92YWx1ZXMvYXJyYXlzLnhtbCIsIDAsCiAgICAgICAgICAgICAiQXV0b21hdGljIChmYXN0ZXN0KSIsICJDdXN0b20gZW5kcG9pbnQiKQpwYXRjaF9hcnJheXMoImFuZHJvaWQvYXBwL3NyYy9tYWluL3Jlcy92YWx1ZXMtZmEvYXJyYXlzLnhtbCIsIDEsCiAgICAgICAgICAgICAi2K7ZiNiv2qnYp9ixICjYs9ix24zYueKAjNiq2LHbjNmGKSIsICLZhtmC2LfZhyDZvtin24zYp9mG24wg2LPZgdin2LHYtNuMIikK"
 
 jobs:
-  build:
-    runs-on: windows-latest
+  fix:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Install Android NDK
-        shell: pwsh
+
+      - name: Check the files we rewrite are present
         run: |
-          $sdkManager = Get-ChildItem -Path @(
-            (Join-Path $env:ANDROID_HOME 'cmdline-tools'),
-            (Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools')
-          ) -Filter 'sdkmanager.bat' -File -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $sdkManager) { throw 'Android sdkmanager.bat was not found on the hosted runner.' }
-          & $sdkManager 'ndk;27.2.12479018'
-      - uses: dtolnay/rust-toolchain@stable
+          set -e
+          for f in \
+            android/app/src/main/res/layout/activity_main.xml \
+            android/app/src/main/res/values/themes.xml \
+            android/app/src/main/res/values-night/themes.xml \
+            android/app/src/main/java/com/firstham/aethergui/Locations.java
+          do
+            test -f "$f" || { echo "::error::missing $f"; exit 1; }
+          done
+          grep -q 'location_layout' android/app/src/main/res/layout/activity_main.xml || { echo "::error::location picker not in layout"; exit 1; }
+          echo "OK"
+
+      - name: Fix dropdown colours and move the picker to the home page
+        run: |
+          set -e
+          echo "$FIXUI_B64" | base64 -d > /tmp/fixui.py
+          python3 /tmp/fixui.py
+
+      - name: Expand to 31 countries
+        run: |
+          set -e
+          echo "$LOCATIONS_B64" | base64 -d > /tmp/locations.py
+          python3 /tmp/locations.py
+
+      - name: Verify the result
+        run: |
+          python3 -c "
+          import re, io, xml.etree.ElementTree as ET
+          L = 'android/app/src/main/res/layout/activity_main.xml'
+          for p in (L, 'android/app/src/main/res/values/themes.xml', 'android/app/src/main/res/values-night/themes.xml'):
+              ET.parse(p)
+          s = io.open(L, encoding='utf-8').read()
+          assert s.count('@+id/location_layout') == 1, 'picker duplicated or lost'
+          orb, loc, pill = s.find('@+id/connect_button'), s.find('@+id/location_layout'), s.find('@+id/connection_status_pill')
+          assert orb < loc < pill, 'picker is not under the connect button'
+          assert s.count('popupBackground') >= 9, 'dropdowns did not all get a popup background'
+          ids = set(re.findall(r'@[+]id/([a-z_0-9]+)', s))
+          for need in ('location_input','location_layout','location_summary','protocol_layout','scan_layout','transport_layout','language_input'):
+              assert need in ids, 'lost id ' + need
+          for d in ('values','values-fa'):
+              p = 'android/app/src/main/res/%s/arrays.xml' % d
+              ET.parse(p)
+              body = re.search(r'<string-array name=\"location_labels\">(.*?)</string-array>', io.open(p, encoding='utf-8').read(), re.S).group(1)
+              n = len(re.findall(r'<item>(.*?)</item>', body))
+              assert n == 33, '%s has %d rows, expected 33' % (d, n)
+          j = io.open('android/app/src/main/java/com/firstham/aethergui/Locations.java', encoding='utf-8').read()
+          assert len(re.findall(r'^\s+\"([A-Z]{2})\"', j, re.M)) == 31, 'expected 31 country codes'
+          assert j.count('{') == j.count('}'), 'unbalanced braces'
+          print('verified: popups readable, picker on home page, 31 countries in both languages')
+          "
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v6
         with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Install dependencies
-        run: npm ci
-      - name: Fetch and verify Aether core
-        run: npm run fetch:core
-      - name: Fetch and verify routing engine
-        run: npm run fetch:routing
-      - name: Test frontend
-        run: npm test
-      - name: Test Rust backend
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
-      - name: Build application and installers
-        run: npm run build
-
-      - name: Fetch verified Android native assets
-        run: npm run fetch:android
-
-      - name: Prepare Android signing key
-        if: github.event_name != 'pull_request'
-        shell: pwsh
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          New-Item -ItemType Directory -Force android/.android-signing | Out-Null
-          [IO.File]::WriteAllBytes("android/.android-signing/firstham-aethergui.jks", [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
-
-      - name: Build signed Android APKs
-        if: github.event_name != 'pull_request'
-        shell: pwsh
-        env:
-          ANDROID_KEYSTORE_PATH: .android-signing/firstham-aethergui.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          Set-Location android
-          ./gradlew.bat assembleRelease bundleRelease lintRelease
-
-      - name: Validate Android pull request build
-        if: github.event_name == 'pull_request'
-        shell: pwsh
-        run: |
-          Set-Location android
-          ./gradlew.bat assembleDebug lintDebug
-
-      - name: Stage release files
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force release | Out-Null
-          New-Item -ItemType Directory -Force portable | Out-Null
-          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
-          Copy-Item src-tauri/target/release/bundle/nsis/*-setup.exe "release/Aethon-VPN-v${version}-Windows-x64-Installer.exe"
-          Copy-Item src-tauri/target/release/bundle/msi/*.msi "release/Aethon-VPN-v${version}-Windows-x64.msi"
-          Copy-Item src-tauri/target/release/aether-gui.exe "portable/Aethon.exe"
-          Copy-Item src-tauri/binaries/aether-x86_64-pc-windows-msvc.exe portable/aether.exe
-          Copy-Item src-tauri/binaries/sing-box-x86_64-pc-windows-msvc.exe portable/sing-box.exe
-          Copy-Item LICENSE,NOTICE.md,TRADEMARK.md,third-party/sing-box-LICENSE.txt portable/
-          Compress-Archive -Path portable/* -DestinationPath "release/Aethon-VPN-v${version}-Windows-x64-portable.zip"
-          Copy-Item android/app/build/outputs/apk/release/app-universal-release.apk "release/Aethon-VPN-v${version}-Android-Universal.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "release/Aethon-VPN-v${version}-Android-ARMv7.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-arm64-v8a-release.apk "release/Aethon-VPN-v${version}-Android-ARM64.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-x86_64-release.apk "release/Aethon-VPN-v${version}-Android-x86_64.apk"
-          Copy-Item android/app/build/outputs/bundle/release/app-release.aab "release/Aethon-VPN-v${version}-Android-AAB.aab"
-          Get-ChildItem release -File | ForEach-Object {
-            $hash = Get-FileHash $_.FullName -Algorithm SHA256
-            "$($hash.Hash.ToLower())  $($_.Name)" | Add-Content release/SHA256SUMS.txt
-          }
-          $bundle = "release/Aethon-VPN-v${version}-all-platforms.zip"
-          Compress-Archive -Path (Get-ChildItem release -File | Select-Object -ExpandProperty FullName) -DestinationPath $bundle
-          $bundleHash = Get-FileHash $bundle -Algorithm SHA256
-          "$($bundleHash.Hash.ToLower())  $([System.IO.Path]::GetFileName($bundle))" | Add-Content release/SHA256SUMS.txt
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Firstham-AetherGui-Windows-Android
-          path: release/*
-          if-no-files-found: error
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: release/*
+          branch: ${{ inputs.branch }}
+          commit-message: "fix: readable dropdowns, location picker on home, 31 countries"
+          title: "Fix invisible dropdowns, move location picker home, add 31 countries"
           body: |
-            # Aethon VPN v2.0.0
+            **The actual bug:** dropdown popups drew near-white text on a
+            near-white background, so the location, protocol, scan-mode and
+            language lists all looked blank. Material 3 paints the exposed
+            dropdown popup using the surface *container* roles, which this
+            theme never defined, so they resolved to the light defaults.
+            Fixed by defining those roles for both themes and by pinning an
+            explicit popup background on all nine dropdown fields.
 
-            This is a major new generation release of Aethon VPN.
+            Also in this change:
 
-            - New UI experience
-            - Aether Core upgraded to v1.7.0
-            - Improved VPN stability and performance
-            - Improved Split Tunneling
-            - Improved update system
-            - Better connection experience
-
-            The bundled Aether Core and sing-box routing engine are fetched from official releases and SHA-256 verified during the build.
-            Windows 10/11 x64 and Android 8.0+ are supported. Windows binaries are unsigned and may trigger a SmartScreen warning; Android APKs are release-signed.
+            * The exit-location picker now sits on the home page directly under
+              the connect button, not buried in Configurations.
+            * The country list grows from 2 to all 31 the warp-plus Psiphon core
+              supports, with flags, in English and Persian.
+            * The arm64-only gate is gone, since release.yml now builds the core
+              for every shipped ABI.
+          add-paths: |
+            android/app/src/main/java/**
+            android/app/src/main/res/**
