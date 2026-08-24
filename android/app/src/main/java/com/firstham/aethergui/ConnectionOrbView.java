@@ -147,7 +147,7 @@ public final class ConnectionOrbView extends View {
         float baseline = cy + radius * .38f - (fontMetrics.ascent + fontMetrics.descent) / 2f;
         canvas.drawText(label, cx, baseline, textPaint);
         textPaint.setTextSize(Math.max(10f, radius * .072f));
-        textPaint.setColor(Color.argb(190, 200, 216, 245));
+        textPaint.setColor(Color.argb(200, 210, 210, 220));
         canvas.drawText(getContext().getString(R.string.tap_to_secure), cx, baseline + radius * .19f, textPaint);
         textPaint.setColor(Color.WHITE);
     }
@@ -183,8 +183,27 @@ public final class ConnectionOrbView extends View {
 
     private static int withAlpha(int color, int alpha) { return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color)); }
     private static int lighten(int color, float amount) { return Color.rgb((int) (Color.red(color) + (255 - Color.red(color)) * amount), (int) (Color.green(color) + (255 - Color.green(color)) * amount), (int) (Color.blue(color) + (255 - Color.blue(color)) * amount)); }
-    private int startColor() { return state == CONNECTED ? Color.rgb(34, 211, 238) : state == CONNECTING ? Color.rgb(34, 211, 238) : state == DISCONNECTING ? Color.rgb(124, 92, 255) : state == ERROR ? Color.rgb(255, 92, 114) : Color.rgb(46, 125, 255); }
-    private int endColor() { return state == CONNECTED ? Color.rgb(124, 92, 255) : state == CONNECTING ? Color.rgb(124, 92, 255) : state == DISCONNECTING ? Color.rgb(160, 70, 190) : state == ERROR ? Color.rgb(120, 30, 60) : Color.rgb(124, 92, 255); }
+    // Glossy black and white: the orb is polished silver when idle and takes the single accent
+    // blue only once connected, so colour on this screen always means "you are protected".
+    private int startColor() {
+        switch (state) {
+            case CONNECTED:     return Color.rgb(0x4D, 0xA3, 0xFF);
+            case CONNECTING:    return Color.rgb(0xE6, 0xE6, 0xEC);
+            case DISCONNECTING: return Color.rgb(0x9A, 0x9A, 0xA6);
+            case ERROR:         return Color.rgb(0xFF, 0x5A, 0x6E);
+            default:            return Color.rgb(0xF2, 0xF2, 0xF5);
+        }
+    }
+
+    private int endColor() {
+        switch (state) {
+            case CONNECTED:     return Color.rgb(0x12, 0x4E, 0x8C);
+            case CONNECTING:    return Color.rgb(0x6E, 0x6E, 0x7A);
+            case DISCONNECTING: return Color.rgb(0x3A, 0x3A, 0x44);
+            case ERROR:         return Color.rgb(0x6E, 0x18, 0x28);
+            default:            return Color.rgb(0x5A, 0x5A, 0x66);
+        }
+    }
     private void updateShaders() {
         if (getWidth() == 0 || getHeight() == 0) return;
         float cx = getWidth() / 2f;
@@ -194,7 +213,7 @@ public final class ConnectionOrbView extends View {
         int end = endColor();
         int highlight = Color.argb(state == DISCONNECTED ? 90 : 165, 255, 255, 255);
         ringShader = new SweepGradient(cx, cy, new int[]{start, end, highlight, start}, new float[]{0f, .46f, .72f, 1f});
-        bodyShader = new RadialGradient(cx - radius * .26f, cy - radius * .32f, radius * 1.5f, new int[]{lighten(start, .18f), start, end, Color.rgb(11, 16, 34)}, new float[]{0f, .28f, .66f, 1f}, Shader.TileMode.CLAMP);
+        bodyShader = new RadialGradient(cx - radius * .26f, cy - radius * .32f, radius * 1.5f, new int[]{lighten(start, .18f), start, end, Color.rgb(6, 6, 8)}, new float[]{0f, .28f, .66f, 1f}, Shader.TileMode.CLAMP);
         highlightShader = new RadialGradient(cx - radius * .32f, cy - radius * .4f, radius * .72f, new int[]{Color.argb(70, 255, 255, 255), Color.TRANSPARENT}, null, Shader.TileMode.CLAMP);
     }
 }

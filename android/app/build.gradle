@@ -27,7 +27,7 @@ android {
         disable 'MissingTranslation'
     }
     namespace 'com.firstham.aethergui'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'io.github.amirmahdavi2023.panther'

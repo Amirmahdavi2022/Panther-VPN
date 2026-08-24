@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  # So a failing build can report itself as an issue - CI logs are not always reachable.
+  issues: write
 
 jobs:
   build:
@@ -54,7 +56,9 @@ jobs:
         shell: pwsh
         run: |
           Set-Location android
-          ./gradlew.bat --no-daemon testReleaseUnitTest
+          ./gradlew.bat --no-daemon --stacktrace testReleaseUnitTest 2>&1 |
+            Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare Android signing key
         if: github.event_name != 'pull_request'
@@ -75,7 +79,9 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           Set-Location android
-          ./gradlew.bat assembleRelease bundleRelease lintRelease
+          ./gradlew.bat --stacktrace assembleRelease bundleRelease lintRelease 2>&1 |
+            Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log" -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate Android pull request build
         if: github.event_name == 'pull_request'
@@ -83,6 +89,35 @@ jobs:
         run: |
           Set-Location android
           ./gradlew.bat assembleDebug lintDebug
+
+      - name: Report the failure as an issue
+        if: failure()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Gradle's message is the only thing that says why a build broke, and the raw log is
+          # not always downloadable. Put the tail somewhere it can always be read.
+          $logPath = Join-Path $env:GITHUB_WORKSPACE "build.log"
+          if (Test-Path $logPath) {
+            $tail = (Get-Content $logPath -Tail 120) -join [Environment]::NewLine
+          } else {
+            $tail = "No build.log was produced; the run failed before Gradle started."
+          }
+          $short = $env:GITHUB_SHA.Substring(0, 7)
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $fence = [string][char]96 * 3
+          $lines = @(
+            "Commit ``$short`` failed in [run $env:GITHUB_RUN_ID]($url).",
+            "",
+            "Last 120 lines of Gradle output:",
+            "",
+            $fence,
+            $tail,
+            $fence
+          )
+          Set-Content -Path failure.md -Value $lines -Encoding utf8
+          gh issue create --title "Build failed on $short" --body-file failure.md | Write-Host
 
       - name: Stage release files
         shell: pwsh

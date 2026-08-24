@@ -1,6 +1,6 @@
 plugins {
-    id 'com.android.application' version '8.7.3' apply false
-    id 'com.android.library' version '8.7.3' apply false
+    id "com.android.application" version "8.9.2" apply false
+    id "com.android.library" version "8.9.2" apply false
     // vpnLib is partly Kotlin, so the Kotlin plugin has to be on the classpath even though
     // Panther's own sources are all Java.
     id 'org.jetbrains.kotlin.android' version '2.0.21' apply false
@@ -11,7 +11,7 @@ plugins {
 // set on every project - declaring them on the root alone makes vpnLib fail to configure.
 allprojects {
     ext {
-        compileSdkVersion = 35
+        compileSdkVersion = 36
         minSdkVersion = 26
         targetSdkVersion = 35
     }
