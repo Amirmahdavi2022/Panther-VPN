@@ -1,0 +1,67 @@
+name: Watch upstream cores
+
+# The VPN Gate server list needs no watching - it is fetched live at runtime, so new relays in
+# Japan or anywhere else appear in the app without a release. What does go stale is the pinned
+# native core, which is fetched by version and checksum at build time.
+#
+# This opens a pull request rather than committing to main on purpose: a core is native code that
+# ships to every user, and it should not reach them without a build and a look.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare pinned Aether core against upstream
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          pinned=$(grep -oP '\$aetherVersion = if \(\$env:AETHER_CORE_VERSION\) \{ \$env:AETHER_CORE_VERSION \} else \{ "\K[^"]+' \
+            scripts/fetch-android-assets.ps1)
+          latest=$(gh api repos/CluvexStudio/Aether/releases/latest --jq .tag_name)
+          echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$pinned" = "$latest" ]; then
+            echo "Aether core is current at $pinned"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Aether core $pinned is behind upstream $latest"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump the pin
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          sed -i "s/else { \"${{ steps.check.outputs.pinned }}\" }/else { \"${{ steps.check.outputs.latest }}\" }/" \
+            scripts/fetch-android-assets.ps1
+          grep -q '${{ steps.check.outputs.latest }}' scripts/fetch-android-assets.ps1
+
+      - name: Open a pull request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: upstream/aether-${{ steps.check.outputs.latest }}
+          title: "Aether core ${{ steps.check.outputs.latest }} is available"
+          commit-message: "Pin Aether core ${{ steps.check.outputs.latest }}"
+          body: |
+            Upstream released `${{ steps.check.outputs.latest }}`; this repository pins
+            `${{ steps.check.outputs.pinned }}`.
+
+            The build fetches each per-ABI archive with its published checksum, so CI going
+            green here means the new core downloaded and verified. It does **not** mean the
+            core was exercised on a device - install the APK from this run and connect once
+            before merging.
+          delete-branch: true
