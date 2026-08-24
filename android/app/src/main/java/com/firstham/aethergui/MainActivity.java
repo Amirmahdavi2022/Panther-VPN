@@ -153,12 +153,18 @@ public final class MainActivity extends AppCompatActivity {
             String language = LocaleManager.fromIndex(position);
             if (language.equals(LocaleManager.stored(this))) return;
             LocaleManager.store(this, language);
-            // Recreating from inside the item-click callback tears the activity down while the
-            // dropdown's popup window is still attached, which leaves the rebuilt activity with a
-            // dead popup and swallows every later tab and dropdown tap. Dismiss the popup first
-            // and recreate on the next frame, once the window is really gone.
             binding.languageInput.dismissDropDown();
-            binding.root.post(this::recreate);
+            // recreate() rebuilds the activity in place and leaves the bottom-nav and dropdown
+            // windows in a state where nothing opens until the app is force-closed. A full
+            // relaunch is what the user confirmed actually works, so do exactly that.
+            binding.root.post(() -> {
+                Intent restart = new Intent(this, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                finish();
+                overridePendingTransition(0, 0);
+                startActivity(restart);
+                overridePendingTransition(0, 0);
+            });
         });
     }
 

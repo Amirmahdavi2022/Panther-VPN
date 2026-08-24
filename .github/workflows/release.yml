@@ -53,6 +53,21 @@ jobs:
 
       - name: Fetch verified Android native assets
         run: npm run fetch:android
+      - name: Verify every native core landed in jniLibs
+        shell: pwsh
+        run: |
+          # The country options failed silently once because libwarpplus.so was never actually
+          # written here while the build still went green. Fail loudly instead.
+          $missing = @()
+          foreach ($abi in @('arm64-v8a','armeabi-v7a','x86_64')) {
+            foreach ($lib in @('libaether.so','libhev-socks5-tunnel.so')) {
+              $p = "android/app/src/main/jniLibs/$abi/$lib"
+              if (-not (Test-Path $p)) { $missing += $p } else { Write-Host "$p $((Get-Item $p).Length) bytes" }
+            }
+          }
+          $warp = 'android/app/src/main/jniLibs/arm64-v8a/libwarpplus.so'
+          if (-not (Test-Path $warp)) { $missing += $warp } else { Write-Host "$warp $((Get-Item $warp).Length) bytes" }
+          if ($missing.Count) { throw "Native cores missing: $($missing -join ', ')" }
 
       - name: Prepare Android signing key
         if: github.event_name != 'pull_request'

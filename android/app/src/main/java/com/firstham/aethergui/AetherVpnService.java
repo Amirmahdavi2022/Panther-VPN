@@ -316,11 +316,36 @@ public final class AetherVpnService extends VpnService {
      */
     private void startWarpPlus(Intent request, String location) throws Exception {
         File executable = new File(getApplicationInfo().nativeLibraryDir, Locations.CORE_LIBRARY);
+
+        // Diagnostics first: a silent failure here is indistinguishable from "the country option
+        // does nothing", so state plainly what is on disk before trying to run anything.
+        sendLog("Fixed-country mode requested: " + Locations.countryCode(location));
+        sendLog("Device ABIs: " + java.util.Arrays.toString(Build.SUPPORTED_ABIS));
+        sendLog("Native library dir: " + getApplicationInfo().nativeLibraryDir);
+        File[] shipped = new File(getApplicationInfo().nativeLibraryDir).listFiles();
+        if (shipped != null) {
+            StringBuilder names = new StringBuilder();
+            for (File file : shipped) {
+                if (names.length() > 0) names.append(", ");
+                names.append(file.getName()).append(" (").append(file.length()).append("B)");
+            }
+            sendLog("Cores present: " + names);
+        }
+
         if (!executable.isFile()) {
-            throw new IllegalStateException(getString(R.string.location_unsupported_abi));
+            throw new IllegalStateException("warp-plus core (" + Locations.CORE_LIBRARY
+                    + ") is not in this APK for " + Build.SUPPORTED_ABIS[0]
+                    + ". Fixed countries cannot run; use Automatic or Custom.");
+        }
+        if (!executable.canExecute()) {
+            throw new IllegalStateException("warp-plus core is present (" + executable.length()
+                    + " bytes) but not executable at " + executable.getAbsolutePath());
         }
 
         String socks = value(request, "socks", "127.0.0.1:1819");
+        File cacheDir = new File(getFilesDir(), "warpplus");
+        cacheDir.mkdirs();
+
         List<String> command = new ArrayList<>();
         command.add(executable.getAbsolutePath());
         command.add("--bind");
@@ -329,11 +354,12 @@ public final class AetherVpnService extends VpnService {
         command.add("--country");
         command.add(Locations.countryCode(location));
         command.add("--cache-dir");
-        command.add(new File(getFilesDir(), "warpplus").getAbsolutePath());
+        command.add(cacheDir.getAbsolutePath());
+        command.add("-v");
         if ("v6".equals(value(request, "ipMode", "v4"))) command.add("-6");
         else command.add("-4");
 
-        new File(getFilesDir(), "warpplus").mkdirs();
+        sendLog("Launching: " + android.text.TextUtils.join(" ", command));
 
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.directory(getFilesDir());
@@ -346,7 +372,6 @@ public final class AetherVpnService extends VpnService {
             aetherProcess = builder.start();
         }
         Process process = aetherProcess;
-        sendLog("warp-plus started for " + Locations.countryCode(location) + " on " + Build.SUPPORTED_ABIS[0]);
         Thread logs = new Thread(() -> readWarpPlusLogs(process), "warpplus-log-reader");
         logs.setDaemon(true);
         logs.start();
