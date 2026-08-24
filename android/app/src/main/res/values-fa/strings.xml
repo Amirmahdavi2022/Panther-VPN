@@ -29,4 +29,10 @@
     <string name="feature_stable">پایدار</string>
     <string name="about">درباره</string>
     <string name="about_summary">Panther VPN برای اندروید</string>
+    <string name="status_connected">Panther فعال است</string>
+    <string name="status_connecting">در حال اتصال…</string>
+    <string name="tap_to_secure">برای ایمن‌سازی بزنید</string>
+    <string name="session_label">ترافیک</string>
+    <string name="latency_label">پینگ</string>
+    <string name="node_label">گره</string>
 </resources>

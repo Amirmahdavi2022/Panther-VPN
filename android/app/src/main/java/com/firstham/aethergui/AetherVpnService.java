@@ -16,6 +16,7 @@ import android.net.VpnService;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
+import android.content.Context;
 
 import androidx.core.app.NotificationCompat;
 
@@ -48,6 +49,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import hev.htproxy.TProxyService;
 
 public final class AetherVpnService extends VpnService {
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(LocaleManager.wrap(base));
+    }
+
     public static final String ACTION_START = "com.firstham.aethergui.START";
     public static final String ACTION_STOP = "com.firstham.aethergui.STOP";
     public static final String ACTION_QUERY = "com.firstham.aethergui.QUERY";
