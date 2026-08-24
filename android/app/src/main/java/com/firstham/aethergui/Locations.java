@@ -1,72 +1,105 @@
 package com.firstham.aethergui;
 
-import android.os.Build;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * The exit locations the user can pick.
  *
  * AUTO and CUSTOM run on the Aether core, which rides Cloudflare WARP. WARP endpoints are anycast,
  * so the exit country follows whichever Cloudflare datacenter the network routes to - it cannot be
- * chosen. The fixed-country options therefore run a second core (warp-plus) that chains WARP into
- * the Psiphon network, which does let the egress country be requested. Psiphon egresses from a pool
+ * chosen. Every named country instead runs a second core (warp-plus) that chains WARP into the
+ * Psiphon network, which does let the egress country be requested. Psiphon egresses from a pool
  * inside that country, so the country is fixed but the address is not.
  *
- * warp-plus ships an official Android build for arm64 only, so the fixed-country options are
- * offered only on 64-bit ARM devices.
+ * The country list is the egress set warp-plus supports (psiphon/p.go upstream).
+ * warp-plus is now built from source for every shipped ABI, so no architecture gate applies.
  */
 final class Locations {
     static final String AUTO = "auto";
-    static final String UNITED_STATES = "us";
-    static final String GERMANY = "de";
     static final String CUSTOM = "custom";
-
     static final String CORE_LIBRARY = "libwarpplus.so";
+
+    /** Psiphon egress countries, in the order the dropdown shows them. */
+    static final List<String> COUNTRIES = Collections.unmodifiableList(Arrays.asList(
+            "AT",
+            "AU",
+            "BE",
+            "BG",
+            "CA",
+            "CH",
+            "CZ",
+            "DE",
+            "DK",
+            "EE",
+            "ES",
+            "FI",
+            "FR",
+            "GB",
+            "HR",
+            "HU",
+            "IE",
+            "IN",
+            "IT",
+            "JP",
+            "LV",
+            "NL",
+            "NO",
+            "PL",
+            "PT",
+            "RO",
+            "RS",
+            "SE",
+            "SG",
+            "SK",
+            "US"
+    ));
 
     private Locations() {
     }
 
     static String normalize(String location) {
-        if (UNITED_STATES.equals(location)) return UNITED_STATES;
-        if (GERMANY.equals(location)) return GERMANY;
-        if (CUSTOM.equals(location)) return CUSTOM;
+        if (location == null) return AUTO;
+        String value = location.trim();
+        if (CUSTOM.equalsIgnoreCase(value)) return CUSTOM;
+        String upper = value.toUpperCase(Locale.US);
+        if (COUNTRIES.contains(upper)) return upper.toLowerCase(Locale.US);
         return AUTO;
     }
 
     /** True when the option needs the warp-plus core rather than the Aether core. */
     static boolean usesPsiphon(String location) {
         String value = normalize(location);
-        return UNITED_STATES.equals(value) || GERMANY.equals(value);
+        return !AUTO.equals(value) && !CUSTOM.equals(value);
     }
 
     /** The Psiphon country code warp-plus expects. */
     static String countryCode(String location) {
-        return GERMANY.equals(normalize(location)) ? "DE" : "US";
+        String value = normalize(location);
+        if (!usesPsiphon(value)) return "US";
+        return value.toUpperCase(Locale.US);
     }
 
-    /** Dropdown order: Auto, United States, Germany, Custom. */
+    /** Dropdown order: Auto, then every country, then Custom. */
     static String fromIndex(int index) {
-        switch (index) {
-            case 1: return UNITED_STATES;
-            case 2: return GERMANY;
-            case 3: return CUSTOM;
-            default: return AUTO;
+        if (index >= 1 && index <= COUNTRIES.size()) {
+            return COUNTRIES.get(index - 1).toLowerCase(Locale.US);
         }
+        if (index == COUNTRIES.size() + 1) return CUSTOM;
+        return AUTO;
     }
 
     static int index(String location) {
-        switch (normalize(location)) {
-            case UNITED_STATES: return 1;
-            case GERMANY: return 2;
-            case CUSTOM: return 3;
-            default: return 0;
-        }
+        String value = normalize(location);
+        if (CUSTOM.equals(value)) return COUNTRIES.size() + 1;
+        int at = COUNTRIES.indexOf(value.toUpperCase(Locale.US));
+        return at < 0 ? 0 : at + 1;
     }
 
-    /** Only arm64 devices ship the warp-plus core. */
+    /** Every shipped ABI now carries the warp-plus core. */
     static boolean fixedCountriesSupported() {
-        for (String abi : Build.SUPPORTED_ABIS) {
-            if ("arm64-v8a".equals(abi)) return true;
-        }
-        return false;
+        return true;
     }
 }
