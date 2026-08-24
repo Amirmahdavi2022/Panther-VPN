@@ -1,0 +1,4 @@
+[submodule "android/vpnLib"]
+	path = android/vpnLib
+	url = https://github.com/hoang-rio/vpnLib.git
+	branch = main

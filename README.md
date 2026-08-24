@@ -1,175 +1,109 @@
-# Panther
+# Panther VPN
 
-Panther is an independent Windows and Android client for the official [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether) networking core. Windows version 2.0.0 bundles the verified Aether 1.7.0 core and provides system-wide VPN routing or a local SOCKS5 proxy through focused desktop and mobile interfaces.
+An open-source Android VPN client with two independent free networks behind one connect button.
+No account, no subscription, and nothing to paste in — you install it and press Connect.
 
-[Releases](https://github.com/amirmahdavi2023/Panther-VPN/releases) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[Releases](https://github.com/amirmahdavi2023/Panther-VPN/releases) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Third-party notices](NOTICE.md)
 
-## Windows 2.0.0 release notes
+---
 
-### Windows routing and settings
+## What it actually does
 
-- Added transactional, single-session routing-helper and sing-box lifecycle management.
-- Added recovery for stale Panther-owned TUN adapters and failed routing sessions.
-- Preserved sanitized sing-box exit diagnostics and immediate reconnect cleanup.
-- Restored Scan Mode and protocol-specific MASQUE HTTP/3 or HTTP/2 transport controls.
-- Migrated obsolete MASQUE obfuscation values without confusing them with Scan Mode.
-- Kept the compact Connect, Configurations, and Settings navigation.
+Most "free VPN" clients on GitHub are config managers: they give you a UI, and you still have to
+find a working server and paste it in. Panther ships the network too.
 
-### Android-parity interface
+| Mode | Network | Where the exit is | Needs a server of yours |
+|---|---|---|---|
+| **Automatic** | Cloudflare WARP, via the Aether core | Nearest Cloudflare datacenter — fast, but not selectable | No |
+| **Relay** | [VPN Gate](https://www.vpngate.net/), via OpenVPN | A country you pick, from dozens of volunteer relays | No |
+| **Custom** | Your own endpoint | Wherever you point it | Yes |
 
-- Added English and Persian application translations with right-to-left layout support.
-- Removed Android locale overrides, Persian resources, RTL support, and the language selector.
-- Added the Windows language selector and preserved VPN features and routing behavior.
+**Automatic** is the default and the fastest path. WARP endpoints are anycast, so the exit country
+follows your network's routing and cannot be chosen — that is a property of WARP, not a limitation
+of this app.
 
-### Application updates
+**Relay** is where location selection lives. The relay list is fetched live from VPN Gate's public
+directory every few hours, so new servers appear without an app update, and dead ones drop off.
 
-- Added automatic update checks at startup and every 12 hours while Panther is running.
-- Added manual **Check for Updates** controls to Android and Windows settings.
-- Added current version, latest version, update status, and GitHub release notes.
-- Added an **Automatically download updates** preference.
-- Android automatic downloads use Wi-Fi and Android DownloadManager for resumable transfers.
-- Windows downloads the official x64 setup installer and reports progress inside the application.
-- Added duplicate Android notification prevention and Android download progress notifications.
-- Added SHA-256 verification on both platforms.
-- Android additionally verifies that the downloaded APK uses the same signing certificate as the installed application.
-- Installation uses Android FileProvider/package installer APIs and the verified Windows setup executable.
-- Update URLs are restricted to the official `amirmahdavi2023/Panther-VPN` GitHub repository.
+---
 
-### Versions and compatibility
+## Choosing a location
 
-- Windows version: `2.0.0`
-- Android version name: `2.0.0`
-- Android version code: `23`
-- Aether core: `1.7.0`
-- sing-box routing engine: `1.13.14`
-- Windows: Windows 10/11 x64
-- Android: Android 8.0 or newer; ARMv7, ARM64, and x86_64
+The relay directory is public, volunteer-run, and changes constantly. Panther deals with that
+rather than pretending otherwise:
 
-Existing VPN services, state management, routing recovery, Smart Connect, and split tunneling remain in place.
+- Relays are ranked by VPN Gate's own score, with throughput and latency breaking ties.
+- Relays advertising no usable OpenVPN profile are dropped before you ever see them.
+- Picking a country tries the best relay, then the next, up to three — volunteer machines go
+  offline without warning, and one dead host should not read as "the country is broken".
+- The last good directory is cached on disk. A failed refresh keeps the previous list instead of
+  emptying it, so a bad network moment does not leave you with nothing to connect to.
 
-## Downloads
+---
 
-Download the release files from [Panther 2.0.0](https://github.com/amirmahdavi2023/Panther-VPN/releases/tag/v2.0.0):
+## Honest limitations
 
-- [`Panther-VPN-v2.0.0-all-platforms.zip`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-all-platforms.zip) — Windows and Android 2.0.0 release archive.
-- [`Panther-VPN-v2.0.0-Windows-x64-Installer.exe`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Windows-x64-Installer.exe) — recommended Windows installer.
-- [`Panther-VPN-v2.0.0-Windows-x64.msi`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Windows-x64.msi) — Windows MSI.
-- [`Panther-VPN-v2.0.0-Windows-x64-portable.zip`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Windows-x64-portable.zip) — portable Windows package.
-- [`Panther-VPN-v2.0.0-Android-Universal.apk`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-Universal.apk) — Android universal APK containing ARMv7, ARM64, and x86_64 libraries.
-- [`Panther-VPN-v2.0.0-Android-ARMv7.apk`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-ARMv7.apk) — 32-bit ARM APK.
-- [`Panther-VPN-v2.0.0-Android-ARM64.apk`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-ARM64.apk) — 64-bit ARM APK.
-- [`Panther-VPN-v2.0.0-Android-x86_64.apk`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-x86_64.apk) — x86_64 APK.
-- [`Panther-VPN-v2.0.0-Android-AAB.aab`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/Panther-VPN-v2.0.0-Android-AAB.aab) — Play App Bundle.
-- [`SHA256SUMS.txt`](https://github.com/amirmahdavi2023/Panther-VPN/releases/download/v2.0.0/SHA256SUMS.txt) — release checksums.
+- **Relay mode is not a fixed IP.** You choose a country; the address within it varies by relay
+  and over time. A genuinely fixed IP requires a server you rent — no free network provides one.
+- **Relay servers are run by volunteers.** Speed and uptime vary a lot, and the operator of an
+  exit can see traffic leaving it, exactly as with any VPN. Use HTTPS.
+- **Relay mode uses OpenVPN**, which is easy to fingerprint. In countries that filter by protocol
+  it may not connect at all; Automatic mode is far more resilient there.
+- **Android only.** The Windows client was removed in 2.0.0.
 
-Windows binaries are currently unsigned and may trigger a SmartScreen warning. Android release packages are signed with the established Panther Android signing certificate.
-
-## Update source configuration
-
-Both clients use the latest GitHub Release endpoint:
-
-```text
-https://api.github.com/repos/amirmahdavi2023/Panther-VPN/releases/latest
-```
-
-Future releases must include:
-
-- `Panther-VPN-v<version>-Windows-x64-Installer.exe`
-- `Panther-VPN-v<version>-Android-Universal.apk`
-- SHA-256 asset digests supplied by GitHub or a `SHA256SUMS.txt` asset
-- Release notes in the GitHub release body
-- Android APKs signed with the same established signing key
-
-No custom update backend is required. If the Android APK is distributed through Google Play, use of `REQUEST_INSTALL_PACKAGES` and direct self-updates should be reviewed against current Play policy.
-
-## Windows usage
-
-1. Install the x64 setup package or extract the portable archive.
-2. Launch Panther.
-3. Keep **VPN Mode** selected for system-wide routing, or choose **Manual SOCKS5** for proxy-only use.
-4. Select a protocol and scan mode, then press **Connect**.
-5. Use Diagnostics for live logs, connection testing, and network recovery.
-
-The local SOCKS5 listener defaults to `127.0.0.1:1819`. VPN mode may request administrator permission when configuring the TUN adapter and protected routes.
-
-## Android usage
-
-1. Install the universal APK or the APK matching the device architecture.
-2. Approve Android VPN permission on first connection.
-3. Select the desired mode and protocol.
-4. Press **Connect**.
-5. Optionally add the **Panther VPN** Quick Settings tile.
-
-The Android application ID remains `io.github.amirmahdavi2023.panther` for update compatibility.
+---
 
 ## Building
 
-### Prerequisites
+Requires JDK 17, the Android SDK, and NDK `27.2.12479018`.
 
-- Windows 10/11 x64
-- Node.js 22
-- Rust stable with the `x86_64-pc-windows-msvc` target
-- Visual Studio Build Tools with MSVC
-- Java 17
-- Android SDK and NDK `27.2.12479018`
-- WiX Toolset prerequisites used by Tauri
-
-### Windows
-
-```powershell
-npm ci
-npm run fetch:core
-npm run fetch:routing
-npm test
-cargo test --manifest-path src-tauri/Cargo.toml --locked
-npm run build
+```bash
+git clone --recurse-submodules https://github.com/amirmahdavi2023/Panther-VPN.git
+cd Panther-VPN
+npm run fetch:android      # downloads and SHA-256 verifies the native cores
+cd android && ./gradlew assembleRelease
 ```
 
-Windows output is written under `src-tauri/target/release`.
+`--recurse-submodules` matters: the OpenVPN engine is a pinned submodule, and the build fails
+without it.
 
-### Android
+Every native core is fetched from its upstream release and checked against a published SHA-256
+before it is packaged. CI additionally fails the build if any core is missing from `jniLibs` —
+a green build once shipped without one, and that is not repeatable.
 
-Release signing credentials are required for distributable Android builds:
+### Running the tests
 
-```powershell
-$env:ANDROID_KEYSTORE_PATH = ".android-signing/release-signing.jks"
-$env:ANDROID_KEYSTORE_PASSWORD = "<password>"
-$env:ANDROID_KEY_ALIAS = "<alias>"
-$env:ANDROID_KEY_PASSWORD = "<password>"
-npm run fetch:android
-Set-Location android
-./gradlew.bat assembleRelease bundleRelease lintRelease
+```bash
+cd android && ./gradlew testReleaseUnitTest
 ```
 
-Android output is written under `android/app/build/outputs`.
+The directory parser and the profile adapter are plain Java and are covered by unit tests,
+because those are the parts where a live volunteer feed can be malformed in ways that are
+painful to debug from a user's screenshot.
 
-### Universal release archive
+---
 
-After both platform builds complete:
+## Staying current
 
-```powershell
-npm run package:release
-```
+- **Relay servers** need no updates. The directory is fetched at runtime.
+- **Native cores** are watched by a weekly job that opens a pull request when upstream publishes
+  a release. It opens a PR rather than merging: native code that ships to every user should get
+  a build and a look first.
+- **The app** checks GitHub Releases and can install updates itself, verifying both the SHA-256
+  and that the new APK carries the same signing certificate as the installed one.
 
-This creates Windows x64 installers, portable files, architecture-specific Android packages, checksums, and `Panther-VPN-v2.0.0-all-platforms.zip` under `release`.
+---
 
-## Verification
+## Credits and licence
 
-```powershell
-npm test
-cargo test --manifest-path src-tauri/Cargo.toml --locked
-Set-Location android
-./gradlew.bat testDebugUnitTest lintDebug lintRelease
-```
+Panther is AGPL-3.0. It stands on work by others:
 
-## Project layout
+- [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether) — the WARP networking core
+- [VPN Gate](https://www.vpngate.net/) — the volunteer relay network and its public directory,
+  an academic project of the University of Tsukuba, Japan
+- [hoang-rio/vpnLib](https://github.com/hoang-rio/vpnLib) — the Android OpenVPN engine (GPL-3.0)
+- [heiher/hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel) — the TUN bridge
 
-- `src/` — Windows frontend.
-- `src-tauri/` — Windows native process, routing, settings, and updater code.
-- `android/` — native Android client.
-- `scripts/` — verified dependency fetching and release packaging.
-- `.github/workflows/release.yml` — Windows/Android CI and tagged release publishing.
-
-## Attribution
-
-Panther is an independent frontend and is not the upstream Aether project. Aether remains the networking engine and is distributed under GPL-3.0. See [NOTICE.md](NOTICE.md), [TRADEMARK.md](TRADEMARK.md), and [LICENSE](LICENSE).
+Panther is an independent fork of [hamvex/AetherGUI](https://github.com/hamvex/AetherGUI) and is
+not affiliated with, endorsed by, or supported by any project listed above. Please do not report
+Panther issues to them. Full attribution is in [NOTICE.md](NOTICE.md).

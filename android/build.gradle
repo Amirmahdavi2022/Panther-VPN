@@ -1,3 +1,14 @@
 plugins {
     id 'com.android.application' version '8.7.3' apply false
+    id 'com.android.library' version '8.7.3' apply false
+    // vpnLib is written partly in Kotlin, so the Kotlin plugin has to be on the classpath
+    // even though Panther's own sources are all Java.
+    id 'org.jetbrains.kotlin.android' version '2.0.21' apply false
+}
+
+// vpnLib reads its SDK levels from the root project rather than declaring its own.
+ext {
+    compileSdkVersion = 35
+    minSdkVersion = 26
+    targetSdkVersion = 35
 }

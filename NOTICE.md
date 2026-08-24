@@ -67,3 +67,23 @@ or Aether projects. Do not report Panther issues to them.
 Distributed under the same AGPL-3.0 license as the upstream project.
 Complete corresponding source: https://github.com/amirmahdavi2023/Panther-VPN
 
+
+## VPN Gate relay network
+
+Relay mode connects to servers published by VPN Gate (https://www.vpngate.net/), an academic
+experiment run by the University of Tsukuba, Japan. Panther reads its public server directory
+at runtime and does not operate, host, or control any relay in it. Relay operators are
+independent volunteers.
+
+Panther is not affiliated with, endorsed by, or supported by VPN Gate or the University of
+Tsukuba. Do not report Panther issues to them.
+
+## vpnLib (OpenVPN engine)
+
+Relay mode uses hoang-rio/vpnLib, an Android OpenVPN engine derived from Arne Schwabe's
+ics-openvpn, vendored as a pinned git submodule at `android/vpnLib`.
+
+vpnLib is licensed under GPL-3.0, which is compatible with Panther's AGPL-3.0 terms. Its
+licence text ships with the submodule at `android/vpnLib/LICENSE`.
+
+Upstream: https://github.com/hoang-rio/vpnLib

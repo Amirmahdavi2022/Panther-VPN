@@ -7,3 +7,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = 'Panther'
 include ':app'
+include ':vpnLib'
+project(':vpnLib').projectDir = file('vpnLib')

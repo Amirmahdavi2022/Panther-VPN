@@ -16,6 +16,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # vpnLib (the OpenVPN engine) is a pinned submodule.
+          submodules: recursive
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -46,6 +49,12 @@ jobs:
             }
           }
           if ($missing.Count) { throw "Native cores missing: $($missing -join ', ')" }
+
+      - name: Run unit tests
+        shell: pwsh
+        run: |
+          Set-Location android
+          ./gradlew.bat --no-daemon testReleaseUnitTest
 
       - name: Prepare Android signing key
         if: github.event_name != 'pull_request'
