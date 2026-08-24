@@ -35,8 +35,8 @@
     <string name="session_label">ترافیک</string>
     <string name="latency_label">پینگ</string>
     <string name="node_label">گره</string>
-    <string name="location_title">مکان خروج</string>
-    <string name="location_hint">مکان</string>
+    <string name="location_title">مکان سرور</string>
+    <string name="location_hint">سرور</string>
     <string name="location_summary_auto">از نزدیک‌ترین دروازه کلادفلر وصل می‌شود. سریع‌ترین حالت، ولی کشور خروجی را شبکه شما تعیین می‌کند.</string>
     <string name="location_summary_fixed">از شبکه Psiphon عبور می‌کند تا ترافیک از این کشور خارج شود. کندتر از حالت خودکار است و نشانی درون همان کشور تغییر می‌کند.</string>
     <string name="location_summary_custom">از نقطه پایانی‌ای که در تنظیمات پیشرفته وارد کرده‌اید استفاده می‌کند.</string>
