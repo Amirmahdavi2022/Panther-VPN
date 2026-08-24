@@ -185,7 +185,7 @@
     <string name="location_title">Exit location</string>
     <string name="location_hint">Location</string>
     <string name="location_summary_auto">Connects through the nearest Cloudflare gateway. Fastest, but the exit country follows your network.</string>
-    <string name="location_summary_fixed">Routes through the Psiphon network so traffic leaves in this country. Slower than automatic, and the address rotates within the country.</string>
+    <string name="location_summary_fixed">Routes through a relay network so traffic leaves in this country. Slower than automatic, and the address rotates within the country.</string>
     <string name="location_summary_custom">Uses the endpoint you entered under Advanced settings.</string>
     <string name="location_unavailable">Fixed countries need a 64-bit device.</string>
     <string name="location_unsupported_abi">Fixed-country mode is not available on this device architecture.</string>
