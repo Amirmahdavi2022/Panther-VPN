@@ -220,6 +220,21 @@
                         </LinearLayout>
                     </LinearLayout>
 
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/card_background" android:orientation="vertical" android:padding="16dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/about_networks_title" android:textColor="@color/text" android:textSize="15sp" android:textStyle="bold" />
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="@string/about_mode_auto_title" android:textColor="@color/blue_600" android:textSize="13sp" android:textStyle="bold" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:lineSpacingMultiplier="1.25" android:text="@string/about_mode_auto_body" android:textColor="@color/muted" android:textSize="12sp" />
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="@string/about_mode_relay_title" android:textColor="@color/blue_600" android:textSize="13sp" android:textStyle="bold" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:lineSpacingMultiplier="1.25" android:text="@string/about_mode_relay_body" android:textColor="@color/muted" android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/card_background" android:orientation="vertical" android:padding="16dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/about_credits_title" android:textColor="@color/text" android:textSize="15sp" android:textStyle="bold" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:lineSpacingMultiplier="1.25" android:text="@string/about_credits_body" android:textColor="@color/muted" android:textSize="12sp" />
+                    </LinearLayout>
+
                     <LinearLayout android:id="@+id/about_telegram_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/card_background" android:clickable="true" android:focusable="true" android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
                         <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/icon_badge_blue">
                             <ImageView android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_telegram" />
