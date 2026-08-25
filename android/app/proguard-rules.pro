@@ -4,13 +4,22 @@
     native <methods>;
 }
 
-# Tink, pulled in transitively by androidx.security:security-crypto via vpnLib, references
-# compile-only annotations that are absent at runtime. R8 treats the dangling references as
-# errors, so tell it they are expected rather than adding a dependency purely to satisfy them.
+# Tink arrives transitively through androidx.security:security-crypto in vpnLib. It is built
+# for server use too, so parts of it reference libraries that are simply not on an Android
+# classpath - google-http-client and joda-time for its KeysDownloader, App Engine for its
+# hosted variants. None of that is reachable from anything we call.
+#
+# Note the previous blanket "-keep class com.google.crypto.tink.**" was actively harmful: it
+# forced R8 to retain KeysDownloader, which is exactly the class dragging in the missing
+# references. Let R8 shrink Tink normally and only silence the optional dependencies.
 -dontwarn javax.annotation.**
--dontwarn com.google.errorprone.annotations.**
 -dontwarn javax.lang.model.element.**
--keep class com.google.crypto.tink.** { *; }
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn com.google.api.client.**
+-dontwarn com.google.appengine.**
+-dontwarn com.google.apphosting.**
+-dontwarn org.joda.time.**
+-dontwarn javax.naming.**
 
 # The OpenVPN engine. Its service and profile are reached through JNI, AIDL and reflection over
 # a serialised profile, none of which R8 can see, so shrinking them produces a build that only
