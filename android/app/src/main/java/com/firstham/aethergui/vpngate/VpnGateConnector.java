@@ -5,9 +5,11 @@ import android.content.Intent;
 import android.util.Log;
 
 import java.io.StringReader;
+import java.util.Locale;
 import java.util.List;
 
 import de.blinkt.openvpn.VpnProfile;
+import de.blinkt.openvpn.core.VpnStatus;
 import de.blinkt.openvpn.core.ConfigParser;
 import de.blinkt.openvpn.core.OpenVPNService;
 import de.blinkt.openvpn.core.ProfileManager;
@@ -74,11 +76,36 @@ public final class VpnGateConnector {
             // Shown in the system VPN dialog and the engine's own notification.
             profile.mName = "Panther - " + server.countryName;
 
+            // A handful of VPN Gate entries ship auth-user-pass. The project accepts any
+            // credentials on those, but an empty pair makes the engine stop and wait for a
+            // prompt that Panther never shows - which looks exactly like a dead button.
+            if (profile.isUserPWAuth()) {
+                if (profile.mUsername == null || profile.mUsername.isEmpty()) profile.mUsername = "vpn";
+                if (profile.mPassword == null || profile.mPassword.isEmpty()) profile.mPassword = "vpn";
+            }
+
+            // Volunteer relays negotiate old ciphers. A freshly parsed profile carries no
+            // data-ciphers list at all, and OpenVPN 2.6 then refuses anything but AES-GCM - which
+            // is most of VPN Gate.
+            if (profile.mDataCiphers == null || profile.mDataCiphers.isEmpty()) {
+                String fallback = "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-256-CBC:AES-128-CBC";
+                String cipher = profile.mCipher == null ? "" : profile.mCipher.toUpperCase(Locale.US);
+                if (!cipher.isEmpty() && !fallback.contains(cipher)) fallback += ":" + cipher;
+                profile.mDataCiphers = fallback;
+                // Blowfish only exists behind OpenSSL's legacy provider.
+                if (fallback.contains("BF-CBC")) profile.mUseLegacyProvider = true;
+            }
+
             ProfileManager.setTemporaryProfile(context, profile);
             VPNLaunchHelper.startOpenVpn(profile, context, "Panther", true);
             return true;
         } catch (Exception error) {
             Log.w(TAG, "Could not start relay " + server.key(), error);
+            // The engine's own log is what the status line reads back, so put the reason there
+            // rather than only in logcat, which nobody on a phone can see.
+            VpnStatus.logError("Panther: relay " + server.countryCode + " rejected - "
+                    + error.getClass().getSimpleName()
+                    + (error.getMessage() == null ? "" : ": " + error.getMessage()));
             return false;
         }
     }

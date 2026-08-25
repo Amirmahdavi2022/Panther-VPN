@@ -47,6 +47,7 @@ import java.util.Locale;
 import java.util.Set;
 import com.firstham.aethergui.vpngate.EngineRouter;
 import com.firstham.aethergui.vpngate.LocationPicker;
+import com.firstham.aethergui.vpngate.RelayStatus;
 
 public final class MainActivity extends AppCompatActivity {
     private static final int VPN_REQUEST = 41;
@@ -60,6 +61,9 @@ public final class MainActivity extends AppCompatActivity {
     private boolean receiverRegistered;
     private boolean syncingNav;
     private String endpoint = "";
+    /** True while the chosen exit location routes through the OpenVPN relay engine. */
+    private boolean relayMode;
+    private RelayStatus relayStatus;
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
     private final Runnable updateProgressPoll = new Runnable() {
         @Override public void run() {
@@ -71,6 +75,10 @@ public final class MainActivity extends AppCompatActivity {
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
+            // In relay mode the OpenVPN engine owns the tunnel and the Aether service is idle.
+            // Letting its "disconnected" broadcast through here would wipe the relay's own state
+            // off the screen a moment after the relay came up.
+            if (relayMode) return;
             if (AetherVpnService.ACTION_STATUS.equals(intent.getAction())) {
                 endpoint = intent.getStringExtra("endpoint");
                 renderState(intent.getStringExtra("state"), intent.getStringExtra("message"));
@@ -114,6 +122,19 @@ public final class MainActivity extends AppCompatActivity {
         binding.currentVersionValue.setText(BuildConfig.VERSION_NAME);
         binding.autoDownloadSwitch.setChecked(getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE).getBoolean(UpdateConfig.KEY_AUTO_DOWNLOAD, false));
         renderUpdateState();
+        relayMode = EngineRouter.usesRelay(preferences);
+        relayStatus = new RelayStatus(this, new RelayStatus.Listener() {
+            @Override public void relayState(String relay, String message) {
+                if (!relayMode) return;
+                if ("connected".equals(relay)) endpoint = EngineRouter.locationName(preferences);
+                renderState(relay, message);
+            }
+
+            @Override public void relayTraffic(long tx, long rx) {
+                if (!relayMode) return;
+                renderStats(new Intent().putExtra("tx", tx).putExtra("rx", rx).putExtra("ping", -1L));
+            }
+        });
         renderState("disconnected", getString(R.string.status_ready_message));
         if (getIntent().getBooleanExtra(AethonTileService.EXTRA_CONNECT_FROM_TILE, false)) {
             getIntent().removeExtra(AethonTileService.EXTRA_CONNECT_FROM_TILE);
@@ -190,10 +211,14 @@ public final class MainActivity extends AppCompatActivity {
     private void setupActions() {
         binding.connectButton.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); if (shouldDisconnect()) disconnect(); else connect(); });
         binding.exitLocationCard.setOnClickListener(v -> LocationPicker.show(this, EngineRouter.location(preferences), (code, name) -> {
-            EngineRouter.setLocation(preferences, code);
-            renderExitLocation();
-            // Changing the exit is a handover between two engines, so drop whatever is running.
+            // Changing the exit is a handover between two engines, so drop whatever is running
+            // BEFORE the mode flips - otherwise disconnect() runs against the wrong engine.
             if (shouldDisconnect()) disconnect();
+            EngineRouter.setLocation(preferences, code, name);
+            relayMode = EngineRouter.usesRelay(preferences);
+            endpoint = "";
+            renderExitLocation();
+            renderState("disconnected", getString(R.string.status_ready_message));
         }));
         binding.modeGroup.addOnButtonCheckedListener((group, checkedId, checked) -> { if (!checked) return; preferences.edit().putString("mode", checkedId == R.id.proxy_mode_button ? "manual" : checkedId == R.id.smart_mode_button ? "smart" : "vpn").apply(); updateModeUi(); });
         binding.splitSwitch.setOnCheckedChangeListener((button, checked) -> { binding.splitContainer.setVisibility(checked ? View.VISIBLE : View.GONE); saveSettings(); });
@@ -249,13 +274,17 @@ public final class MainActivity extends AppCompatActivity {
 
     /** Routes the connect to whichever engine the chosen exit location needs. */
     private void startSelectedEngine() {
-        if (!EngineRouter.usesRelay(preferences)) {
+        relayMode = EngineRouter.usesRelay(preferences);
+        if (!relayMode) {
             EngineRouter.stopAll(this);
             VpnConnectionController.connect(this, preferences);
             return;
         }
         // Relay mode runs OpenVPN, so the Aether core must not be holding the tunnel.
         VpnConnectionController.disconnect(this);
+        // The directory lookup happens off-thread and can take a second or two on a cold cache.
+        // Move the orb now so the press is visibly acknowledged instead of appearing to do nothing.
+        renderState("starting", getString(R.string.status_connecting));
         EngineRouter.connectRelay(this, preferences, new EngineRouter.RelayCallback() {
             @Override public void connecting(String countryName) {
                 binding.locationValue.setText(getString(R.string.relay_connecting, countryName));
@@ -268,13 +297,18 @@ public final class MainActivity extends AppCompatActivity {
             @Override public void failed(String reason) {
                 Toast.makeText(MainActivity.this, reason, Toast.LENGTH_LONG).show();
                 binding.locationValue.setText(R.string.connection_location_unavailable);
+                renderState("error", reason);
             }
         });
     }
 
     private void renderExitLocation() {
         String code = EngineRouter.location(preferences);
-        binding.exitLocationValue.setText(code == null ? getString(R.string.picker_automatic) : code);
+        if (code == null) {
+            binding.exitLocationValue.setText(R.string.picker_automatic);
+            return;
+        }
+        binding.exitLocationValue.setText(LocationPicker.flag(code) + "  " + EngineRouter.locationName(preferences));
     }
 
     private void openAppSelection() {
@@ -392,6 +426,6 @@ public final class MainActivity extends AppCompatActivity {
     private String text(com.google.android.material.textfield.TextInputEditText view) { return view.getText() == null ? "" : view.getText().toString().trim(); }
     private boolean validSocks(String value) { int split = value.lastIndexOf(':'); if (split <= 0) return false; try { int port = Integer.parseInt(value.substring(split + 1)); return port > 0 && port <= 65535; } catch (Exception ignored) { return false; } }
 
-    @Override protected void onStart() { super.onStart(); if (!receiverRegistered) { IntentFilter filter = new IntentFilter(); filter.addAction(AetherVpnService.ACTION_STATUS); filter.addAction(AetherVpnService.ACTION_STATS); filter.addAction(UpdateConfig.ACTION_STATE); ContextCompat.registerReceiver(this, receiver, filter, INTERNAL_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED); receiverRegistered = true; } startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_QUERY)); updateHandler.removeCallbacks(updateProgressPoll); updateHandler.post(updateProgressPoll); }
-    @Override protected void onStop() { updateHandler.removeCallbacks(updateProgressPoll); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
+    @Override protected void onStart() { super.onStart(); if (!receiverRegistered) { IntentFilter filter = new IntentFilter(); filter.addAction(AetherVpnService.ACTION_STATUS); filter.addAction(AetherVpnService.ACTION_STATS); filter.addAction(UpdateConfig.ACTION_STATE); ContextCompat.registerReceiver(this, receiver, filter, INTERNAL_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED); receiverRegistered = true; } if (relayStatus != null) relayStatus.register(); if (!relayMode) startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_QUERY)); updateHandler.removeCallbacks(updateProgressPoll); updateHandler.post(updateProgressPoll); }
+    @Override protected void onStop() { updateHandler.removeCallbacks(updateProgressPoll); if (relayStatus != null) relayStatus.unregister(); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
 }

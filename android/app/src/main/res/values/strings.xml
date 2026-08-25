@@ -194,6 +194,13 @@
     <string name="picker_automatic">Automatic</string>
     <string name="picker_automatic_detail">Fastest route. The exit country follows your network.</string>
     <string name="picker_unavailable">No relay list yet. Check your connection and try again.</string>
+    <string name="picker_subtitle">Automatic uses Panther\'s own route. Choosing a country routes you through a VPN Gate relay there.</string>
+    <string name="picker_search">Search countries</string>
+    <string name="picker_section_fastest">Fastest right now</string>
+    <string name="picker_section_all">All countries (%1$d)</string>
+    <string name="picker_no_match">No country matches that search.</string>
+    <string name="relay_no_country">No relays are available in that country right now. Try another one.</string>
+    <string name="relay_start_failed">Could not start a relay in %1$s. Try another country.</string>
     <string name="relay_connecting">Connecting through %1$s…</string>
     <string name="relay_connected">Connected via %1$s</string>
 </resources>

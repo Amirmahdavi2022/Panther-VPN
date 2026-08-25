@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
  */
 public final class EngineRouter {
     public static final String KEY_LOCATION = "exitLocation";
+    public static final String KEY_LOCATION_NAME = "exitLocationName";
     public static final String AUTOMATIC = "auto";
 
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
@@ -41,10 +42,26 @@ public final class EngineRouter {
         return AUTOMATIC.equals(value) || value == null || value.isEmpty() ? null : value;
     }
 
-    public static void setLocation(SharedPreferences preferences, String countryCode) {
+    public static void setLocation(SharedPreferences preferences, String countryCode,
+                                   String countryName) {
         preferences.edit()
                 .putString(KEY_LOCATION, countryCode == null ? AUTOMATIC : countryCode)
+                .putString(KEY_LOCATION_NAME, countryName == null ? "" : countryName)
                 .apply();
+    }
+
+    /**
+     * The display name of the stored country, or null when Automatic.
+     *
+     * The name is kept alongside the code because the home card should never have to fall back to
+     * showing a bare "US" - and looking the name up again would mean parsing the whole directory
+     * on the main thread just to draw one line of text.
+     */
+    public static String locationName(SharedPreferences preferences) {
+        String code = location(preferences);
+        if (code == null) return null;
+        String name = preferences.getString(KEY_LOCATION_NAME, "");
+        return name == null || name.isEmpty() ? code : name;
     }
 
     public static boolean usesRelay(SharedPreferences preferences) {
@@ -69,33 +86,35 @@ public final class EngineRouter {
         WORKER.execute(() -> {
             VpnGateRepository repository = new VpnGateRepository(context.getFilesDir());
             List<VpnGateServer> servers = repository.load(false);
-            List<VpnGateServer> candidates = VpnGateDirectory.inCountry(servers, countryCode);
+            List<VpnGateServer> found = VpnGateDirectory.inCountry(servers, countryCode);
 
-            if (candidates.isEmpty()) {
+            if (found.isEmpty()) {
                 // An empty cache on first run is the usual cause, so force one refresh before
                 // telling the user the country is unavailable.
-                servers = repository.load(true);
-                candidates = VpnGateDirectory.inCountry(servers, countryCode);
+                found = VpnGateDirectory.inCountry(repository.load(true), countryCode);
             }
+            final List<VpnGateServer> candidates = found;
 
             if (candidates.isEmpty()) {
-                MAIN.post(() -> callback.failed("No relays are available in that country right now."));
+                MAIN.post(() -> callback.failed(context.getString(
+                        com.firstham.aethergui.R.string.relay_no_country)));
                 return;
             }
 
             String countryName = candidates.get(0).countryName;
             MAIN.post(() -> callback.connecting(countryName));
 
-            List<VpnGateServer> attempt = candidates;
-            MAIN.post(() -> {
-                // The engine must be started from the main thread; it shows the system VPN dialog.
-                VpnGateServer started = VpnGateConnector.connectBest(context, attempt);
-                if (started == null) {
-                    callback.failed("Could not start any relay in " + countryName + ".");
-                } else {
-                    callback.connected(started);
-                }
-            });
+            // Parsing a relay profile means reading ~15KB of PEM and then writing the profile
+            // store to disk. VPN consent was already granted by the caller, so nothing here needs
+            // the main thread - and doing it there was stalling the UI at exactly the moment the
+            // user expects the orb to move.
+            VpnGateServer started = VpnGateConnector.connectBest(context, candidates);
+            if (started == null) {
+                MAIN.post(() -> callback.failed(context.getString(
+                        com.firstham.aethergui.R.string.relay_start_failed, countryName)));
+            } else {
+                MAIN.post(() -> callback.connected(started));
+            }
         });
     }
 
