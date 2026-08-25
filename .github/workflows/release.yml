@@ -10,8 +10,6 @@ on:
 
 permissions:
   contents: write
-  # So a failing build can report itself as an issue - CI logs are not always reachable.
-  issues: write
 
 jobs:
   build:
@@ -90,34 +88,29 @@ jobs:
           Set-Location android
           ./gradlew.bat assembleDebug lintDebug
 
-      - name: Report the failure as an issue
+      - name: Publish the failure log
         if: failure()
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Gradle's message is the only thing that says why a build broke, and the raw log is
-          # not always downloadable. Put the tail somewhere it can always be read.
+          # Issues are disabled on this repository and raw CI logs are not always downloadable,
+          # so the only channel guaranteed to work is the repository itself. Push the tail of the
+          # Gradle output to a dedicated branch that is never merged.
           $logPath = Join-Path $env:GITHUB_WORKSPACE "build.log"
-          if (Test-Path $logPath) {
-            $tail = (Get-Content $logPath -Tail 120) -join [Environment]::NewLine
-          } else {
-            $tail = "No build.log was produced; the run failed before Gradle started."
+          if (-not (Test-Path $logPath)) {
+            Set-Content -Path $logPath -Value "No build.log; the run failed before Gradle started."
           }
           $short = $env:GITHUB_SHA.Substring(0, 7)
-          $url = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          $fence = [string][char]96 * 3
-          $lines = @(
-            "Commit ``$short`` failed in [run $env:GITHUB_RUN_ID]($url).",
-            "",
-            "Last 120 lines of Gradle output:",
-            "",
-            $fence,
-            $tail,
-            $fence
-          )
-          Set-Content -Path failure.md -Value $lines -Encoding utf8
-          gh issue create --title "Build failed on $short" --body-file failure.md | Write-Host
+          New-Item -ItemType Directory -Force ci-logs | Out-Null
+          Get-Content $logPath -Tail 400 | Set-Content -Path "ci-logs/$short.log" -Encoding utf8
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan ci-failures 2>$null
+          git reset
+          git add -f "ci-logs/$short.log"
+          git commit -q -m "Build failure log for $short"
+          git push -f origin ci-failures
+          Write-Host "Failure log pushed to the ci-failures branch as ci-logs/$short.log"
 
       - name: Stage release files
         shell: pwsh
