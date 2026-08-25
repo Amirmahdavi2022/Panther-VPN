@@ -134,7 +134,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          $version = (Get-Content package.json | ConvertFrom-Json).version
+          # The tag is the release's identity, so name the files after it. package.json was the
+          # old source and it drifted: v2.1.3 and v2.2.0 both shipped files called v2.1.0, which
+          # is exactly how someone installs yesterday's APK by accident.
+          $version = if ($env:GITHUB_REF_NAME -match '^v(.+)$') { $Matches[1] } else { (Get-Content package.json | ConvertFrom-Json).version }
           Copy-Item android/app/build/outputs/apk/release/app-universal-release.apk   "release/Panther-VPN-v${version}-Universal.apk"
           Copy-Item android/app/build/outputs/apk/release/app-arm64-v8a-release.apk   "release/Panther-VPN-v${version}-ARM64.apk"
           Copy-Item android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "release/Panther-VPN-v${version}-ARMv7.apk"
