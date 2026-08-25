@@ -27,16 +27,18 @@ subprojects {
                 abortOnError = false
                 checkReleaseBuilds = false
             }
-            buildTypes {
-                release {
-                    // vpnLib shrinks and obfuscates itself before :app ever sees it, which renames
-                    // engine classes the host has to name literally - LaunchVPN in the manifest is
-                    // the visible case, and anything reached by reflection or a serialised profile
-                    // is the invisible one. There is nothing to gain from shrinking twice: :app
-                    // still minifies, and its rules keep de.blinkt.openvpn.** by name.
-                    minifyEnabled false
-                }
-            }
+        }
+        // vpnLib shrinks and obfuscates itself before :app ever sees it, which renames engine
+        // classes the host has to name literally - LaunchVPN in the manifest is the visible case,
+        // and anything reached by reflection or through a serialised profile is the invisible one.
+        // Shrinking twice buys nothing: :app still minifies, and its rules keep
+        // de.blinkt.openvpn.** by name.
+        //
+        // This has to run in afterEvaluate. The plugins.withId callback fires the moment the
+        // plugin is applied, which is the first line of vpnLib's own build script - so anything
+        // set here is overwritten a few lines later by its own buildTypes block.
+        afterEvaluate {
+            android.buildTypes.release.minifyEnabled = false
         }
     }
 }
