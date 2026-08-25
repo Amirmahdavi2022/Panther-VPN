@@ -45,6 +45,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import com.firstham.aethergui.vpngate.EngineRouter;
+import com.firstham.aethergui.vpngate.LocationPicker;
 
 public final class MainActivity extends AppCompatActivity {
     private static final int VPN_REQUEST = 41;
@@ -187,6 +189,12 @@ public final class MainActivity extends AppCompatActivity {
 
     private void setupActions() {
         binding.connectButton.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); if (shouldDisconnect()) disconnect(); else connect(); });
+        binding.exitLocationCard.setOnClickListener(v -> LocationPicker.show(this, EngineRouter.location(preferences), (code, name) -> {
+            EngineRouter.setLocation(preferences, code);
+            renderExitLocation();
+            // Changing the exit is a handover between two engines, so drop whatever is running.
+            if (shouldDisconnect()) disconnect();
+        }));
         binding.modeGroup.addOnButtonCheckedListener((group, checkedId, checked) -> { if (!checked) return; preferences.edit().putString("mode", checkedId == R.id.proxy_mode_button ? "manual" : checkedId == R.id.smart_mode_button ? "smart" : "vpn").apply(); updateModeUi(); });
         binding.splitSwitch.setOnCheckedChangeListener((button, checked) -> { binding.splitContainer.setVisibility(checked ? View.VISIBLE : View.GONE); saveSettings(); });
         binding.routingGroup.setOnCheckedChangeListener((group, checkedId) -> { saveSettings(); updateSelectedCount(); });
@@ -213,6 +221,7 @@ public final class MainActivity extends AppCompatActivity {
         setSelection(binding.logInput, "log", 0, R.array.log_labels);
         setSelection(binding.themeInput, "theme", 2, R.array.theme_labels);
         binding.socksInput.setText(preferences.getString("socks", getString(R.string.default_socks_address)));
+        renderExitLocation();
         binding.peerInput.setText(preferences.getString("peer", "")); binding.mtuInput.setText(preferences.getString("mtu", getString(R.string.default_mtu)));
         binding.dnsSwitch.setChecked(preferences.getBoolean("dnsLeak", true)); binding.killswitchSwitch.setChecked(preferences.getBoolean("killSwitch", false)); binding.reconnectSwitch.setChecked(preferences.getBoolean("quickReconnect", true));
         boolean split = preferences.getInt("routing", 0) >= 2; binding.splitSwitch.setChecked(split); binding.splitContainer.setVisibility(split ? View.VISIBLE : View.GONE); binding.routingGroup.check(preferences.getInt("routing", 2) == 3 ? R.id.exclude_apps_radio : R.id.include_apps_radio); updateModeUi(); updateSelectedCount();
@@ -228,17 +237,52 @@ public final class MainActivity extends AppCompatActivity {
         if (binding.splitSwitch.isChecked() && selectedPackages().isEmpty() && binding.routingGroup.getCheckedRadioButtonId() == R.id.include_apps_radio) { Toast.makeText(this, R.string.split_include_empty, Toast.LENGTH_LONG).show(); return; }
         saveSettings();
         if (!"manual".equals(preferences.getString("mode", "vpn"))) { Intent permission = VpnService.prepare(this); if (permission != null) { startActivityForResult(permission, VPN_REQUEST); return; } }
-        VpnConnectionController.connect(this, preferences);
+        startSelectedEngine();
     }
 
-    private void disconnect() { VpnConnectionController.disconnect(this); }
+    private void disconnect() {
+        // Only one VpnService can hold the tunnel, but either engine may be the one holding it,
+        // so stop both rather than guessing which.
+        VpnConnectionController.disconnect(this);
+        EngineRouter.stopAll(this);
+    }
+
+    /** Routes the connect to whichever engine the chosen exit location needs. */
+    private void startSelectedEngine() {
+        if (!EngineRouter.usesRelay(preferences)) {
+            EngineRouter.stopAll(this);
+            VpnConnectionController.connect(this, preferences);
+            return;
+        }
+        // Relay mode runs OpenVPN, so the Aether core must not be holding the tunnel.
+        VpnConnectionController.disconnect(this);
+        EngineRouter.connectRelay(this, preferences, new EngineRouter.RelayCallback() {
+            @Override public void connecting(String countryName) {
+                binding.locationValue.setText(getString(R.string.relay_connecting, countryName));
+            }
+
+            @Override public void connected(com.firstham.aethergui.vpngate.VpnGateServer server) {
+                binding.locationValue.setText(getString(R.string.relay_connected, server.countryName));
+            }
+
+            @Override public void failed(String reason) {
+                Toast.makeText(MainActivity.this, reason, Toast.LENGTH_LONG).show();
+                binding.locationValue.setText(R.string.connection_location_unavailable);
+            }
+        });
+    }
+
+    private void renderExitLocation() {
+        String code = EngineRouter.location(preferences);
+        binding.exitLocationValue.setText(code == null ? getString(R.string.picker_automatic) : code);
+    }
 
     private void openAppSelection() {
         String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps";
         startActivityForResult(new Intent(this, AppSelectionActivity.class).putExtra(AppSelectionActivity.EXTRA_PACKAGES, preferences.getString(key, "")), APPS_REQUEST);
     }
 
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) { super.onActivityResult(requestCode, resultCode, data); if (requestCode == VPN_REQUEST) { if (resultCode == RESULT_OK) VpnConnectionController.connect(this, preferences); else Toast.makeText(this, R.string.vpn_permission_denied, Toast.LENGTH_LONG).show(); } else if (requestCode == APPS_REQUEST) { if (data != null && data.getBooleanExtra(AppSelectionActivity.EXTRA_RETURN_HOME, false)) showPage("connect"); else if (resultCode == RESULT_OK && data != null) { String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; preferences.edit().putString(key, data.getStringExtra(AppSelectionActivity.EXTRA_PACKAGES)).apply(); updateSelectedCount(); saveSettings(); } } }
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) { super.onActivityResult(requestCode, resultCode, data); if (requestCode == VPN_REQUEST) { if (resultCode == RESULT_OK) startSelectedEngine(); else Toast.makeText(this, R.string.vpn_permission_denied, Toast.LENGTH_LONG).show(); } else if (requestCode == APPS_REQUEST) { if (data != null && data.getBooleanExtra(AppSelectionActivity.EXTRA_RETURN_HOME, false)) showPage("connect"); else if (resultCode == RESULT_OK && data != null) { String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; preferences.edit().putString(key, data.getStringExtra(AppSelectionActivity.EXTRA_PACKAGES)).apply(); updateSelectedCount(); saveSettings(); } } }
 
     private void renderState(String newState, String message) {
         state = newState == null ? "disconnected" : newState;
@@ -285,9 +329,15 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private String formatTraffic(long bytes) {
-        if (bytes < 1024L * 1024L) return getString(R.string.traffic_kilobytes, bytes / 1024.0);
-        if (bytes < 1024L * 1024L * 1024L) return getString(R.string.traffic_megabytes, bytes / (1024.0 * 1024.0));
-        return getString(R.string.traffic_gigabytes, bytes / (1024.0 * 1024.0 * 1024.0));
+        // getString() formats with the device locale, which renders Persian or Arabic digits on
+        // phones set to those languages. The app is English-only, so pin the digits to match.
+        if (bytes < 1024L * 1024L) {
+            return String.format(java.util.Locale.US, getString(R.string.traffic_kilobytes), bytes / 1024.0);
+        }
+        if (bytes < 1024L * 1024L * 1024L) {
+            return String.format(java.util.Locale.US, getString(R.string.traffic_megabytes), bytes / (1024.0 * 1024.0));
+        }
+        return String.format(java.util.Locale.US, getString(R.string.traffic_gigabytes), bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
     private void resetStats() {

@@ -188,4 +188,12 @@
     <string name="install_permission_required">Allow Panther VPN to install updates, then try again.</string>
     <string name="update_download_started">Update download started.</string>
     <string name="update_no_download">No verified update is ready to install.</string>
+    <string name="exit_location_label">EXIT LOCATION</string>
+    <string name="picker_title">Choose an exit location</string>
+    <string name="picker_change">Change</string>
+    <string name="picker_automatic">Automatic</string>
+    <string name="picker_automatic_detail">Fastest route. The exit country follows your network.</string>
+    <string name="picker_unavailable">No relay list yet. Check your connection and try again.</string>
+    <string name="relay_connecting">Connecting through %1$s…</string>
+    <string name="relay_connected">Connected via %1$s</string>
 </resources>

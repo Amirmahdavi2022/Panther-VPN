@@ -81,11 +81,19 @@
                         android:orientation="vertical"
                         android:visibility="visible">
 
-                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/card_background" android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
+                        <LinearLayout android:id="@+id/exit_location_card" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/card_background" android:clickable="true" android:focusable="true" android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
                             <FrameLayout android:layout_width="38dp" android:layout_height="38dp" android:background="@drawable/icon_badge_blue">
                                 <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:contentDescription="@null" android:src="@drawable/ic_globe" />
                             </FrameLayout>
                             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="13dp" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:id="@+id/exit_location_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="1" android:text="@string/picker_automatic" android:textColor="@color/text" android:textSize="15sp" android:textStyle="bold" />
+                                <TextView android:id="@+id/exit_location_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/exit_location_label" android:textColor="@color/muted" android:textSize="12sp" />
+                            </LinearLayout>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/picker_change" android:textColor="@color/blue_600" android:textSize="13sp" android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/card_background" android:gravity="center_vertical" android:orientation="horizontal" android:padding="14dp">
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                                 <TextView android:id="@+id/location_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="2" android:text="@string/connection_location_unavailable" android:textColor="@color/text" android:textSize="15sp" android:textStyle="bold" />
                                 <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/node_label" android:textColor="@color/muted" android:textSize="12sp" />
                             </LinearLayout>
