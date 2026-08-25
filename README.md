@@ -1,7 +1,7 @@
 # Panther VPN
 
-An open-source Android VPN client with two independent free networks behind one connect button.
-No account, no subscription, and nothing to paste in — you install it and press Connect.
+An open-source Android VPN client with a free network behind one connect button. No account, no
+subscription, and nothing to paste in — you install it and press Connect.
 
 [Releases](https://github.com/amirmahdavi2023/Panther-VPN/releases) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Third-party notices](NOTICE.md)
 
@@ -14,41 +14,43 @@ find a working server and paste it in. Panther ships the network too.
 
 | Mode | Network | Where the exit is | Needs a server of yours |
 |---|---|---|---|
-| **Automatic** | Cloudflare WARP, via the Aether core | Nearest Cloudflare datacenter — fast, but not selectable | No |
-| **Relay** | [VPN Gate](https://www.vpngate.net/), via OpenVPN | A country you pick, from dozens of volunteer relays | No |
+| **Automatic** | Cloudflare WARP, via the Aether core | Nearest Cloudflare datacenter | No |
 | **Custom** | Your own endpoint | Wherever you point it | Yes |
 
-**Automatic** is the default and the fastest path. WARP endpoints are anycast, so the exit country
-follows your network's routing and cannot be chosen — that is a property of WARP, not a limitation
-of this app.
-
-**Relay** is where location selection lives. The relay list is fetched live from VPN Gate's public
-directory every few hours, so new servers appear without an app update, and dead ones drop off.
+**Automatic** is the default and needs nothing from you. WARP endpoints are anycast, so the exit
+country follows your network's routing and cannot be chosen — that is a property of WARP, not a
+limitation of this app. If you need a specific country, you need **Custom** and a server you rent.
 
 ---
 
-## Choosing a location
+## Why there is no country picker
 
-The relay directory is public, volunteer-run, and changes constantly. Panther deals with that
-rather than pretending otherwise:
+There used to be one. Versions up to 2.2.0 offered a second network — relays from
+[VPN Gate](https://www.vpngate.net/), a public volunteer directory — and let you pick an exit
+country from it.
 
-- Relays are ranked by VPN Gate's own score, with throughput and latency breaking ties.
-- Relays advertising no usable OpenVPN profile are dropped before you ever see them.
-- Picking a country tries the best relay, then the next, up to three — volunteer machines go
-  offline without warning, and one dead host should not read as "the country is broken".
-- The last good directory is cached on disk. A failed refresh keeps the previous list instead of
-  emptying it, so a bad network moment does not leave you with nothing to connect to.
+It was removed in 2.3.0, and the reason is worth stating plainly: **the relays mostly did not
+connect.** They are public, heavily abused OpenVPN endpoints, and they refuse the handshake far
+more often than they complete it — especially from the networks where a VPN is most needed,
+because OpenVPN is easy to fingerprint and gets filtered by protocol. A country list where most
+entries fail is worse than offering no list, because every failure looks like the app is broken.
+
+Upgrading resets any saved country back to Automatic, once and silently, so nobody is left
+pointed at a dead relay.
+
+The relay code is still in the tree and the decision is reversible. If a relay source turns up
+that is actually reliable, the picker comes back.
 
 ---
 
 ## Honest limitations
 
-- **Relay mode is not a fixed IP.** You choose a country; the address within it varies by relay
-  and over time. A genuinely fixed IP requires a server you rent — no free network provides one.
-- **Relay servers are run by volunteers.** Speed and uptime vary a lot, and the operator of an
-  exit can see traffic leaving it, exactly as with any VPN. Use HTTPS.
-- **Relay mode uses OpenVPN**, which is easy to fingerprint. In countries that filter by protocol
-  it may not connect at all; Automatic mode is far more resilient there.
+- **You cannot choose your exit country.** Automatic uses WARP, which is anycast — the exit
+  follows your network's routing. No free network gives you a chosen country or a fixed IP; that
+  needs a server you rent, which is what Custom mode is for.
+- **The exit operator can see traffic leaving it**, exactly as with any VPN. Use HTTPS.
+- **This is not anonymity.** It moves where your traffic appears to come from. It does not make
+  you untraceable, and it is not a substitute for Tor if that is what you actually need.
 - **Android only.** The Windows client was removed in 2.0.0.
 
 ---
@@ -77,15 +79,13 @@ a green build once shipped without one, and that is not repeatable.
 cd android && ./gradlew testReleaseUnitTest
 ```
 
-The directory parser and the profile adapter are plain Java and are covered by unit tests,
-because those are the parts where a live volunteer feed can be malformed in ways that are
-painful to debug from a user's screenshot.
+The parsing and adapter layers are plain Java and covered by unit tests, because those are the
+parts that fail in ways that are painful to debug from a user's screenshot.
 
 ---
 
 ## Staying current
 
-- **Relay servers** need no updates. The directory is fetched at runtime.
 - **Native cores** are watched by a weekly job that opens a pull request when upstream publishes
   a release. It opens a PR rather than merging: native code that ships to every user should get
   a build and a look first.
@@ -99,8 +99,6 @@ painful to debug from a user's screenshot.
 Panther is AGPL-3.0. It stands on work by others:
 
 - [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether) — the WARP networking core
-- [VPN Gate](https://www.vpngate.net/) — the volunteer relay network and its public directory,
-  an academic project of the University of Tsukuba, Japan
 - [hoang-rio/vpnLib](https://github.com/hoang-rio/vpnLib) — the Android OpenVPN engine (GPL-3.0)
 - [heiher/hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel) — the TUN bridge
 
