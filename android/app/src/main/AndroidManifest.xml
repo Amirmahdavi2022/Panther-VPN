@@ -82,16 +82,11 @@
             android:name="de.blinkt.openvpn.core.keepVPNAlive"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false" />
-        <!-- The engine falls back to this activity when it starts without VPN consent, and it is
-             the target of its own "permission requested" notification. Undeclared, that path is a
-             dead end: the service stops and nothing on screen ever says why. -->
-        <activity
-            android:name="de.blinkt.openvpn.LaunchVPN"
-            android:exported="false"
-            android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar" />
-        <service
-            android:name="de.blinkt.openvpn.core.OpenVPNStatusService"
-            android:exported="false" />
+        <!-- Deliberately NOT declared: de.blinkt.openvpn.LaunchVPN and OpenVPNStatusService.
+             vpnLib runs its own R8 pass, so those two classes do not exist under their source
+             names in the built library and lint rejects the manifest. Nothing needs them here -
+             MainActivity asks for VPN consent with VpnService.prepare() before either engine
+             starts, so the engine's own consent fallback is never reached. -->
 
     </application>
 </manifest>
