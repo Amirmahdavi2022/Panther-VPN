@@ -47,7 +47,6 @@ import java.util.Locale;
 import java.util.Set;
 import com.firstham.aethergui.vpngate.EngineRouter;
 import com.firstham.aethergui.vpngate.LocationPicker;
-import com.firstham.aethergui.vpngate.RelayStatus;
 
 public final class MainActivity extends AppCompatActivity {
     private static final int VPN_REQUEST = 41;
@@ -63,7 +62,6 @@ public final class MainActivity extends AppCompatActivity {
     private String endpoint = "";
     /** True while the chosen exit location routes through the OpenVPN relay engine. */
     private boolean relayMode;
-    private RelayStatus relayStatus;
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
     private final Runnable updateProgressPoll = new Runnable() {
         @Override public void run() {
@@ -122,19 +120,14 @@ public final class MainActivity extends AppCompatActivity {
         binding.currentVersionValue.setText(BuildConfig.VERSION_NAME);
         binding.autoDownloadSwitch.setChecked(getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE).getBoolean(UpdateConfig.KEY_AUTO_DOWNLOAD, false));
         renderUpdateState();
-        relayMode = EngineRouter.usesRelay(preferences);
-        relayStatus = new RelayStatus(this, new RelayStatus.Listener() {
-            @Override public void relayState(String relay, String message) {
-                if (!relayMode) return;
-                if ("connected".equals(relay)) endpoint = EngineRouter.locationName(preferences);
-                renderState(relay, message);
-            }
-
-            @Override public void relayTraffic(long tx, long rx) {
-                if (!relayMode) return;
-                renderStats(new Intent().putExtra("tx", tx).putExtra("rx", rx).putExtra("ping", -1L));
-            }
-        });
+        // The VPN Gate relay countries are public, heavily abused endpoints; in practice they
+        // refuse the handshake far more often than they accept it, and a country list that mostly
+        // fails is worse than no country list. Automatic (the Aether core) is the only exit now.
+        // Anyone whose preferences still point at a country gets moved back here, once, silently.
+        EngineRouter.setLocation(preferences, null, null);
+        relayMode = false;
+        binding.exitLocationCard.setVisibility(View.GONE);
+        binding.exitLocationCard.setClickable(false);
         renderState("disconnected", getString(R.string.status_ready_message));
         if (getIntent().getBooleanExtra(AethonTileService.EXTRA_CONNECT_FROM_TILE, false)) {
             getIntent().removeExtra(AethonTileService.EXTRA_CONNECT_FROM_TILE);
@@ -210,16 +203,6 @@ public final class MainActivity extends AppCompatActivity {
 
     private void setupActions() {
         binding.connectButton.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); if (shouldDisconnect()) disconnect(); else connect(); });
-        binding.exitLocationCard.setOnClickListener(v -> LocationPicker.show(this, EngineRouter.location(preferences), (code, name) -> {
-            // Changing the exit is a handover between two engines, so drop whatever is running
-            // BEFORE the mode flips - otherwise disconnect() runs against the wrong engine.
-            if (shouldDisconnect()) disconnect();
-            EngineRouter.setLocation(preferences, code, name);
-            relayMode = EngineRouter.usesRelay(preferences);
-            endpoint = "";
-            renderExitLocation();
-            renderState("disconnected", getString(R.string.status_ready_message));
-        }));
         binding.modeGroup.addOnButtonCheckedListener((group, checkedId, checked) -> { if (!checked) return; preferences.edit().putString("mode", checkedId == R.id.proxy_mode_button ? "manual" : checkedId == R.id.smart_mode_button ? "smart" : "vpn").apply(); updateModeUi(); });
         binding.splitSwitch.setOnCheckedChangeListener((button, checked) -> { binding.splitContainer.setVisibility(checked ? View.VISIBLE : View.GONE); saveSettings(); });
         binding.routingGroup.setOnCheckedChangeListener((group, checkedId) -> { saveSettings(); updateSelectedCount(); });
@@ -426,6 +409,6 @@ public final class MainActivity extends AppCompatActivity {
     private String text(com.google.android.material.textfield.TextInputEditText view) { return view.getText() == null ? "" : view.getText().toString().trim(); }
     private boolean validSocks(String value) { int split = value.lastIndexOf(':'); if (split <= 0) return false; try { int port = Integer.parseInt(value.substring(split + 1)); return port > 0 && port <= 65535; } catch (Exception ignored) { return false; } }
 
-    @Override protected void onStart() { super.onStart(); if (!receiverRegistered) { IntentFilter filter = new IntentFilter(); filter.addAction(AetherVpnService.ACTION_STATUS); filter.addAction(AetherVpnService.ACTION_STATS); filter.addAction(UpdateConfig.ACTION_STATE); ContextCompat.registerReceiver(this, receiver, filter, INTERNAL_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED); receiverRegistered = true; } if (relayStatus != null) relayStatus.register(); if (!relayMode) startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_QUERY)); updateHandler.removeCallbacks(updateProgressPoll); updateHandler.post(updateProgressPoll); }
-    @Override protected void onStop() { updateHandler.removeCallbacks(updateProgressPoll); if (relayStatus != null) relayStatus.unregister(); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
+    @Override protected void onStart() { super.onStart(); if (!receiverRegistered) { IntentFilter filter = new IntentFilter(); filter.addAction(AetherVpnService.ACTION_STATUS); filter.addAction(AetherVpnService.ACTION_STATS); filter.addAction(UpdateConfig.ACTION_STATE); ContextCompat.registerReceiver(this, receiver, filter, INTERNAL_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED); receiverRegistered = true; } if (!relayMode) startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_QUERY)); updateHandler.removeCallbacks(updateProgressPoll); updateHandler.post(updateProgressPoll); }
+    @Override protected void onStop() { updateHandler.removeCallbacks(updateProgressPoll); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
 }
