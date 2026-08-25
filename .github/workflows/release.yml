@@ -50,6 +50,24 @@ jobs:
           }
           if ($missing.Count) { throw "Native cores missing: $($missing -join ', ')" }
 
+      - name: Let :app shrink the VPN engine, not vpnLib itself
+        shell: pwsh
+        run: |
+          # vpnLib ships `minifyEnabled true`, so it runs its OWN R8 pass and publishes an
+          # obfuscated library. Consumers still COMPILE against the un-obfuscated classes, so any
+          # engine class the library's proguard file forgets to keep compiles fine and then throws
+          # NoClassDefFoundError on device. That is exactly what crashed the app on launch.
+          # Shrinking once, in :app, where proguard-rules.pro keeps de.blinkt.** wholesale, removes
+          # the entire class of bug. Fail loudly rather than silently building the broken shape.
+          $f = 'android/vpnLib/build.gradle'
+          if (-not (Test-Path $f)) { throw "$f is missing - was the submodule checked out?" }
+          $before = Get-Content $f -Raw
+          if ($before -notmatch 'minifyEnabled\s+true') { throw "Expected 'minifyEnabled true' in $f and did not find it. Refusing to build a shape nobody has checked." }
+          $after = $before -replace 'minifyEnabled\s+true', 'minifyEnabled false'
+          Set-Content -Path $f -Value $after -NoNewline
+          if ((Get-Content $f -Raw) -match 'minifyEnabled\s+true') { throw "Patch did not apply to $f." }
+          Write-Host "vpnLib self-minification disabled."
+
       - name: Run unit tests
         shell: pwsh
         run: |

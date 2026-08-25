@@ -82,11 +82,18 @@
             android:name="de.blinkt.openvpn.core.keepVPNAlive"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false" />
-        <!-- Deliberately NOT declared: de.blinkt.openvpn.LaunchVPN and OpenVPNStatusService.
-             vpnLib runs its own R8 pass, so those two classes do not exist under their source
-             names in the built library and lint rejects the manifest. Nothing needs them here -
-             MainActivity asks for VPN consent with VpnService.prepare() before either engine
-             starts, so the engine's own consent fallback is never reached. -->
+        <!-- These two were previously undeclarable: vpnLib's own R8 pass renamed them away, so
+             lint rejected the manifest. CI now disables that pass, so they exist under their real
+             names and the engine's fallback paths - asking for a credential mid-session, and
+             re-requesting VPN consent if the service lost it - can actually reach their targets
+             instead of dying on an unresolved Intent. -->
+        <activity
+            android:name="de.blinkt.openvpn.LaunchVPN"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <service
+            android:name="de.blinkt.openvpn.core.OpenVPNStatusService"
+            android:exported="false" />
 
     </application>
 </manifest>

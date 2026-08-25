@@ -7,7 +7,6 @@ import android.os.Looper;
 import java.util.Locale;
 
 import de.blinkt.openvpn.core.ConnectionStatus;
-import de.blinkt.openvpn.core.LogItem;
 import de.blinkt.openvpn.core.VpnStatus;
 
 /**
@@ -107,31 +106,34 @@ public final class RelayStatus implements VpnStatus.StateListener, VpnStatus.Byt
      */
     private String describe(ConnectionStatus level, String fallback) {
         if (level == ConnectionStatus.LEVEL_CONNECTED) return null;
-        String detail = lastFailureLine();
-        if (detail != null) return detail;
-        String clean = VpnStatus.getLastCleanLogMessage(context);
-        if (clean != null && !clean.trim().isEmpty()) return clean.trim();
+        try {
+            String detail = lastFailureLine();
+            if (detail != null) return detail;
+            String clean = VpnStatus.getLastCleanLogMessage(context);
+            if (clean != null && !clean.trim().isEmpty()) return clean.trim();
+        } catch (Throwable ignored) {
+            // Same rule as above: never let a status message kill the activity.
+        }
         return fallback;
     }
 
-    /** The most recent engine log line that reads like a cause rather than progress noise. */
+    /** The most recent engine line that reads like a cause rather than progress noise. */
     private String lastFailureLine() {
         try {
-            LogItem[] buffer = VpnStatus.getlogbuffer();
-            for (int i = buffer.length - 1; i >= 0 && i > buffer.length - 40; i--) {
-                String line = buffer[i].getString(context);
-                if (line == null) continue;
-                String lower = line.toLowerCase(Locale.US);
-                if (lower.contains("auth_failed") || lower.contains("tls error")
-                        || lower.contains("tls handshake failed") || lower.contains("connection refused")
-                        || lower.contains("cannot resolve") || lower.contains("no route to host")
-                        || lower.contains("network is unreachable") || lower.contains("cipher")
-                        || lower.contains("options error") || lower.contains("fatal")) {
-                    return line.length() > 160 ? line.substring(0, 160) + "…" : line;
-                }
+            String line = VpnStatus.getLastCleanLogMessage(context);
+            if (line == null) return null;
+            String lower = line.toLowerCase(Locale.US);
+            if (lower.contains("auth_failed") || lower.contains("tls error")
+                    || lower.contains("tls handshake failed") || lower.contains("connection refused")
+                    || lower.contains("cannot resolve") || lower.contains("no route to host")
+                    || lower.contains("network is unreachable") || lower.contains("cipher")
+                    || lower.contains("options error") || lower.contains("fatal")) {
+                return line.length() > 160 ? line.substring(0, 160) + "\u2026" : line;
             }
-        } catch (Exception ignored) {
-            // A diagnostic must never be the thing that breaks the screen.
+        } catch (Throwable ignored) {
+            // A diagnostic must never be the thing that breaks the screen - and it must catch
+            // Throwable, not Exception: a class the engine's own shrinker renamed away arrives as
+            // NoClassDefFoundError, which an Exception catch lets straight through.
         }
         return null;
     }
