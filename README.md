@@ -13,12 +13,23 @@ Most of the free VPN apps on GitHub are really just config managers. You get a n
 you still have to go hunt down a working server and paste it in yourself. Panther brings the
 network with it.
 
-| Mode | Network | Where you come out | Need your own server? |
+| Mode | Where you come out | Speed | Need your own server? |
 |---|---|---|---|
-| **Automatic** | Cloudflare WARP, through the Aether core | Nearest Cloudflare datacenter | No |
-| **Custom** | Whatever endpoint you give it | Wherever you point it | Yes |
+| **Turbo** | Nearest Cloudflare datacenter | Fastest | No |
+| **Global** | Another country | Slower, two hops | No |
+| **Custom** | Wherever you point it | Depends | Yes |
 
-Automatic is the default and needs nothing from you.
+Turbo and Global sit as two cards above the connect button and you tap between
+them. Turbo is the default. Neither needs anything from you.
+
+Turbo runs on Cloudflare WARP through the Aether core. It hides your IP and your
+ISP but it does not move you, because WARP is built to keep your rough location
+rather than change it. Sites still see the country you're actually in.
+
+Global is the one that moves you. It rides inside Turbo rather than dialling out
+on its own, which is what makes it work on filtered networks. It picks the exit
+country itself and then tells the app which one it landed on, so what you see on
+the card is what the engine reports, not a guess.
 
 ---
 
@@ -31,6 +42,11 @@ It figures that out by asking a public lookup service, and it asks **through the
 the SOCKS proxy the core is already running on. So the service only ever sees the exit address,
 never your phone. There's no API key anywhere and nothing gets stored. Tap the card if you want
 it to check again.
+
+On Global there's a second answer too, straight from the engine, which names the country it
+connected through. When that and the address lookup disagree, the card shows both rather than
+picking a winner. A location that's quietly wrong is worse than one that visibly needs a second
+look.
 
 Four services are in the list and it walks down them until one answers:
 
@@ -46,30 +62,27 @@ instead of a wrong answer.
 
 ---
 
-## Why there's no country picker
+## About picking a country
 
-There used to be one. Up to 2.2.0 you could pick an exit country off a second network, relays from
-[VPN Gate](https://www.vpngate.net/).
+Global chooses the exit itself right now. There's no country list in the UI yet.
+The engine underneath does support asking for a specific country, so the list is
+coming, but I'd rather ship the part that works than a dropdown full of entries
+that half fail.
 
-It got pulled in 2.3.0 and the honest reason is that the relays mostly just didn't connect. They're
-public OpenVPN endpoints that everyone hammers, and they refuse the handshake way more often than
-they finish it. Worst of all on exactly the networks where you'd want a VPN in the first place,
-since OpenVPN is easy to fingerprint and gets filtered. A country list where half the entries fail
-is worse than having no list at all, because every failure just looks like the app is broken.
-
-Upgrading quietly resets any country you'd saved back to Automatic so nobody's left pointing at a
-dead relay.
-
-The relay code is still sitting in the tree, so if a relay source ever turns up that actually
-works, the picker can come back.
-
----
+There used to be a picker up to 2.2.0, running on public relays from
+[VPN Gate](https://www.vpngate.net/). It got pulled in 2.3.0 because the relays
+mostly just didn't connect. They're public OpenVPN endpoints that everyone
+hammers, and they refuse the handshake more often than they finish it. Worst of
+all on exactly the networks where you'd want a VPN. A list where half the entries
+fail is worse than no list, because every failure looks like the app is broken.
 
 ## Stuff you should know
 
-- **You can't pick your exit country.** Automatic runs on WARP, which is anycast, so where you
-  come out follows your network's routing. No free network is going to hand you a country of your
-  choice or a fixed IP. That needs a server you pay for, which is what Custom mode is there for.
+- **Turbo does not change your country.** That's WARP working as designed, not a bug. If you
+  want a different country, use Global.
+- **Global is slower.** It's two hops. That's the cost of getting out.
+- **Global's first connect is slow.** A minute or two while it brings up the carrier and finds a
+  route. After that it's quicker.
 - **Whoever runs the exit can see traffic leaving it.** Same as any VPN. Use HTTPS.
 - **This isn't anonymity.** It changes where your traffic looks like it's coming from. It doesn't
   make you untraceable and it's no replacement for Tor if Tor is what you actually need.
@@ -90,6 +103,10 @@ cd android && ./gradlew assembleRelease
 
 Don't skip `--recurse-submodules`. The OpenVPN engine is a pinned submodule and the build just
 fails without it.
+
+`npm run fetch:android` also pulls the Global engine, which ships as an official prebuilt
+Android library. Nothing here builds Go and there's no gomobile step. That library isn't signed by
+its publisher, so the build pins it by SHA-256 and stops dead if the hash moves.
 
 Every native core gets pulled from its upstream release and checked against a published SHA-256
 before it goes in the APK. CI also fails the build if any core is missing from `jniLibs`, because
@@ -125,6 +142,9 @@ Panther is AGPL-3.0 and it's built on other people's work:
 - [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether) for the WARP core
 - [hoang-rio/vpnLib](https://github.com/hoang-rio/vpnLib) for the Android OpenVPN engine (GPL-3.0)
 - [heiher/hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel) for the TUN bridge
+- [Psiphon-Labs/psiphon-tunnel-core](https://github.com/Psiphon-Labs/psiphon-tunnel-core) for the
+  Global engine (GPL-3.0). Panther isn't affiliated with them, so please don't send them Panther
+  bugs either.
 
 Panther is a fork of [hamvex/AetherGUI](https://github.com/hamvex/AetherGUI) and isn't affiliated
 with, endorsed by or supported by any project up there. Please don't send Panther bugs to them.
