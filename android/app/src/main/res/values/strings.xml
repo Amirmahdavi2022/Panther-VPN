@@ -40,6 +40,8 @@
     <string name="latency_label">Ping</string>
     <string name="node_label">YOUR LOCATION</string>
     <string name="location_refresh">Refresh location</string>
+    <string name="service_connected">Connected</string>
+    <string name="service_engine_stopped">The connection stopped. Tap to try again.</string>
     <string name="location_refreshing">Checking location…</string>
     <string name="upload_label">&#x2191; Upload</string>
     <string name="download_label">&#x2193; Download</string>
