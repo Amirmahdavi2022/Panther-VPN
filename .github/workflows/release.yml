@@ -35,6 +35,21 @@ jobs:
           & $sdkManager 'ndk;27.2.12479018'
 
 
+      - name: Check the notices match the core we actually pin
+        shell: pwsh
+        run: |
+          # NOTICE.md is a licence document, so naming a different core version than the build
+          # actually downloads is a compliance problem rather than a typo. It drifted once already.
+          $line = (Get-Content scripts/fetch-android-assets.ps1) | Where-Object { $_ -match '^\s*\$aetherVersion\s*=' } | Select-Object -First 1
+          if (-not $line) { throw 'Could not find the $aetherVersion line in the fetch script.' }
+          $found = [regex]::Matches($line, '"(v[\d]+\.[\d]+\.[\d]+)"')
+          if ($found.Count -eq 0) { throw "No pinned version in: $line" }
+          $pin = $found[$found.Count - 1].Groups[1].Value
+          if ((Get-Content NOTICE.md -Raw) -notmatch [regex]::Escape($pin)) {
+            throw "NOTICE.md does not mention the pinned Aether core $pin."
+          }
+          Write-Host "NOTICE.md and the build agree on Aether $pin."
+
       - name: Fetch verified Android native assets
         run: npm run fetch:android
       - name: Verify every native core landed in jniLibs
