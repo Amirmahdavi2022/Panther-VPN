@@ -175,10 +175,21 @@ jobs:
           generate_release_notes: true
           files: release/*
           body: |
-            # Panther VPN
+            ## Which file do I download?
 
-            Android release.
+            If you're not sure, grab **Universal**. It works on every phone, it's
+            just a bit bigger.
 
-            The bundled Aether Core is fetched from its official release and
-            SHA-256 verified during the build. Android 8.0+ is supported and
-            APKs are release-signed.
+            | File | For |
+            |---|---|
+            | `Universal` | Any phone. Pick this one if unsure. |
+            | `ARM64` | Almost every phone from the last several years. Smallest. |
+            | `ARMv7` | Older 32-bit phones. |
+            | `x86_64` | Emulators and the rare x86 device. |
+
+            Android 8.0 or newer. Your phone will warn you about installing from
+            outside the Play Store, that's normal for a sideloaded APK.
+
+            `SHA256SUMS.txt` is in the assets if you want to check the download.
+            Every APK here is release-signed, and the bundled Aether core was
+            pulled from its official release and SHA-256 verified during the build.
