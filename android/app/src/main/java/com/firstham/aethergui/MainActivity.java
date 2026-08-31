@@ -60,6 +60,7 @@ public final class MainActivity extends AppCompatActivity {
     private boolean receiverRegistered;
     private boolean syncingNav;
     private String endpoint = "";
+    private String locationDetail = "";
     /** True while the chosen exit location routes through the OpenVPN relay engine. */
     private boolean relayMode;
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
@@ -79,6 +80,7 @@ public final class MainActivity extends AppCompatActivity {
             if (relayMode) return;
             if (AetherVpnService.ACTION_STATUS.equals(intent.getAction())) {
                 endpoint = intent.getStringExtra("endpoint");
+                locationDetail = intent.getStringExtra("locationDetail");
                 renderState(intent.getStringExtra("state"), intent.getStringExtra("message"));
             }
             else if (AetherVpnService.ACTION_STATS.equals(intent.getAction())) renderStats(intent);
@@ -206,6 +208,7 @@ public final class MainActivity extends AppCompatActivity {
         binding.modeGroup.addOnButtonCheckedListener((group, checkedId, checked) -> { if (!checked) return; preferences.edit().putString("mode", checkedId == R.id.proxy_mode_button ? "manual" : checkedId == R.id.smart_mode_button ? "smart" : "vpn").apply(); updateModeUi(); });
         binding.splitSwitch.setOnCheckedChangeListener((button, checked) -> { binding.splitContainer.setVisibility(checked ? View.VISIBLE : View.GONE); saveSettings(); });
         binding.routingGroup.setOnCheckedChangeListener((group, checkedId) -> { saveSettings(); updateSelectedCount(); });
+        binding.locationCard.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); refreshLocation(); });
         binding.chooseAppsButton.setOnClickListener(v -> openAppSelection());
         binding.advancedToggle.setOnClickListener(v -> { boolean show = binding.advancedContainer.getVisibility() != View.VISIBLE; binding.advancedContainer.setVisibility(show ? View.VISIBLE : View.GONE); binding.advancedToggle.setText(show ? R.string.hide_advanced : R.string.show_advanced); });
         binding.resetButton.setOnClickListener(v -> resetDefaults());
@@ -315,7 +318,7 @@ public final class MainActivity extends AppCompatActivity {
         if (connected) {
             binding.connectionMessage.setVisibility(View.GONE);
             binding.connectionInfo.setVisibility(View.VISIBLE);
-            binding.locationValue.setText(endpoint == null || endpoint.isEmpty() ? getString(R.string.connection_location_unavailable) : endpoint);
+            renderLocation();
         }
         else if (transitioning) { binding.connectionMessage.setVisibility(View.GONE); binding.connectionInfo.setVisibility(View.VISIBLE); }
         else { boolean showError = "error".equals(state) || "blocked".equals(state); binding.connectionMessage.setText(message == null ? getString(R.string.status_error) : message); binding.connectionMessage.setVisibility(showError ? View.VISIBLE : View.GONE); binding.connectionInfo.setVisibility(View.VISIBLE); }
@@ -362,6 +365,27 @@ public final class MainActivity extends AppCompatActivity {
         binding.downloadValue.setText(R.string.metric_unavailable);
         binding.pingValue.setText(getString(R.string.ping_value, getString(R.string.metric_unavailable)));
         binding.locationValue.setText(R.string.connection_location_unavailable);
+        binding.locationDetail.setVisibility(View.GONE);
+        binding.locationRefresh.setVisibility(View.GONE);
+    }
+
+    /** Fills the location card from the last status broadcast. */
+    private void renderLocation() {
+        boolean known = endpoint != null && !endpoint.isEmpty();
+        binding.locationValue.setText(known ? endpoint : getString(R.string.connection_location_unavailable));
+        boolean hasDetail = locationDetail != null && !locationDetail.isEmpty();
+        binding.locationDetail.setText(hasDetail ? locationDetail : "");
+        binding.locationDetail.setVisibility(hasDetail ? View.VISIBLE : View.GONE);
+        // The refresh control only means anything while a tunnel is up to re-ask through.
+        binding.locationRefresh.setVisibility("connected".equals(state) ? View.VISIBLE : View.GONE);
+    }
+
+    private void refreshLocation() {
+        if (!"connected".equals(state)) return;
+        binding.locationValue.setText(R.string.location_refreshing);
+        binding.locationDetail.setVisibility(View.GONE);
+        binding.locationRefresh.animate().rotationBy(360f).setDuration(600).start();
+        startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_REFRESH_LOCATION));
     }
 
     private void saveSettings() {

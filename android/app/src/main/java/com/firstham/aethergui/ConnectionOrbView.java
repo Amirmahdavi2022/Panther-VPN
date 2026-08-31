@@ -38,8 +38,14 @@ public final class ConnectionOrbView extends View {
     private Shader bodyShader;
     private Shader highlightShader;
     private ValueAnimator motion;
+    private ValueAnimator handover;
     private int state = DISCONNECTED;
+    private int previousState = DISCONNECTED;
     private float phase;
+    // 0 while the orb still wears the old state's colours, 1 once it has fully taken the new ones.
+    private float blend = 1f;
+    // One expanding ring per arrival at "connected", so the moment reads as an event.
+    private float ripple = 1f;
     private String label = "";
 
     public ConnectionOrbView(Context context) { this(context, null); }
@@ -68,9 +74,14 @@ public final class ConnectionOrbView extends View {
         else if ("error".equals(value) || "blocked".equals(value)) next = ERROR;
         else next = DISCONNECTED;
         boolean changed = next != state;
+        if (changed) previousState = state;
         state = next;
         label = text == null ? "" : text;
-        if (changed) { updateShaders(); restartMotion(); }
+        if (changed) {
+            startHandover(next == CONNECTED);
+            updateShaders();
+            restartMotion();
+        }
         invalidate();
     }
 
@@ -119,6 +130,30 @@ public final class ConnectionOrbView extends View {
         canvas.drawArc(arc, rotation - 90f, sweep, false, paint);
         paint.setPathEffect(null);
 
+        // Ripple: a single ring pushing outwards the moment the tunnel comes up.
+        if (ripple < 1f) {
+            paint.setShader(null);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(radius * 0.05f * (1f - ripple));
+            paint.setColor(withAlpha(start, (int) (150 * (1f - ripple))));
+            canvas.drawCircle(cx, cy, radius * (1.05f + ripple * 0.55f), paint);
+        }
+
+        // Orbiting motes. They sit outside the rim and only run while something is happening, so
+        // the idle orb stays calm and the working one visibly has traffic on it.
+        if (state == CONNECTING || state == CONNECTED) {
+            float drift = state == CONNECTING ? phase * 2.4f : phase * 0.7f;
+            for (int i = 0; i < particleAngles.length; i++) {
+                float angle = particleAngles[i] + drift * (float) Math.PI * 2f * (i % 3 == 0 ? 1f : 0.72f);
+                float wobble = 1f + 0.05f * (float) Math.sin((phase + i * 0.11f) * Math.PI * 2);
+                float distance = radius * particleRadii[i] * wobble;
+                float size = radius * (state == CONNECTED ? 0.016f : 0.022f) * (0.6f + (i % 4) * 0.2f);
+                int alpha = (int) (70 + 90 * Math.abs(Math.sin((phase + i * 0.07f) * Math.PI * 2)));
+                particlePaint.setColor(withAlpha(i % 2 == 0 ? start : lighten(start, .35f), alpha));
+                canvas.drawCircle(cx + distance * (float) Math.cos(angle), cy + distance * (float) Math.sin(angle), size, particlePaint);
+            }
+        }
+
         // Neon rim.
         paint.setShader(ringShader);
         paint.setStrokeWidth(radius * 0.085f);
@@ -165,6 +200,25 @@ public final class ConnectionOrbView extends View {
         return super.onTouchEvent(event);
     }
 
+    /** Cross-fades the palette into the new state, and pushes one ripple out on arrival. */
+    private void startHandover(boolean arrived) {
+        if (handover != null) { handover.cancel(); handover = null; }
+        if (arrived) ripple = 0f;
+        if (!ValueAnimator.areAnimatorsEnabled()) { blend = 1f; ripple = 1f; invalidate(); return; }
+        blend = 0f;
+        handover = ValueAnimator.ofFloat(0f, 1f);
+        handover.setDuration(arrived ? 620 : 380);
+        handover.setInterpolator(new AccelerateDecelerateInterpolator());
+        handover.addUpdateListener(animation -> {
+            float value = (Float) animation.getAnimatedValue();
+            blend = value;
+            if (arrived) ripple = value;
+            updateShaders();
+            invalidate();
+        });
+        handover.start();
+    }
+
     private void restartMotion() {
         stopMotion();
         if (!isShown() || !ValueAnimator.areAnimatorsEnabled() || state == ERROR) { phase = 0f; invalidate(); return; }
@@ -176,7 +230,10 @@ public final class ConnectionOrbView extends View {
         motion.start();
     }
 
-    private void stopMotion() { if (motion != null) { motion.cancel(); motion = null; } }
+    private void stopMotion() {
+        if (motion != null) { motion.cancel(); motion = null; }
+        if (handover != null) { handover.cancel(); handover = null; blend = 1f; ripple = 1f; }
+    }
     @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); restartMotion(); }
     @Override protected void onDetachedFromWindow() { stopMotion(); super.onDetachedFromWindow(); }
     @Override protected void onWindowVisibilityChanged(int visibility) { super.onWindowVisibilityChanged(visibility); if (visibility == VISIBLE) restartMotion(); else stopMotion(); }
@@ -185,7 +242,18 @@ public final class ConnectionOrbView extends View {
     private static int lighten(int color, float amount) { return Color.rgb((int) (Color.red(color) + (255 - Color.red(color)) * amount), (int) (Color.green(color) + (255 - Color.green(color)) * amount), (int) (Color.blue(color) + (255 - Color.blue(color)) * amount)); }
     // Glossy black and white: the orb is polished silver when idle and takes the single accent
     // blue only once connected, so colour on this screen always means "you are protected".
-    private int startColor() {
+    private int startColor() { return mix(paletteStart(previousState), paletteStart(state), blend); }
+    private int endColor() { return mix(paletteEnd(previousState), paletteEnd(state), blend); }
+
+    private static int mix(int from, int to, float amount) {
+        float t = amount < 0f ? 0f : amount > 1f ? 1f : amount;
+        return Color.rgb(
+                (int) (Color.red(from) + (Color.red(to) - Color.red(from)) * t),
+                (int) (Color.green(from) + (Color.green(to) - Color.green(from)) * t),
+                (int) (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * t));
+    }
+
+    private static int paletteStart(int state) {
         switch (state) {
             case CONNECTED:     return Color.rgb(0x4D, 0xA3, 0xFF);
             case CONNECTING:    return Color.rgb(0xE6, 0xE6, 0xEC);
@@ -195,7 +263,7 @@ public final class ConnectionOrbView extends View {
         }
     }
 
-    private int endColor() {
+    private static int paletteEnd(int state) {
         switch (state) {
             case CONNECTED:     return Color.rgb(0x12, 0x4E, 0x8C);
             case CONNECTING:    return Color.rgb(0x6E, 0x6E, 0x7A);

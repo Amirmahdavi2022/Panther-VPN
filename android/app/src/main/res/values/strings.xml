@@ -38,12 +38,14 @@
     <string name="ping_value">%1$s</string>
     <string name="session_label">Traffic</string>
     <string name="latency_label">Ping</string>
-    <string name="node_label">NODE</string>
+    <string name="node_label">YOUR LOCATION</string>
+    <string name="location_refresh">Refresh location</string>
+    <string name="location_refreshing">Checking location…</string>
     <string name="upload_label">&#x2191; Upload</string>
     <string name="download_label">&#x2193; Download</string>
     <string name="ping_label">Ping</string>
     <string name="ping_millis">%1$s ms</string>
-    <string name="location_detecting">Finding VPN location…</string>
+    <string name="location_detecting">Finding your location…</string>
     <string name="metric_unavailable">--</string>
     <string name="traffic_kilobytes">%1$.1f KB</string>
     <string name="traffic_megabytes">%1$.1f MB</string>
