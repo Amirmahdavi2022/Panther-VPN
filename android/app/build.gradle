@@ -41,8 +41,8 @@ android {
         // matching element" - the split set and the packaged set disagree. Pin the packaged ABIs
         // to the three we actually ship so both agree.
         ndk { abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64' }
-        versionCode 8
-        versionName '2.4.0'
+        versionCode 9
+        versionName '2.5.0'
     }
 
     signingConfigs {
