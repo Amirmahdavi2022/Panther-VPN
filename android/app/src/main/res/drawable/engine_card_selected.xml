@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The selected engine is the one place besides the connected orb that carries the accent
+     colour, so which engine is armed is readable at a glance and never ambiguous. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#14264A" />
+            <stroke android:width="1.5dp" android:color="@color/blue_600" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+</layer-list>

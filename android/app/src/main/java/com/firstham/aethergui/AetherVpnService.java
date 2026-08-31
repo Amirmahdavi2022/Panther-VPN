@@ -62,6 +62,9 @@ public final class AetherVpnService extends VpnService {
     private static final int SOCKS_TIMEOUT_MS = 120_000;
     private static final int SMART_PROTOCOL_TIMEOUT_MS = 35_000;
     private static final int MAX_RECONNECT_ATTEMPTS = 5;
+    // The Global engine sweeps for a working route on a cold start, which is slower
+    // than the other core's endpoint scan.
+    private static final long GLOBAL_TIMEOUT_MS = 90_000L;
     private static final String TAG = "AetherVpnService";
 
     private final ExecutorService worker = Executors.newCachedThreadPool();
@@ -87,6 +90,8 @@ public final class AetherVpnService extends VpnService {
     private volatile String currentMessage = "Ready to connect";
     private volatile String currentEndpoint = "";
     private volatile String currentLocationDetail = "";
+    private volatile GlobalCore globalCore;
+    private volatile String currentRegion = "";
     private volatile long connectedAt;
     private volatile long lastLogPersistedAt;
     private volatile long lastHealthCheckAt;
@@ -202,8 +207,16 @@ public final class AetherVpnService extends VpnService {
             }
             updateState("starting", getString(R.string.service_launching));
             updateState("scanning", getString(R.string.service_scanning));
-            boolean socksReady = startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS);
-            if (!socksReady) {
+            boolean global = "global".equals(value(request, "engine", "turbo"));
+            if (global) {
+                // The Global engine picks its own loopback port, so it has to be started before
+                // anything downstream reads the socks extra. Everything after this point - the TUN
+                // bridge, the location lookup, the ping probe - goes on reading that one extra and
+                // does not need to know which engine filled it in.
+                if (!startGlobalCore(request, session)) {
+                    throw new IllegalStateException(getString(R.string.service_global_failed));
+                }
+            } else if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
                 throw new IllegalStateException(aetherExitMessage("Aether did not open its SOCKS5 listener"));
             }
 
@@ -219,7 +232,8 @@ public final class AetherVpnService extends VpnService {
                 updateNotification(getString("smart".equals(connectionMode) ? R.string.service_smart_protected : R.string.service_aethon_protected));
             }
             scheduleLocationLookup(request, session);
-            monitorAether(request, session);
+            if (global) monitorGlobal(request, session);
+            else monitorAether(request, session);
         } catch (Exception error) {
             if (stopping || generation.get() != session) return;
             Log.e(TAG, "Connection failed", error);
@@ -321,6 +335,62 @@ public final class AetherVpnService extends VpnService {
             }
         } catch (Exception error) {
             if (!stopping) sendLog("Aether log stream closed: " + safeMessage(error));
+        }
+    }
+
+    /**
+     * Brings the Global engine up and publishes the port it chose as the socks extra, so the rest
+     * of the connection path is identical to the other engine's.
+     */
+    private boolean startGlobalCore(Intent request, long session) throws Exception {
+        String region = value(request, "region", GlobalCore.REGION_AUTOMATIC);
+        currentRegion = "";
+        GlobalCore core = new GlobalCore(this, region, new GlobalCore.Listener() {
+            @Override public void onState(String state, String message) {
+                // The engine reports its own progress while it is still searching for a route.
+                // Only surface that before we are connected; afterwards the monitor owns the state.
+                if (generation.get() != session || stopping) return;
+                if (!"connected".equals(state)) updateState(state, message);
+            }
+
+            @Override public void onRegion(String countryCode) {
+                if (generation.get() != session || stopping) return;
+                // The engine's own answer for where this tunnel comes out. Nothing else is
+                // allowed to fill this in.
+                currentRegion = countryCode == null ? "" : countryCode.trim().toUpperCase(Locale.US);
+                sendLog("Global engine exit region: " + currentRegion);
+                sendStatus(currentState, currentMessage);
+            }
+
+            @Override public void onBytes(long sent, long received) { /* the stats poll owns this */ }
+
+            @Override public void onLog(String line) { sendLog(line); }
+        });
+        globalCore = core;
+        if (!core.start(GLOBAL_TIMEOUT_MS)) {
+            core.stop();
+            globalCore = null;
+            return false;
+        }
+        int port = core.socksPort();
+        if (port <= 0) { core.stop(); globalCore = null; return false; }
+        request.putExtra("socks", "127.0.0.1:" + port);
+        sendLog("Global engine ready; routing the tunnel through 127.0.0.1:" + port);
+        return true;
+    }
+
+    /**
+     * Watches the Global engine the way monitorAether watches the other one. The library handles
+     * its own retries internally, so this only has to notice that it gave up for good.
+     */
+    private void monitorGlobal(Intent request, long session) throws Exception {
+        while (!stopping && generation.get() == session) {
+            GlobalCore core = globalCore;
+            if (core == null) return;
+            if (!core.isConnected()) {
+                throw new IllegalStateException(getString(R.string.service_global_stopped));
+            }
+            Thread.sleep(2_000L);
         }
     }
 
@@ -772,6 +842,10 @@ public final class AetherVpnService extends VpnService {
         connectedAt = 0;
         currentEndpoint = "";
         currentLocationDetail = "";
+        currentRegion = "";
+        GlobalCore core = globalCore;
+        globalCore = null;
+        if (core != null) core.stop();
         locationLookupSequence.incrementAndGet();
         activeRequest = null;
         connectionEstablished = false;
@@ -832,7 +906,8 @@ public final class AetherVpnService extends VpnService {
     private void sendStatus(String state, String message) {
         Intent intent = new Intent(ACTION_STATUS).setPackage(getPackageName());
         intent.putExtra("state", state).putExtra("message", message).putExtra("endpoint", currentEndpoint)
-                .putExtra("locationDetail", currentLocationDetail);
+                .putExtra("locationDetail", currentLocationDetail)
+                .putExtra("region", currentRegion);
         sendBroadcast(intent, INTERNAL_PERMISSION);
     }
 

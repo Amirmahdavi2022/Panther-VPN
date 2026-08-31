@@ -18,6 +18,8 @@ final class VpnConnectionController {
         return new Intent(context, AetherVpnService.class)
                 .setAction(AetherVpnService.ACTION_START)
                 .putExtra("connectionMode", preferences.getString("mode", "vpn"))
+                .putExtra("engine", preferences.getString("engine", "turbo"))
+                .putExtra("region", preferences.getString("region", ""))
                 .putExtra("protocol", value(PROTOCOLS, preferences.getInt("protocol", ConnectionDefaults.PROTOCOL_INDEX), ConnectionDefaults.PROTOCOL))
                 .putExtra("scan", value(SCANS, preferences.getInt("scan", ConnectionDefaults.SCAN_INDEX), ConnectionDefaults.SCAN))
                 .putExtra("transport", preferences.getInt("transport", 0) == 1 ? "h2" : "h3")
