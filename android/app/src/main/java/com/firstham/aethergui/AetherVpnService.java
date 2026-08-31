@@ -31,7 +31,6 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
-import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -56,6 +55,7 @@ public final class AetherVpnService extends VpnService {
     public static final String ACTION_LOG = "com.firstham.aethergui.LOG";
     public static final String ACTION_STATS = "com.firstham.aethergui.STATS";
     public static final String ACTION_CLEAR_LOGS = "com.firstham.aethergui.CLEAR_LOGS";
+    public static final String ACTION_REFRESH_LOCATION = "com.firstham.aethergui.REFRESH_LOCATION";
     public static final String INTERNAL_PERMISSION = "io.github.amirmahdavi2023.panther.permission.INTERNAL";
     private static final String CHANNEL_ID = "aether_vpn";
     private static final int NOTIFICATION_ID = 1819;
@@ -86,6 +86,7 @@ public final class AetherVpnService extends VpnService {
     private volatile String currentState = "disconnected";
     private volatile String currentMessage = "Ready to connect";
     private volatile String currentEndpoint = "";
+    private volatile String currentLocationDetail = "";
     private volatile long connectedAt;
     private volatile long lastLogPersistedAt;
     private volatile long lastHealthCheckAt;
@@ -144,6 +145,10 @@ public final class AetherVpnService extends VpnService {
             publishStats();
             if (!active) stopSelf(startId);
             return active ? START_STICKY : START_NOT_STICKY;
+        }
+        if (ACTION_REFRESH_LOCATION.equals(action)) {
+            refreshLocation();
+            return START_STICKY;
         }
         if (ACTION_CLEAR_LOGS.equals(action)) {
             synchronized (logLock) {
@@ -339,6 +344,7 @@ public final class AetherVpnService extends VpnService {
                 throw new IllegalStateException(getString(R.string.service_reconnect_failed, MAX_RECONNECT_ATTEMPTS));
             }
             currentEndpoint = "";
+            currentLocationDetail = "";
             updateState("reconnecting", getString(R.string.service_reconnecting));
             Thread.sleep(Math.min(20_000L, 1_500L << (attempts - 1)));
             if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
@@ -497,37 +503,65 @@ public final class AetherVpnService extends VpnService {
         }
     }
 
+    /**
+     * Where each round of the lookup asks, in order. Every one of these reports the caller's own
+     * address, so a single request answers the whole question - the old two-hop shape (ask ipify
+     * who we are, then ask a geocoder about that address) doubled the chance of failing and the
+     * time to first answer.
+     *
+     * <p>Cloudflare goes first because the core exits through Cloudflare's own network, so it is
+     * the one service that will never rate-limit or refuse this traffic. The others are there for
+     * the case where Cloudflare itself is unreachable.
+     */
+    private static final String[][] LOCATION_PROVIDERS = {
+            {"speed.cloudflare.com", "/meta"},
+            {"www.cloudflare.com", "/cdn-cgi/trace"},
+            {"ipwho.is", "/"},
+            {"ipapi.co", "/json/"},
+    };
+
     private void scheduleLocationLookup(Intent request, long session) {
         long lookup = locationLookupSequence.incrementAndGet();
         currentEndpoint = getString(R.string.location_detecting);
+        currentLocationDetail = "";
         sendStatus(currentState, currentMessage);
         worker.execute(() -> {
-            String location = "";
-            for (int attempt = 0; attempt < 4 && lookup == locationLookupSequence.get() && !stopping
-                    && generation.get() == session && "connected".equals(currentState); attempt++) {
+            String socksAddress = value(request, "socks", "127.0.0.1:1819");
+            ExitLocation found = ExitLocation.EMPTY;
+            for (int round = 0; round < 3 && !found.usable() && stillLooking(lookup, session); round++) {
+                for (String[] provider : LOCATION_PROVIDERS) {
+                    if (!stillLooking(lookup, session)) return;
                     try {
-                        String ip = socksHttpGet(value(request, "socks", "127.0.0.1:1819"), "api.ipify.org", "/?format=json");
-                        JSONObject ipJson = new JSONObject(ip);
-                        String address = ipJson.optString("ip", "").trim();
-                        if (address.isEmpty()) throw new IllegalStateException("VPN public IP was empty");
-                        String socksAddress = value(request, "socks", "127.0.0.1:1819");
-                        try {
-                            location = locationFromJson(new JSONObject(socksHttpGet(socksAddress, "ipapi.co", "/" + address + "/json/")));
-                        } catch (Throwable primaryError) {
-                            sendLog("Primary VPN location provider failed; trying fallback: " + safeMessage(primaryError));
-                            location = locationFromJson(new JSONObject(socksHttpGet(socksAddress, "ipwho.is", "/" + address)));
-                        }
-                        if (!location.isEmpty()) break;
+                        ExitLocation candidate = ExitLocation.parse(socksHttpGet(socksAddress, provider[0], provider[1]));
+                        if (candidate.usable()) { found = candidate; break; }
+                        sendLog("Location provider " + provider[0] + " answered without a country");
                     } catch (Throwable error) {
-                        if (attempt == 3) sendLog("VPN location lookup failed: " + safeMessage(error));
-                        try { Thread.sleep(5_000L * (attempt + 1)); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); break; }
+                        sendLog("Location provider " + provider[0] + " failed: " + safeMessage(error));
                     }
+                }
+                if (found.usable() || round == 2) break;
+                // Every provider is down at once, which usually means the tunnel is still settling.
+                try { Thread.sleep(4_000L * (round + 1)); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); return; }
             }
-            if (lookup == locationLookupSequence.get() && !stopping && generation.get() == session && "connected".equals(currentState)) {
-                currentEndpoint = location.isEmpty() ? getString(R.string.connection_location_unavailable) : location;
-                sendStatus(currentState, currentMessage);
-            }
+            if (!stillLooking(lookup, session)) return;
+            currentEndpoint = found.usable() ? found.place() : getString(R.string.connection_location_unavailable);
+            currentLocationDetail = found.usable() ? found.detail() : "";
+            sendStatus(currentState, currentMessage);
         });
+    }
+
+    /** True while this lookup is still the current one and the tunnel it belongs to is still up. */
+    private boolean stillLooking(long lookup, long session) {
+        return lookup == locationLookupSequence.get() && !stopping
+                && generation.get() == session && "connected".equals(currentState);
+    }
+
+    /** Re-runs the lookup for the live tunnel. Used by the refresh control on the location card. */
+    private void refreshLocation() {
+        Intent request = activeRequest;
+        if (request == null || !"connected".equals(currentState)) return;
+        scheduleLocationLookup(request, generation.get());
     }
 
     private String socksHttpGet(String socksAddress, String host, String path) throws Exception {
@@ -536,7 +570,10 @@ public final class AetherVpnService extends VpnService {
             ssl.setSoTimeout(10_000);
             ssl.startHandshake();
             OutputStream output = ssl.getOutputStream();
-            output.write(("GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\nAccept: application/json\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            output.write(("GET " + path + " HTTP/1.1\r\nHost: " + host
+                    + "\r\nUser-Agent: Panther/" + BuildConfig.VERSION_NAME + " (Android)"
+                    + "\r\nAccept: application/json, text/plain, */*"
+                    + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
             output.flush();
             BufferedReader reader = new BufferedReader(new InputStreamReader(ssl.getInputStream(), StandardCharsets.UTF_8));
             String line;
@@ -547,7 +584,7 @@ public final class AetherVpnService extends VpnService {
                 if (headers) {
                     if (line.startsWith("HTTP/")) status = Integer.parseInt(line.split(" ", 3)[1]);
                     if (line.isEmpty()) headers = false;
-                } else body.append(line);
+                } else body.append(line).append('\n');
             }
             if (status < 200 || status >= 300) throw new IllegalStateException("Location service returned HTTP " + status);
             return body.toString();
@@ -555,19 +592,7 @@ public final class AetherVpnService extends VpnService {
         }
     }
 
-    private static String locationFromJson(JSONObject geo) {
-        if (geo.optBoolean("error", false) || (geo.has("success") && !geo.optBoolean("success", true))) return "";
-        String city = geo.optString("city", "").trim();
-        String country = geo.optString("country_code", geo.optString("countryCode", "")).trim().toUpperCase(Locale.US);
-        if (!city.isEmpty() && !country.isEmpty()) return countryFlag(country) + " " + city;
-        if (!country.isEmpty()) return countryFlag(country) + " " + country;
-        return "";
-    }
 
-    private static String countryFlag(String country) {
-        if (country.length() != 2) return "";
-        return new String(Character.toChars(0x1F1E6 + country.charAt(0) - 'A')) + new String(Character.toChars(0x1F1E6 + country.charAt(1) - 'A'));
-    }
 
     private static byte[] readExact(InputStream input, int length) throws Exception {
         byte[] value = new byte[length];
@@ -746,6 +771,7 @@ public final class AetherVpnService extends VpnService {
         active = false;
         connectedAt = 0;
         currentEndpoint = "";
+        currentLocationDetail = "";
         locationLookupSequence.incrementAndGet();
         activeRequest = null;
         connectionEstablished = false;
@@ -798,14 +824,15 @@ public final class AetherVpnService extends VpnService {
     private void updateState(String state, String message) {
         currentState = state;
         currentMessage = message == null ? "" : message;
-        stateStore.edit().putString("state", currentState).putString("message", currentMessage).putString("endpoint", currentEndpoint).apply();
+        stateStore.edit().putString("state", currentState).putString("message", currentMessage).putString("endpoint", currentEndpoint).putString("locationDetail", currentLocationDetail).apply();
         sendStatus(currentState, currentMessage);
         AethonTileService.requestUpdate(this);
     }
 
     private void sendStatus(String state, String message) {
         Intent intent = new Intent(ACTION_STATUS).setPackage(getPackageName());
-        intent.putExtra("state", state).putExtra("message", message).putExtra("endpoint", currentEndpoint);
+        intent.putExtra("state", state).putExtra("message", message).putExtra("endpoint", currentEndpoint)
+                .putExtra("locationDetail", currentLocationDetail);
         sendBroadcast(intent, INTERNAL_PERMISSION);
     }
 
@@ -900,7 +927,7 @@ public final class AetherVpnService extends VpnService {
         if (VpnConnectionController.canDisconnect(currentState)) {
             currentState = "disconnected";
             currentMessage = getString(R.string.service_disconnected);
-            stateStore.edit().putString("state", currentState).putString("message", currentMessage).putString("endpoint", "").apply();
+            stateStore.edit().putString("state", currentState).putString("message", currentMessage).putString("endpoint", "").putString("locationDetail", "").apply();
             AethonTileService.requestUpdate(this);
         }
         telemetry.shutdownNow();
