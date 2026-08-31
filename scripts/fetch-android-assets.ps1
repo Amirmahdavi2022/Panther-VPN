@@ -2,6 +2,10 @@ $ErrorActionPreference = "Stop"
 
 $aetherVersion = if ($env:AETHER_CORE_VERSION) { $env:AETHER_CORE_VERSION } else { "v1.8.0" }
 $hevVersion = "2.16.0"
+# The Global engine ships as an official prebuilt Android library, so nothing here is
+# built from source. Pinned by hash: the publisher does not sign this asset.
+$globalCoreVersion = "v2.0.40"
+$globalCoreSha256 = "6e5a1402013e755b2e5e10a2715b18462fc06b6a8c1d610ffcd21f2fa80dfa1e"
 $hevCommit = "0a05221275a51a884d93328c55fc2fbc9e9b6974"
 $ndkVersion = "27.2.12479018"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -107,6 +111,29 @@ try {
         throw "HEV submodules do not match the pinned release."
     }
     Expand-WindowsSymlinkPlaceholders $hevSource
+
+    # --- Global engine library ---------------------------------------------------------------
+    # An official prebuilt AAR, so there is no Go toolchain and no gomobile step here. It carries
+    # its own libgojni.so for every ABI; the app's abiFilters drop the x86 one we do not ship.
+    $libsDir = Join-Path $root "android/app/libs"
+    New-Item -ItemType Directory -Force $libsDir | Out-Null
+    $globalAar = Join-Path $libsDir "ca.psiphon.aar"
+    $globalZip = Join-Path $temp "global-core.zip"
+    $globalUrl = "https://github.com/Psiphon-Labs/psiphon-tunnel-core/releases/download/$globalCoreVersion/Psiphon-Android-Library.zip"
+    Write-Host "Downloading the Global engine library $globalCoreVersion"
+    Invoke-WebRequest -UseBasicParsing $globalUrl -OutFile $globalZip
+    $globalExtract = Join-Path $temp "global-core"
+    Expand-Archive -LiteralPath $globalZip -DestinationPath $globalExtract -Force
+    $extracted = Get-ChildItem -LiteralPath $globalExtract -Recurse -Filter "ca.psiphon.aar" | Select-Object -First 1
+    if (-not $extracted) { throw "ca.psiphon.aar was not in the published archive." }
+    # The publisher does not sign this asset, so the pin above is the only integrity check there
+    # is. Fail rather than build against something we did not review.
+    $actual = Get-Sha256 $extracted.FullName
+    if ($actual -ne $globalCoreSha256) {
+        throw "Global engine library hash mismatch. Expected $globalCoreSha256, got $actual."
+    }
+    Copy-Item -LiteralPath $extracted.FullName -Destination $globalAar -Force
+    Write-Host "Global engine library verified and staged ($([math]::Round((Get-Item $globalAar).Length / 1MB, 1)) MB)"
 
     $ndkRoot = Resolve-NdkRoot
     $ndkBuild = Join-Path $ndkRoot $(if ($IsWindows -or $PSVersionTable.PSEdition -eq "Desktop") { "ndk-build.cmd" } else { "ndk-build" })

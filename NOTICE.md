@@ -27,6 +27,20 @@ disagree.
 Aether and its marks are subject to the upstream project's TRADEMARK.md policy.
 Panther is an independent frontend and is not endorsed by CluvexStudio.
 
+## Global engine
+
+The Global engine is the Psiphon tunnel library from
+https://github.com/Psiphon-Labs/psiphon-tunnel-core, licensed under GNU GPL v3.0,
+which is compatible with the AGPL-3.0 this project is under.
+
+It ships as the official prebuilt `ca.psiphon.aar` from release **v2.0.40**. That
+asset is not signed by the publisher, so the build pins it by SHA-256 in
+`scripts/fetch-android-assets.ps1` and refuses to build if the hash does not match.
+
+Psiphon and its marks belong to Psiphon Inc. Panther is an independent client and
+is not affiliated with, endorsed by or supported by them. Do not report Panther
+issues to Psiphon.
+
 ## HEV Socks5 Tunnel
 
 Android VPN routing uses HEV Socks5 Tunnel v2.16.0 from

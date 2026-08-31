@@ -28,3 +28,11 @@
 -keep interface de.blinkt.openvpn.** { *; }
 -keepclassmembers class de.blinkt.openvpn.VpnProfile { *; }
 -dontwarn de.blinkt.openvpn.**
+
+# The Global engine. It is a gomobile library, so every call in and out goes through generated
+# JNI bridges that R8 has no way to follow. These are the library's own published keep rules;
+# they are repeated here rather than relied on, because a local AAR's consumer rules are easy to
+# lose and the failure mode is a NoClassDefFoundError at connect time rather than a build error.
+-keep class go.** { *; }
+-keep class psi.** { *; }
+-keep class ca.psiphon.** { *; }

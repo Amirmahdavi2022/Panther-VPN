@@ -64,6 +64,9 @@ jobs:
             }
           }
           if ($missing.Count) { throw "Native cores missing: $($missing -join ', ')" }
+          $aar = 'android/app/libs/ca.psiphon.aar'
+          if (-not (Test-Path $aar)) { throw "The Global engine library is missing: $aar" }
+          Write-Host "$aar $((Get-Item $aar).Length) bytes"
 
       - name: Let :app shrink the VPN engine, not vpnLib itself
         shell: pwsh

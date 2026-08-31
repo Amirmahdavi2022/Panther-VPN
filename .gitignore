@@ -16,6 +16,7 @@ android/.gradle/
 android/local.properties
 android/app/build/
 android/app/src/main/jniLibs/**/*.so
+android/app/libs/*.aar
 android/.android-signing/
 
 # Never commit Aether identity or credential material.

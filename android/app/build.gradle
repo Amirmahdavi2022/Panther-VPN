@@ -9,6 +9,8 @@ dependencies {
     // OpenVPN engine for the VPN Gate relays. Ships prebuilt natives for every ABI, so no NDK
     // build is involved. GPL-3.0, compatible with Panther's AGPL-3.0.
     implementation project(':vpnLib')
+    // Staged by `npm run fetch:android`, hash-verified there. Not committed.
+    implementation fileTree(dir: 'libs', include: ['*.aar'])
     testImplementation 'junit:junit:4.13.2'
 }
 
