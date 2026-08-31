@@ -44,6 +44,10 @@
     <string name="service_engine_stopped">The connection stopped. Tap to try again.</string>
     <string name="service_global_failed">Global could not find a route. Try Turbo, or try again in a moment.</string>
     <string name="service_global_stopped">The Global connection dropped.</string>
+    <string name="service_global_carrier">Bringing up the carrier tunnel…</string>
+    <string name="service_global_carrier_failed">The carrier tunnel would not start, so Global could not be reached.</string>
+    <string name="service_global_carrier_lost">The carrier tunnel dropped, which took Global with it.</string>
+    <string name="service_global_starting">Finding a Global route…</string>
     <string name="engine_turbo">Turbo</string>
     <string name="engine_turbo_detail">Fastest. Keeps you where you are.</string>
     <string name="engine_global">Global</string>

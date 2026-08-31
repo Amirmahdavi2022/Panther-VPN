@@ -52,6 +52,7 @@ public final class GlobalCore {
     private final VpnService host;
     private final Listener listener;
     private final String requestedRegion;
+    private final String upstreamProxy;
 
     private final AtomicReference<String> connectedRegion = new AtomicReference<>();
     private final AtomicReference<List<String>> availableRegions = new AtomicReference<>();
@@ -62,10 +63,15 @@ public final class GlobalCore {
 
     private volatile PsiphonTunnel tunnel;
 
-    public GlobalCore(VpnService host, String requestedRegion, Listener listener) {
+    /**
+     * @param upstreamProxy loopback {@code host:port} of a SOCKS5 proxy to dial out through, or
+     *                      null to dial the network directly.
+     */
+    public GlobalCore(VpnService host, String requestedRegion, String upstreamProxy, Listener listener) {
         this.host = host;
         this.listener = listener;
         this.requestedRegion = requestedRegion == null ? REGION_AUTOMATIC : requestedRegion.trim();
+        this.upstreamProxy = upstreamProxy == null ? "" : upstreamProxy.trim();
     }
 
     /** The country the engine actually connected through, or null until it has reported one. */
@@ -133,6 +139,12 @@ public final class GlobalCore {
         // 0 asks the engine for any free loopback port, which it then reports back to us. Binding a
         // fixed port would collide with the other core when both are briefly alive during a
         // handover.
+        // Dialing out through the other engine rather than straight at the network. This is not
+        // an optimisation: the engine bootstraps by fetching its server list over HTTPS from a
+        // host that is unreachable from some of the networks this app exists for, and its own
+        // servers are filtered on those same networks. Carried inside the other tunnel, both the
+        // fetch and the handshake go through. Standalone it simply never finds a route.
+        if (!upstreamProxy.isEmpty()) append(json, "UpstreamProxyURL", "socks5://" + upstreamProxy);
         json.append("\"LocalSocksProxyPort\":0,");
         json.append("\"DisableLocalHTTPProxy\":true,");
         json.append("\"AllowDefaultDNSResolverWithBindToDevice\":true,");

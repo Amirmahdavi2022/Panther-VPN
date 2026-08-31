@@ -64,7 +64,7 @@ public final class AetherVpnService extends VpnService {
     private static final int MAX_RECONNECT_ATTEMPTS = 5;
     // The Global engine sweeps for a working route on a cold start, which is slower
     // than the other core's endpoint scan.
-    private static final long GLOBAL_TIMEOUT_MS = 90_000L;
+    private static final long GLOBAL_TIMEOUT_MS = 150_000L;
     private static final String TAG = "AetherVpnService";
 
     private final ExecutorService worker = Executors.newCachedThreadPool();
@@ -345,7 +345,22 @@ public final class AetherVpnService extends VpnService {
     private boolean startGlobalCore(Intent request, long session) throws Exception {
         String region = value(request, "region", GlobalCore.REGION_AUTOMATIC);
         currentRegion = "";
-        GlobalCore core = new GlobalCore(this, region, new GlobalCore.Listener() {
+
+        // Global runs on top of Turbo rather than beside it. The engine bootstraps by fetching a
+        // server list over HTTPS from a host that does not answer on some of the networks this app
+        // exists for, and its own servers are filtered on those same networks, so on its own it
+        // never gets off the ground. Carried inside the other tunnel, both the fetch and the
+        // handshake succeed. Bring the carrier up first and fail early if it will not start,
+        // because a Global failure caused by the carrier is otherwise very hard to read.
+        String carrier = value(request, "socks", "127.0.0.1:1819");
+        updateState("scanning", getString(R.string.service_global_carrier));
+        if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
+            throw new IllegalStateException(aetherExitMessage(getString(R.string.service_global_carrier_failed)));
+        }
+        sendLog("Carrier tunnel up on " + carrier + "; starting the Global engine over it");
+        updateState("securing", getString(R.string.service_global_starting));
+
+        GlobalCore core = new GlobalCore(this, region, carrier, new GlobalCore.Listener() {
             @Override public void onState(String state, String message) {
                 // The engine reports its own progress while it is still searching for a route.
                 // Only surface that before we are connected; afterwards the monitor owns the state.
@@ -389,6 +404,11 @@ public final class AetherVpnService extends VpnService {
             if (core == null) return;
             if (!core.isConnected()) {
                 throw new IllegalStateException(getString(R.string.service_global_stopped));
+            }
+            Process carrier = aetherProcess;
+            if (carrier == null || !carrier.isAlive()) {
+                // Global rides inside the carrier, so losing the carrier takes Global with it.
+                throw new IllegalStateException(getString(R.string.service_global_carrier_lost));
             }
             Thread.sleep(2_000L);
         }
