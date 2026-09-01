@@ -20,19 +20,18 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Picks the exit country for the Global engine.
  *
- * <p>The one thing this sheet does that a plain country list does not: it remembers what happened
- * last time. Every country the user has actually connected through carries the result of the
- * reachability probes from that connection, so the list stops being a guess after the first few
- * tries and starts being a record of what worked on this phone, on this network.
+ * <p>The one thing this sheet does that a plain country list does not: it remembers which countries
+ * have actually come up before on this phone, so the list stops being a guess after the first few
+ * tries.
  *
- * <p>Nothing here is a claim about which countries are good. The app has no business asserting
- * that, and any built-in table of it would be stale within weeks. It only reports back what it
- * measured.
+ * <p>It deliberately stops there. Whether a given site or service will serve a given exit is not
+ * something this app should be putting a verdict on - that answer changes by the week, differs
+ * between accounts on the same exit, and a stale green tick is worse than no tick at all. The user
+ * finds that out by using it.
  */
 public final class RegionPicker {
 
@@ -41,8 +40,13 @@ public final class RegionPicker {
         void picked(String code);
     }
 
-    /** Where the per-country probe verdicts are kept. */
+    /** Where the per-country history is kept. */
     private static final String KEY_VERDICT_PREFIX = "regionVerdict_";
+
+    /** The tunnel came up through this country at least once. */
+    public static final String CONNECTED = "connected";
+    /** Never selected, or never got far enough to say. */
+    public static final String UNKNOWN = "unknown";
 
     /** Below this many rows a search box is clutter rather than help. */
     private static final int SEARCH_THRESHOLD = 12;
@@ -54,20 +58,18 @@ public final class RegionPicker {
     private static final int TEXT_MUTED = 0xFF8E8E9A;
     private static final int ACCENT = 0xFF4DA3FF;
     private static final int GOOD = 0xFF4ADE80;
-    private static final int BAD = 0xFFF87171;
 
     private RegionPicker() { }
 
-    /** Files the probe outcome against the country the tunnel actually came out in. */
-    public static void remember(SharedPreferences preferences, String countryCode, String verdict) {
+    /** Files a successful connection against the country the tunnel actually came out in. */
+    public static void remember(SharedPreferences preferences, String countryCode) {
         String code = GlobalRegions.normalise(countryCode);
-        if (code.isEmpty() || verdict == null || ServiceProbe.UNKNOWN.equals(verdict)) return;
-        preferences.edit().putString(KEY_VERDICT_PREFIX + code, verdict).apply();
+        if (code.isEmpty()) return;
+        preferences.edit().putString(KEY_VERDICT_PREFIX + code, CONNECTED).apply();
     }
 
     static String verdictOf(SharedPreferences preferences, String code) {
-        return preferences.getString(KEY_VERDICT_PREFIX + GlobalRegions.normalise(code),
-                ServiceProbe.UNKNOWN);
+        return preferences.getString(KEY_VERDICT_PREFIX + GlobalRegions.normalise(code), UNKNOWN);
     }
 
     public static void show(Context context, SharedPreferences preferences, String currentCode,
@@ -163,21 +165,11 @@ public final class RegionPicker {
                     && !code.toLowerCase(Locale.US).contains(needle)) {
                 continue;
             }
-            String verdict = verdictOf(preferences, code);
-            String detail;
-            int detailColour = 0;
-            if (ServiceProbe.OPEN.equals(verdict)) {
-                detail = context.getString(R.string.region_verdict_open);
-                detailColour = GOOD;
-            } else if (ServiceProbe.BLOCKED.equals(verdict)) {
-                detail = context.getString(R.string.region_verdict_blocked);
-                detailColour = BAD;
-            } else if (ServiceProbe.UNREACHABLE.equals(verdict)) {
-                detail = context.getString(R.string.region_verdict_unreachable);
-                detailColour = TEXT_MUTED;
-            } else {
-                detail = context.getString(R.string.region_verdict_untried);
-            }
+            boolean seen = CONNECTED.equals(verdictOf(preferences, code));
+            String detail = context.getString(seen
+                    ? R.string.region_verdict_connected
+                    : R.string.region_verdict_untried);
+            int detailColour = seen ? GOOD : 0;
             final String picked = code;
             list.addView(row(context, ExitLocation.flag(code), name, detail,
                     code.equals(current), detailColour,
@@ -279,11 +271,5 @@ public final class RegionPicker {
 
     private static int dp(Context context, int value) {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
-    }
-
-    /** Convenience for callers that only have a result map. */
-    public static void remember(SharedPreferences preferences, String countryCode,
-                                Map<String, String> results) {
-        remember(preferences, countryCode, ServiceProbe.verdict(results));
     }
 }

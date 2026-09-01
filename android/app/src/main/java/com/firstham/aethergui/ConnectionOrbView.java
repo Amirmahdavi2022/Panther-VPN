@@ -7,7 +7,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
-import android.graphics.DashPathEffect;
 import android.graphics.Shader;
 import android.graphics.SweepGradient;
 import android.util.AttributeSet;
@@ -29,10 +28,6 @@ public final class ConnectionOrbView extends View {
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF arc = new RectF();
-    private final DashPathEffect dashes = new DashPathEffect(new float[]{7f, 12f}, 0f);
-    private final Paint particlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final float[] particleAngles = new float[18];
-    private final float[] particleRadii = new float[18];
     private final Paint.FontMetrics fontMetrics = new Paint.FontMetrics();
     private Shader ringShader;
     private Shader bodyShader;
@@ -59,11 +54,6 @@ public final class ConnectionOrbView extends View {
         iconPaint.setColor(Color.WHITE);
         iconPaint.setStyle(Paint.Style.STROKE);
         iconPaint.setStrokeCap(Paint.Cap.ROUND);
-        particlePaint.setStyle(Paint.Style.FILL);
-        for (int i = 0; i < particleAngles.length; i++) {
-            particleAngles[i] = (float) (i * Math.PI * 2 / particleAngles.length);
-            particleRadii[i] = 1.05f + (i % 5) * .065f;
-        }
     }
 
     public void setConnectionState(String value, String text) {
@@ -119,16 +109,16 @@ public final class ConnectionOrbView extends View {
         paint.setColor(withAlpha(start, 46));
         canvas.drawCircle(cx, cy, radius * 1.1f, paint);
 
-        // Dashed progress arc sweeping around the track.
+        // Progress arc sweeping around the track. Solid, not dashed: at this radius a dashed
+        // stroke renders as a ring of loose dots that reads as a rendering fault rather than as
+        // motion, and it fought the neon rim underneath it for attention.
         arc.set(cx - radius * 1.1f, cy - radius * 1.1f, cx + radius * 1.1f, cy + radius * 1.1f);
         paint.setShader(null);
         paint.setColor(state == ERROR ? end : start);
         paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setPathEffect(dashes);
         float sweep = state == CONNECTED ? 300f : state == CONNECTING ? 110f : state == ERROR ? 60f : 82f;
         float rotation = state == CONNECTING ? phase * 360f : state == CONNECTED ? phase * 45f : -phase * 20f;
         canvas.drawArc(arc, rotation - 90f, sweep, false, paint);
-        paint.setPathEffect(null);
 
         // Ripple: a single ring pushing outwards the moment the tunnel comes up.
         if (ripple < 1f) {
@@ -137,21 +127,6 @@ public final class ConnectionOrbView extends View {
             paint.setStrokeWidth(radius * 0.05f * (1f - ripple));
             paint.setColor(withAlpha(start, (int) (150 * (1f - ripple))));
             canvas.drawCircle(cx, cy, radius * (1.05f + ripple * 0.55f), paint);
-        }
-
-        // Orbiting motes. They sit outside the rim and only run while something is happening, so
-        // the idle orb stays calm and the working one visibly has traffic on it.
-        if (state == CONNECTING || state == CONNECTED) {
-            float drift = state == CONNECTING ? phase * 2.4f : phase * 0.7f;
-            for (int i = 0; i < particleAngles.length; i++) {
-                float angle = particleAngles[i] + drift * (float) Math.PI * 2f * (i % 3 == 0 ? 1f : 0.72f);
-                float wobble = 1f + 0.05f * (float) Math.sin((phase + i * 0.11f) * Math.PI * 2);
-                float distance = radius * particleRadii[i] * wobble;
-                float size = radius * (state == CONNECTED ? 0.016f : 0.022f) * (0.6f + (i % 4) * 0.2f);
-                int alpha = (int) (70 + 90 * Math.abs(Math.sin((phase + i * 0.07f) * Math.PI * 2)));
-                particlePaint.setColor(withAlpha(i % 2 == 0 ? start : lighten(start, .35f), alpha));
-                canvas.drawCircle(cx + distance * (float) Math.cos(angle), cy + distance * (float) Math.sin(angle), size, particlePaint);
-            }
         }
 
         // Neon rim.
@@ -240,8 +215,8 @@ public final class ConnectionOrbView extends View {
 
     private static int withAlpha(int color, int alpha) { return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color)); }
     private static int lighten(int color, float amount) { return Color.rgb((int) (Color.red(color) + (255 - Color.red(color)) * amount), (int) (Color.green(color) + (255 - Color.green(color)) * amount), (int) (Color.blue(color) + (255 - Color.blue(color)) * amount)); }
-    // Glossy black and white: the orb is polished silver when idle and takes the single accent
-    // blue only once connected, so colour on this screen always means "you are protected".
+    // Glossy black and white: the orb is polished silver when idle and turns green only once the
+    // tunnel is actually up, so colour on this screen always means you are protected.
     private int startColor() { return mix(paletteStart(previousState), paletteStart(state), blend); }
     private int endColor() { return mix(paletteEnd(previousState), paletteEnd(state), blend); }
 
@@ -255,7 +230,7 @@ public final class ConnectionOrbView extends View {
 
     private static int paletteStart(int state) {
         switch (state) {
-            case CONNECTED:     return Color.rgb(0x4D, 0xA3, 0xFF);
+            case CONNECTED:     return Color.rgb(0x3D, 0xDC, 0x84);
             case CONNECTING:    return Color.rgb(0xE6, 0xE6, 0xEC);
             case DISCONNECTING: return Color.rgb(0x9A, 0x9A, 0xA6);
             case ERROR:         return Color.rgb(0xFF, 0x5A, 0x6E);
@@ -265,7 +240,7 @@ public final class ConnectionOrbView extends View {
 
     private static int paletteEnd(int state) {
         switch (state) {
-            case CONNECTED:     return Color.rgb(0x12, 0x4E, 0x8C);
+            case CONNECTED:     return Color.rgb(0x0B, 0x5B, 0x37);
             case CONNECTING:    return Color.rgb(0x6E, 0x6E, 0x7A);
             case DISCONNECTING: return Color.rgb(0x3A, 0x3A, 0x44);
             case ERROR:         return Color.rgb(0x6E, 0x18, 0x28);

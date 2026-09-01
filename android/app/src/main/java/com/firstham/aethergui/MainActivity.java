@@ -25,8 +25,6 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -48,7 +46,6 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import com.firstham.aethergui.vpngate.EngineRouter;
 
@@ -66,8 +63,6 @@ public final class MainActivity extends AppCompatActivity {
     private String endpoint = "";
     private String locationDetail = "";
     private String region = "";
-    /** Probe results for the live tunnel, encoded by {@link ServiceProbe#encode}. */
-    private String services = "";
     /** True while the chosen exit location routes through the OpenVPN relay engine. */
     private boolean relayMode;
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
@@ -89,7 +84,6 @@ public final class MainActivity extends AppCompatActivity {
                 endpoint = intent.getStringExtra("endpoint");
                 locationDetail = intent.getStringExtra("locationDetail");
                 region = intent.getStringExtra("region");
-                services = intent.getStringExtra("services");
                 rememberAvailableRegions(intent.getStringExtra("availableRegions"));
                 rememberVerdict();
                 renderState(intent.getStringExtra("state"), intent.getStringExtra("message"));
@@ -330,8 +324,7 @@ public final class MainActivity extends AppCompatActivity {
                 endpoint = "";
                 locationDetail = "";
                 region = "";
-                services = "";
-                renderState("starting", getString(R.string.status_connecting));
+                    renderState("starting", getString(R.string.status_connecting));
                 startSelectedEngine();
             }
         });
@@ -344,12 +337,10 @@ public final class MainActivity extends AppCompatActivity {
         preferences.edit().putString("availableRegions", encoded).apply();
     }
 
-    /** Files this tunnel's probe result against the country it actually came out in. */
+    /** Files a working connection against the country the tunnel actually came out in. */
     private void rememberVerdict() {
-        if (services == null || services.isEmpty()) return;
-        java.util.Map<String, String> results = ServiceProbe.decode(services);
-        if (!ServiceProbe.anyAnswered(results)) return;
-        RegionPicker.remember(preferences, region, results);
+        if (region == null || region.isEmpty()) return;
+        RegionPicker.remember(preferences, region);
     }
 
     private void openAppSelection() {
@@ -447,7 +438,6 @@ public final class MainActivity extends AppCompatActivity {
             endpoint = "";
             locationDetail = "";
             region = "";
-            services = "";
             renderState("starting", getString(R.string.status_connecting));
             startSelectedEngine();
         }
@@ -472,58 +462,6 @@ public final class MainActivity extends AppCompatActivity {
         binding.locationDetail.setVisibility(hasDetail ? View.VISIBLE : View.GONE);
         // The refresh control only means anything while a tunnel is up to re-ask through.
         binding.locationRefresh.setVisibility("connected".equals(state) ? View.VISIBLE : View.GONE);
-        renderServices();
-    }
-
-    /**
-     * Draws one chip per probed service.
-     *
-     * <p>The card appears as soon as the tunnel is up rather than waiting for the first result,
-     * because the probes take a few seconds and a card that pops into existence late reads as a
-     * glitch. Until a result arrives the chips say so.
-     */
-    private void renderServices() {
-        // Global only. Turbo keeps the exit in the user's own country on purpose, so the row would
-        // be a permanent line of red marks about something the app is not trying to do.
-        boolean show = "connected".equals(state) && "global".equals(engine());
-        binding.servicesCard.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (!show) return;
-        Map<String, String> results = ServiceProbe.decode(services);
-        binding.servicesRow.removeAllViews();
-        boolean anyRefused = false;
-        for (ServiceProbe.Target target : ServiceProbe.targets()) {
-            String outcome = results.get(target.id);
-            if (ServiceProbe.BLOCKED.equals(outcome)) anyRefused = true;
-            binding.servicesRow.addView(serviceChip(target.label, outcome));
-        }
-        binding.servicesHint.setVisibility(anyRefused ? View.VISIBLE : View.GONE);
-    }
-
-    private View serviceChip(String label, String outcome) {
-        TextView chip = new TextView(this);
-        boolean open = ServiceProbe.OPEN.equals(outcome);
-        boolean blocked = ServiceProbe.BLOCKED.equals(outcome);
-        boolean unreachable = ServiceProbe.UNREACHABLE.equals(outcome);
-        String mark = open ? "\u2713" : blocked ? "\u2715" : unreachable ? "\u2013" : "\u2026";
-        chip.setText(mark + "  " + label);
-        int colour = open ? 0xFF4ADE80 : blocked ? 0xFFF87171 : 0xFF8E8E9A;
-        chip.setTextColor(colour);
-        chip.setTextSize(12f);
-        chip.setTypeface(Typeface.DEFAULT_BOLD);
-        GradientDrawable background = new GradientDrawable();
-        // A tinted fill rather than a solid one: three saturated pills in a row fight the orb for
-        // attention, and this card is meant to be read after it, not before it.
-        background.setColor((colour & 0x00FFFFFF) | 0x1F000000);
-        background.setCornerRadius(dp(14));
-        chip.setBackground(background);
-        int padH = dp(10), padV = dp(6);
-        chip.setPadding(padH, padV, padH, padV);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.rightMargin = dp(6);
-        chip.setLayoutParams(params);
-        if (!open && !blocked && !unreachable) chip.setContentDescription(getString(R.string.services_checking));
-        return chip;
     }
 
     private int dp(int value) {

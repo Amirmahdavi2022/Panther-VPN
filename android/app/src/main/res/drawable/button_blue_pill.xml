@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Change affordance on the exit-country card. A filled pill rather than loose blue text,
+     because the card itself is tappable and a bare word of blue reads as decoration next to it. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/blue_600" />
+    <corners android:radius="20dp" />
+</shape>

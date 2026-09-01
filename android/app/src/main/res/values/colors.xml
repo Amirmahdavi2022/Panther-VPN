@@ -41,4 +41,5 @@
 
     <color name="log_surface">#050506</color>
     <color name="log_text">#D8D8E0</color>
+    <color name="white">#FFFFFFFF</color>
 </resources>
