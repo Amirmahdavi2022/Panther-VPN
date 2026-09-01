@@ -25,6 +25,10 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -44,9 +48,9 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import com.firstham.aethergui.vpngate.EngineRouter;
-import com.firstham.aethergui.vpngate.LocationPicker;
 
 public final class MainActivity extends AppCompatActivity {
     private static final int VPN_REQUEST = 41;
@@ -62,6 +66,8 @@ public final class MainActivity extends AppCompatActivity {
     private String endpoint = "";
     private String locationDetail = "";
     private String region = "";
+    /** Probe results for the live tunnel, encoded by {@link ServiceProbe#encode}. */
+    private String services = "";
     /** True while the chosen exit location routes through the OpenVPN relay engine. */
     private boolean relayMode;
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
@@ -83,6 +89,9 @@ public final class MainActivity extends AppCompatActivity {
                 endpoint = intent.getStringExtra("endpoint");
                 locationDetail = intent.getStringExtra("locationDetail");
                 region = intent.getStringExtra("region");
+                services = intent.getStringExtra("services");
+                rememberAvailableRegions(intent.getStringExtra("availableRegions"));
+                rememberVerdict();
                 renderState(intent.getStringExtra("state"), intent.getStringExtra("message"));
             }
             else if (AetherVpnService.ACTION_STATS.equals(intent.getAction())) renderStats(intent);
@@ -130,8 +139,10 @@ public final class MainActivity extends AppCompatActivity {
         // Anyone whose preferences still point at a country gets moved back here, once, silently.
         EngineRouter.setLocation(preferences, null, null);
         relayMode = false;
-        binding.exitLocationCard.setVisibility(View.GONE);
-        binding.exitLocationCard.setClickable(false);
+        // The card itself is reused for the Global engine's exit country, which is a different
+        // thing entirely from the relay country above: it is a parameter handed to the engine, not
+        // a server this app picks. renderExitLocation decides when it is on screen.
+        binding.exitLocationCard.setOnClickListener(view -> showRegionPicker());
         renderState("disconnected", getString(R.string.status_ready_message));
         if (getIntent().getBooleanExtra(AethonTileService.EXTRA_CONNECT_FROM_TILE, false)) {
             getIntent().removeExtra(AethonTileService.EXTRA_CONNECT_FROM_TILE);
@@ -293,13 +304,52 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
+    /** The Global exit country card. Only meaningful while Global is the armed engine. */
     private void renderExitLocation() {
-        String code = EngineRouter.location(preferences);
-        if (code == null) {
-            binding.exitLocationValue.setText(R.string.picker_automatic);
-            return;
-        }
-        binding.exitLocationValue.setText(LocationPicker.flag(code) + "  " + EngineRouter.locationName(preferences));
+        boolean global = "global".equals(engine());
+        binding.exitLocationCard.setVisibility(global ? View.VISIBLE : View.GONE);
+        binding.exitLocationLabel.setText(R.string.region_card_label);
+        if (!global) return;
+        String code = GlobalRegions.normalise(preferences.getString("region", GlobalRegions.AUTOMATIC));
+        binding.exitLocationValue.setText(code.isEmpty()
+                ? getString(R.string.picker_automatic)
+                : ExitLocation.flag(code) + "  " + GlobalRegions.name(code));
+    }
+
+    private void showRegionPicker() {
+        String current = preferences.getString("region", GlobalRegions.AUTOMATIC);
+        RegionPicker.show(this, preferences, current, code -> {
+            String chosen = GlobalRegions.normalise(code);
+            if (chosen.equals(GlobalRegions.normalise(current))) return;
+            preferences.edit().putString("region", chosen).apply();
+            renderExitLocation();
+            // The region is read when the engine starts, so a live tunnel has to be rebuilt for
+            // the choice to mean anything. Doing it here is less surprising than leaving the card
+            // claiming a country the tunnel is not actually using.
+            if (shouldDisconnect()) {
+                endpoint = "";
+                locationDetail = "";
+                region = "";
+                services = "";
+                renderState("starting", getString(R.string.status_connecting));
+                startSelectedEngine();
+            }
+        });
+    }
+
+    /** Keeps the engine's own region list so the picker can offer it before the next connection. */
+    private void rememberAvailableRegions(String encoded) {
+        if (encoded == null || encoded.isEmpty()) return;
+        if (encoded.equals(preferences.getString("availableRegions", ""))) return;
+        preferences.edit().putString("availableRegions", encoded).apply();
+    }
+
+    /** Files this tunnel's probe result against the country it actually came out in. */
+    private void rememberVerdict() {
+        if (services == null || services.isEmpty()) return;
+        java.util.Map<String, String> results = ServiceProbe.decode(services);
+        if (!ServiceProbe.anyAnswered(results)) return;
+        RegionPicker.remember(preferences, region, results);
     }
 
     private void openAppSelection() {
@@ -383,6 +433,7 @@ public final class MainActivity extends AppCompatActivity {
         binding.engineGlobal.setBackgroundResource(global ? R.drawable.engine_card_selected : R.drawable.engine_card);
         binding.engineTurboTitle.setTextColor(ContextCompat.getColor(this, global ? R.color.text : R.color.blue_600));
         binding.engineGlobalTitle.setTextColor(ContextCompat.getColor(this, global ? R.color.blue_600 : R.color.text));
+        renderExitLocation();
     }
 
     private void selectEngine(String choice) {
@@ -396,6 +447,7 @@ public final class MainActivity extends AppCompatActivity {
             endpoint = "";
             locationDetail = "";
             region = "";
+            services = "";
             renderState("starting", getString(R.string.status_connecting));
             startSelectedEngine();
         }
@@ -420,6 +472,60 @@ public final class MainActivity extends AppCompatActivity {
         binding.locationDetail.setVisibility(hasDetail ? View.VISIBLE : View.GONE);
         // The refresh control only means anything while a tunnel is up to re-ask through.
         binding.locationRefresh.setVisibility("connected".equals(state) ? View.VISIBLE : View.GONE);
+        renderServices();
+    }
+
+    /**
+     * Draws one chip per probed service.
+     *
+     * <p>The card appears as soon as the tunnel is up rather than waiting for the first result,
+     * because the probes take a few seconds and a card that pops into existence late reads as a
+     * glitch. Until a result arrives the chips say so.
+     */
+    private void renderServices() {
+        boolean connected = "connected".equals(state);
+        binding.servicesCard.setVisibility(connected ? View.VISIBLE : View.GONE);
+        if (!connected) return;
+        Map<String, String> results = ServiceProbe.decode(services);
+        binding.servicesRow.removeAllViews();
+        boolean anyRefused = false;
+        for (ServiceProbe.Target target : ServiceProbe.targets()) {
+            String outcome = results.get(target.id);
+            if (ServiceProbe.BLOCKED.equals(outcome)) anyRefused = true;
+            binding.servicesRow.addView(serviceChip(target.label, outcome));
+        }
+        binding.servicesHint.setVisibility(anyRefused ? View.VISIBLE : View.GONE);
+    }
+
+    private View serviceChip(String label, String outcome) {
+        TextView chip = new TextView(this);
+        boolean open = ServiceProbe.OPEN.equals(outcome);
+        boolean blocked = ServiceProbe.BLOCKED.equals(outcome);
+        boolean unreachable = ServiceProbe.UNREACHABLE.equals(outcome);
+        String mark = open ? "\u2713" : blocked ? "\u2715" : unreachable ? "\u2013" : "\u2026";
+        chip.setText(mark + "  " + label);
+        int colour = open ? 0xFF4ADE80 : blocked ? 0xFFF87171 : 0xFF8E8E9A;
+        chip.setTextColor(colour);
+        chip.setTextSize(12f);
+        chip.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable background = new GradientDrawable();
+        // A tinted fill rather than a solid one: three saturated pills in a row fight the orb for
+        // attention, and this card is meant to be read after it, not before it.
+        background.setColor((colour & 0x00FFFFFF) | 0x1F000000);
+        background.setCornerRadius(dp(14));
+        chip.setBackground(background);
+        int padH = dp(10), padV = dp(6);
+        chip.setPadding(padH, padV, padH, padV);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.rightMargin = dp(6);
+        chip.setLayoutParams(params);
+        if (!open && !blocked && !unreachable) chip.setContentDescription(getString(R.string.services_checking));
+        return chip;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void refreshLocation() {

@@ -218,4 +218,21 @@
     <string name="relay_start_failed">Could not start a relay in %1$s. Try another country.</string>
     <string name="relay_connecting">Connecting through %1$s…</string>
     <string name="relay_connected">Connected via %1$s</string>
+
+    <!-- Global exit country picker -->
+    <string name="region_card_label">Global exit country</string>
+    <string name="region_picker_title">Exit country</string>
+    <string name="region_picker_note">Applies to Global. Automatic is usually fastest — pick a country only when you need one.</string>
+    <string name="region_picker_search">Search countries</string>
+    <string name="region_picker_no_match">No country matches that.</string>
+    <string name="region_automatic_detail">Let the engine choose the fastest route</string>
+    <string name="region_verdict_open">Worked last time</string>
+    <string name="region_verdict_blocked">Was refused last time</string>
+    <string name="region_verdict_unreachable">Nothing answered last time</string>
+    <string name="region_verdict_untried">Not tried yet</string>
+
+    <!-- Reachability row -->
+    <string name="services_label">Reachable from this exit</string>
+    <string name="services_checking">Checking…</string>
+    <string name="services_hint">A refusal can mean the country or the exit address. Either way, try another exit.</string>
 </resources>

@@ -33,6 +33,7 @@ import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -65,6 +66,10 @@ public final class AetherVpnService extends VpnService {
     // The Global engine sweeps for a working route on a cold start, which is slower
     // than the other core's endpoint scan.
     private static final long GLOBAL_TIMEOUT_MS = 150_000L;
+    // A reachability probe is a nice-to-have on top of a working tunnel. Ten seconds is enough for
+    // a handshake over a settled tunnel and short enough that three of them in a row cannot make
+    // the location card feel stuck.
+    private static final int PROBE_TIMEOUT_MS = 10_000;
     private static final String TAG = "AetherVpnService";
 
     private final ExecutorService worker = Executors.newCachedThreadPool();
@@ -92,6 +97,10 @@ public final class AetherVpnService extends VpnService {
     private volatile String currentLocationDetail = "";
     private volatile GlobalCore globalCore;
     private volatile String currentRegion = "";
+    /** Encoded by {@link ServiceProbe#encode}. Empty until the probes have run on this tunnel. */
+    private volatile String currentServices = "";
+    /** Encoded by {@link GlobalRegions#encode}: what the Global engine offered on this run. */
+    private volatile String currentAvailableRegions = "";
     private volatile long connectedAt;
     private volatile long lastLogPersistedAt;
     private volatile long lastHealthCheckAt;
@@ -638,7 +647,89 @@ public final class AetherVpnService extends VpnService {
             currentEndpoint = found.usable() ? found.place() : getString(R.string.connection_location_unavailable);
             currentLocationDetail = found.usable() ? found.detail() : "";
             sendStatus(currentState, currentMessage);
+            // Only worth asking once the tunnel has demonstrably carried a request. Probing before
+            // that would mostly measure how long the tunnel takes to settle.
+            probeServices(socksAddress, lookup, session);
+            publishAvailableRegions();
         });
+    }
+
+    /**
+     * Asks each service whether it will serve this exit, through the live tunnel.
+     *
+     * <p>Runs on the same worker as the location lookup and after it, deliberately in sequence: a
+     * phone radio carrying a freshly built tunnel does not benefit from three simultaneous TLS
+     * handshakes, and the results are not needed quickly enough to be worth the risk.
+     *
+     * <p>Every outcome is published, including the failures. A probe that quietly disappears when
+     * it cannot connect would leave the previous tunnel's answer on screen, which is worse than
+     * saying nothing.
+     */
+    private void probeServices(String socksAddress, long lookup, long session) {
+        Map<String, String> results = new LinkedHashMap<>();
+        for (ServiceProbe.Target target : ServiceProbe.targets()) {
+            if (!stillLooking(lookup, session)) return;
+            String outcome;
+            try {
+                int status = probeStatus(socksAddress, target.host, target.path);
+                outcome = ServiceProbe.classify(status);
+                sendLog("Reachability " + target.label + ": HTTP " + status + " (" + outcome + ")");
+            } catch (Throwable error) {
+                outcome = ServiceProbe.UNREACHABLE;
+                sendLog("Reachability " + target.label + " failed: " + safeMessage(error));
+            }
+            results.put(target.id, outcome);
+            if (!stillLooking(lookup, session)) return;
+            currentServices = ServiceProbe.encode(results);
+            sendStatus(currentState, currentMessage);
+        }
+    }
+
+    /**
+     * The status line of a GET through the tunnel, and nothing else.
+     *
+     * <p>The body is never read. These pages are megabytes of markup and the only thing being
+     * asked is whether the service is willing to answer at all, so the socket is closed as soon as
+     * the first line has arrived.
+     */
+    private int probeStatus(String socksAddress, String host, String path) throws Exception {
+        try (Socket tunnel = openSocksTunnel(socksAddress, host, 443, PROBE_TIMEOUT_MS)) {
+            try (SSLSocket ssl = (SSLSocket) ((SSLSocketFactory) SSLSocketFactory.getDefault())
+                    .createSocket(tunnel, host, 443, true)) {
+                ssl.setSoTimeout(PROBE_TIMEOUT_MS);
+                ssl.startHandshake();
+                OutputStream output = ssl.getOutputStream();
+                // A browser-shaped request. Asking with a bare client agent gets a different answer
+                // from some of these services than a browser gets, which would make the probe
+                // report a block the user would never actually hit.
+                output.write(("GET " + path + " HTTP/1.1\r\nHost: " + host
+                        + "\r\nUser-Agent: Mozilla/5.0 (Linux; Android " + Build.VERSION.RELEASE
+                        + ") AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+                        + "\r\nAccept: text/html,application/xhtml+xml,*/*;q=0.8"
+                        + "\r\nAccept-Language: en-US,en;q=0.9"
+                        + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(ssl.getInputStream(), StandardCharsets.UTF_8));
+                String line = reader.readLine();
+                if (line == null || !line.startsWith("HTTP/")) return 0;
+                String[] parts = line.split(" ", 3);
+                if (parts.length < 2) return 0;
+                try { return Integer.parseInt(parts[1].trim()); }
+                catch (NumberFormatException malformed) { return 0; }
+            }
+        }
+    }
+
+    /** Publishes the exit countries the Global engine listed, so the picker can offer them. */
+    private void publishAvailableRegions() {
+        GlobalCore core = globalCore;
+        if (core == null) return;
+        List<String> reported = core.availableRegions();
+        if (reported == null || reported.isEmpty()) return;
+        String encoded = GlobalRegions.encode(reported);
+        if (encoded.equals(currentAvailableRegions)) return;
+        currentAvailableRegions = encoded;
+        sendStatus(currentState, currentMessage);
     }
 
     /** True while this lookup is still the current one and the tunnel it belongs to is still up. */
@@ -863,6 +954,9 @@ public final class AetherVpnService extends VpnService {
         currentEndpoint = "";
         currentLocationDetail = "";
         currentRegion = "";
+        // The probe results belong to the tunnel that was just torn down. Leaving them on screen
+        // over a dead tunnel would be the app asserting something it no longer knows.
+        currentServices = "";
         GlobalCore core = globalCore;
         globalCore = null;
         if (core != null) core.stop();
@@ -927,7 +1021,9 @@ public final class AetherVpnService extends VpnService {
         Intent intent = new Intent(ACTION_STATUS).setPackage(getPackageName());
         intent.putExtra("state", state).putExtra("message", message).putExtra("endpoint", currentEndpoint)
                 .putExtra("locationDetail", currentLocationDetail)
-                .putExtra("region", currentRegion);
+                .putExtra("region", currentRegion)
+                .putExtra("services", currentServices)
+                .putExtra("availableRegions", currentAvailableRegions);
         sendBroadcast(intent, INTERNAL_PERMISSION);
     }
 
