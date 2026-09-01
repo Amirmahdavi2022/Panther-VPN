@@ -649,8 +649,15 @@ public final class AetherVpnService extends VpnService {
             sendStatus(currentState, currentMessage);
             // Only worth asking once the tunnel has demonstrably carried a request. Probing before
             // that would mostly measure how long the tunnel takes to settle.
-            probeServices(socksAddress, lookup, session);
-            publishAvailableRegions();
+            //
+            // And only on Global. Turbo exits through Cloudflare's location-preserving pool, so it
+            // comes out in the user's own country by design - the probes would spend three TLS
+            // handshakes to report a refusal that was never about the tunnel and that no setting
+            // in this app can change.
+            if ("global".equals(value(request, "engine", "turbo"))) {
+                probeServices(socksAddress, lookup, session);
+                publishAvailableRegions();
+            }
         });
     }
 

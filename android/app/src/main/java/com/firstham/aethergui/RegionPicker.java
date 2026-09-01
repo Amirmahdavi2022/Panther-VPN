@@ -11,9 +11,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.core.widget.NestedScrollView;
+
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import java.util.List;
@@ -83,6 +85,10 @@ public final class RegionPicker {
         root.addView(title(context, context.getString(R.string.region_picker_title)));
         root.addView(note(context, context.getString(R.string.region_picker_note)));
 
+        // Taking focus on the root first stops the search box claiming it the moment the sheet is
+        // laid out.
+        root.setFocusableInTouchMode(true);
+
         LinearLayout list = new LinearLayout(context);
         list.setOrientation(LinearLayout.VERTICAL);
 
@@ -99,6 +105,8 @@ public final class RegionPicker {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             params.topMargin = dp(context, 10);
             search.setLayoutParams(params);
+            search.setFocusable(true);
+            search.setFocusableInTouchMode(true);
             search.addTextChangedListener(new TextWatcher() {
                 @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
                 @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
@@ -109,8 +117,12 @@ public final class RegionPicker {
             root.addView(search);
         }
 
-        ScrollView scroller = new ScrollView(context);
+        // A plain ScrollView does not scroll inside a bottom sheet. The sheet's behaviour only
+        // hands a drag to a child that implements NestedScrollingChild, so with a ScrollView every
+        // swipe is taken as an attempt to drag the sheet itself and the list never moves.
+        NestedScrollView scroller = new NestedScrollView(context);
         scroller.addView(list);
+        scroller.setFillViewport(true);
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 420));
         scrollParams.topMargin = dp(context, 8);
@@ -119,6 +131,15 @@ public final class RegionPicker {
 
         render(context, preferences, list, codes, currentCode, "", callback, sheet);
         sheet.setContentView(root);
+
+        // Open at full height. Left to itself the sheet opens collapsed, which on a list this long
+        // means the first rows are already off the bottom before anyone has touched it.
+        // Asked of the dialog rather than dug out of root.getParent(): the parent is only the
+        // sheet's own container once the dialog has laid itself out, and reaching for it early is
+        // how this turns into a null dereference on some devices and not others.
+        BottomSheetBehavior<?> behaviour = sheet.getBehavior();
+        behaviour.setState(BottomSheetBehavior.STATE_EXPANDED);
+        behaviour.setSkipCollapsed(true);
         sheet.show();
     }
 

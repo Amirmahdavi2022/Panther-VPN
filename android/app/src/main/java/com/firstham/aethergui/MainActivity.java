@@ -483,9 +483,11 @@ public final class MainActivity extends AppCompatActivity {
      * glitch. Until a result arrives the chips say so.
      */
     private void renderServices() {
-        boolean connected = "connected".equals(state);
-        binding.servicesCard.setVisibility(connected ? View.VISIBLE : View.GONE);
-        if (!connected) return;
+        // Global only. Turbo keeps the exit in the user's own country on purpose, so the row would
+        // be a permanent line of red marks about something the app is not trying to do.
+        boolean show = "connected".equals(state) && "global".equals(engine());
+        binding.servicesCard.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) return;
         Map<String, String> results = ServiceProbe.decode(services);
         binding.servicesRow.removeAllViews();
         boolean anyRefused = false;
