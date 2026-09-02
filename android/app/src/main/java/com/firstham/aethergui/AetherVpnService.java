@@ -65,6 +65,9 @@ public final class AetherVpnService extends VpnService {
     // The Global engine sweeps for a working route on a cold start, which is slower
     // than the other core's endpoint scan.
     private static final long GLOBAL_TIMEOUT_MS = 150_000L;
+    // True when Global was asked for but could not start and we kept the carrier tunnel instead.
+    // Held so the connected message tells the truth about which engine the user actually has.
+    private boolean degradedToCarrier = false;
     // Edge scan tuning. The sample is wide enough to survive a whole prefix being filtered, the
     // timeout short enough that a dead address costs little, and the cache long enough that
     // reconnecting a few minutes later does not sweep all over again.
@@ -216,6 +219,7 @@ public final class AetherVpnService extends VpnService {
             }
             updateState("starting", getString(R.string.service_launching));
             updateState("scanning", getString(R.string.service_scanning));
+            degradedToCarrier = false;
             boolean global = "global".equals(value(request, "engine", "turbo"));
             if (global) {
                 // The Global engine picks its own loopback port, so it has to be started before
@@ -223,10 +227,18 @@ public final class AetherVpnService extends VpnService {
                 // bridge, the location lookup, the ping probe - goes on reading that one extra and
                 // does not need to know which engine filled it in.
                 if (!startGlobalCore(request, session)) {
-                    throw new IllegalStateException(getString(R.string.service_global_failed));
+                    // Global failed, but it only gets this far once the carrier tunnel is already
+                    // up and serving SOCKS. Tearing that down would hand the user a dead app when
+                    // a working tunnel is sitting right there. Carry on with the carrier alone:
+                    // they lose the exit country, not their connection. The socks extra still
+                    // points at the carrier, because only a successful Global start overwrites it.
+                    global = false;
+                    degradedToCarrier = true;
+                    sendLog("Global did not come up; staying on the carrier tunnel instead");
+                    updateState("securing", getString(R.string.service_global_degraded));
                 }
             } else if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
-                throw new IllegalStateException(aetherExitMessage("Aether did not open its SOCKS5 listener"));
+                throw new IllegalStateException(aetherExitMessage("Turbo did not open its SOCKS5 listener"));
             }
 
             connectionEstablished = true;
@@ -237,7 +249,8 @@ public final class AetherVpnService extends VpnService {
             } else {
                 establishVpn(request);
                 connectedAt = System.currentTimeMillis();
-                updateState("connected", getString(R.string.service_protected));
+                updateState("connected", getString(degradedToCarrier
+                        ? R.string.service_global_degraded : R.string.service_protected));
                 updateNotification(getString("smart".equals(connectionMode) ? R.string.service_smart_protected : R.string.service_aethon_protected));
             }
             scheduleLocationLookup(request, session);
@@ -296,7 +309,7 @@ public final class AetherVpnService extends VpnService {
 
     private void startAether(Intent request) throws Exception {
         File executable = new File(getApplicationInfo().nativeLibraryDir, "libaether.so");
-        if (!executable.isFile()) throw new IllegalStateException("Aether core is missing for this device architecture");
+        if (!executable.isFile()) throw new IllegalStateException("Turbo engine is missing for this device architecture");
 
         ProcessBuilder builder = new ProcessBuilder(executable.getAbsolutePath());
         builder.directory(getFilesDir());
@@ -324,7 +337,7 @@ public final class AetherVpnService extends VpnService {
             aetherProcess = builder.start();
         }
         Process process = aetherProcess;
-        sendLog("Aether core started for " + Build.SUPPORTED_ABIS[0]);
+        sendLog("Turbo engine started for " + Build.SUPPORTED_ABIS[0]);
         Thread logs = new Thread(() -> readAetherLogs(process, protocol, transport), "aether-log-reader");
         logs.setDaemon(true);
         logs.start();
@@ -391,7 +404,7 @@ public final class AetherVpnService extends VpnService {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                sendLog("[Aether] " + line);
+                sendLog("[Turbo] " + line);
                 String lower = line.toLowerCase(Locale.US);
                 if (process == aetherProcess && "masque".equals(protocol) && "h3".equals(transport)
                         && lower.contains("no usable masque gateway found")) {
@@ -404,7 +417,7 @@ public final class AetherVpnService extends VpnService {
                 }
             }
         } catch (Exception error) {
-            if (!stopping) sendLog("Aether log stream closed: " + safeMessage(error));
+            if (!stopping) sendLog("Turbo log stream closed: " + safeMessage(error));
         }
     }
 
@@ -492,9 +505,9 @@ public final class AetherVpnService extends VpnService {
             long processStartedAt = System.currentTimeMillis();
             int exitCode = process.waitFor();
             if (stopping || generation.get() != session) return;
-            sendLog("Aether exited with code " + exitCode);
+            sendLog("Turbo exited with code " + exitCode);
             if (!request.getBooleanExtra("quickReconnect", true)) {
-                throw new IllegalStateException("Aether stopped unexpectedly (exit " + exitCode + ")");
+                throw new IllegalStateException("Turbo stopped unexpectedly (exit " + exitCode + ")");
             }
             waitForUnderlyingNetwork(session);
             if (stopping || generation.get() != session) return;
@@ -505,10 +518,13 @@ public final class AetherVpnService extends VpnService {
             }
             currentEndpoint = "";
             currentLocationDetail = "";
+            // The edge we were using just died on us. Retrying the same address is the one thing
+            // guaranteed not to help, so drop it and let the next start sweep for another one.
+            forgetScannedPeer();
             updateState("reconnecting", getString(R.string.service_reconnecting));
             Thread.sleep(Math.min(20_000L, 1_500L << (attempts - 1)));
             if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
-                sendLog(aetherExitMessage("Aether reconnect attempt did not become ready"));
+                sendLog(aetherExitMessage("Turbo reconnect attempt did not become ready"));
                 Process retry = aetherProcess;
                 if (retry != null && retry.isAlive()) retry.destroy();
                 continue;

@@ -159,6 +159,7 @@
     <string name="service_aethon_protected">Protected through Panther VPN</string>
     <string name="service_blocked">Tunnel stopped; network remains blocked by fail-closed mode</string>
     <string name="service_blocked_notification">Traffic blocked - reconnect or disconnect</string>
+    <string name="service_global_degraded">Global is unreachable right now — staying connected on Turbo</string>
     <string name="service_scanning_edges">Finding a reachable edge for your network</string>
     <string name="service_identity_ready">Identity ready; finding the best gateway</string>
     <string name="service_testing_gateways">Testing reachable gateways</string>
