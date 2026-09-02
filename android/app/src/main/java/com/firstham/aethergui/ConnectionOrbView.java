@@ -138,8 +138,14 @@ public final class ConnectionOrbView extends View {
         canvas.restore();
         paint.setShader(null);
 
-        // Core.
+        // Core. A flat coat of the state's own colour goes down first: the gradient on top is
+        // offset and only covers part of its own span, so if anything about the shader is stale or
+        // mid-handover the face used to fall back to looking idle-silver. This makes the state
+        // readable no matter what the shader does.
         paint.setStyle(Paint.Style.FILL);
+        paint.setShader(null);
+        paint.setColor(mix(start, end, .35f));
+        canvas.drawCircle(cx, cy, radius * 0.93f, paint);
         paint.setShader(bodyShader);
         canvas.drawCircle(cx, cy, radius * 0.93f, paint);
         paint.setShader(highlightShader);
@@ -190,6 +196,22 @@ public final class ConnectionOrbView extends View {
             if (arrived) ripple = value;
             updateShaders();
             invalidate();
+        });
+        // If the animation is cancelled or the view is torn down mid-handover, the shaders would
+        // otherwise keep the half-blended colours forever. Land them on the final state.
+        handover.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                blend = 1f;
+                if (arrived) ripple = 1f;
+                updateShaders();
+                invalidate();
+            }
+            @Override public void onAnimationCancel(android.animation.Animator animation) {
+                blend = 1f;
+                if (arrived) ripple = 1f;
+                updateShaders();
+                invalidate();
+            }
         });
         handover.start();
     }

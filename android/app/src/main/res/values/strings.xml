@@ -120,7 +120,7 @@
     <string name="tile_add_manual">Open Quick Settings edit mode and add Panther VPN.</string>
     <string name="nav_home">Home</string>
     <string name="state_label">Status</string>
-    <string name="about_tagline">Two free networks, one connect button.\nNo account, nothing to paste in.</string>
+    <string name="about_tagline">Two engines, one connect button.\nNo account, nothing to paste in.</string>
     <string name="feature_fast">Fast</string>
     <string name="feature_secure">Encrypted</string>
     <string name="feature_stable">Free</string>
@@ -128,13 +128,17 @@
     <string name="license_line" translatable="false">AGPL-3.0 · github.com/amirmahdavi2023/Panther-VPN</string>
     <string name="about">About</string>
     <string name="about_summary">Panther VPN for Android</string>
+    <string name="about_thanks_title">Thank you for choosing Panther</string>
+    <string name="about_thanks_en">Panther is built and maintained by one developer, and it stays free and open source. New versions, server news and outage notices are posted on the Telegram channel before anywhere else — joining is the easiest way to know when an update is out.</string>
+    <string name="about_thanks_fa">از اینکه پنتر را انتخاب کردید سپاسگزاریم.\n\nپنتر را یک نفر می‌سازد و نگه می‌دارد، و رایگان و متن‌باز می‌ماند. نسخه‌های جدید، خبر سرورها و اطلاعیه‌ی اختلال‌ها زودتر از هر جای دیگری در کانال تلگرام منتشر می‌شود؛ عضو شدن ساده‌ترین راه است برای اینکه از به‌روزرسانی‌ها باخبر بمانید.</string>
+    <string name="about_thanks_cta">Join the channel · عضویت در کانال</string>
     <string name="about_networks_title">How it connects</string>
-    <string name="about_mode_auto_title">Automatic</string>
-    <string name="about_mode_auto_body">Rides Cloudflare WARP through the Aether core. The fastest option, and the most resilient where protocols are filtered. WARP endpoints are anycast, so the exit country follows your network and cannot be chosen.</string>
-    <string name="about_mode_relay_title">Relay</string>
-    <string name="about_mode_relay_body">Connects through VPN Gate, a volunteer relay network run as an academic project at the University of Tsukuba. Pick a country and the app fetches a live server list, ranks it, and dials the best relay. The country is yours to choose; the address within it varies.</string>
+    <string name="about_mode_auto_title">Turbo</string>
+    <string name="about_mode_auto_body">The fast path. Panther probes a spread of edge addresses on your own network and dials whichever answers best, so a blocked address is routed around rather than retried. The exit stays in your own country by design.</string>
+    <string name="about_mode_relay_title">Global</string>
+    <string name="about_mode_relay_body">Comes out in another country, which is what geo-restricted services need. It runs inside the Turbo tunnel rather than beside it, so it works on networks where it could not connect on its own. Slower by nature — two hops instead of one. If it cannot come up, Panther keeps you connected on Turbo instead of dropping you.</string>
     <string name="about_credits_title">Built on</string>
-    <string name="about_credits_body">Aether · VPN Gate · vpnLib · hev-socks5-tunnel\nPanther is independent and not affiliated with any of them.</string>
+    <string name="about_credits_body">Aether · Psiphon · vpnLib · hev-socks5-tunnel\nPanther is independent and not affiliated with any of them. Full licences are in NOTICE.md.</string>
     <string name="telegram_title">Panther on Telegram</string>
     <string name="telegram_summary">Updates, tips, and new releases from @parsv2r.</string>
     <string name="open_channel">Open channel</string>
