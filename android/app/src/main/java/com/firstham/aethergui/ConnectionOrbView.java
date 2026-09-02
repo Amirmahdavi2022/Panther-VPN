@@ -238,6 +238,19 @@ public final class ConnectionOrbView extends View {
         }
     }
 
+    /**
+     * The colour the orb's body fades out to at its edge. This used to be near-black for every
+     * state, which is why "connected" only ever showed as a green rim around a dark button. Green
+     * here fills the whole face instead, so the connected state is readable at a glance.
+     */
+    private static int paletteCore(int state) {
+        switch (state) {
+            case CONNECTED: return Color.rgb(0x05, 0x2E, 0x1C);
+            case ERROR:     return Color.rgb(0x2A, 0x06, 0x0C);
+            default:        return Color.rgb(0x06, 0x06, 0x08);
+        }
+    }
+
     private static int paletteEnd(int state) {
         switch (state) {
             case CONNECTED:     return Color.rgb(0x0B, 0x5B, 0x37);
@@ -255,8 +268,14 @@ public final class ConnectionOrbView extends View {
         int start = startColor();
         int end = endColor();
         int highlight = Color.argb(state == DISCONNECTED ? 90 : 165, 255, 255, 255);
+        int core = mix(paletteCore(previousState), paletteCore(state), blend);
+        // Connected pushes the colour stops outwards so the green owns the face of the button
+        // rather than sitting in a ring at its edge.
+        float[] bodyStops = state == CONNECTED
+                ? new float[]{0f, .42f, .84f, 1f}
+                : new float[]{0f, .28f, .66f, 1f};
         ringShader = new SweepGradient(cx, cy, new int[]{start, end, highlight, start}, new float[]{0f, .46f, .72f, 1f});
-        bodyShader = new RadialGradient(cx - radius * .26f, cy - radius * .32f, radius * 1.5f, new int[]{lighten(start, .18f), start, end, Color.rgb(6, 6, 8)}, new float[]{0f, .28f, .66f, 1f}, Shader.TileMode.CLAMP);
+        bodyShader = new RadialGradient(cx - radius * .26f, cy - radius * .32f, radius * 1.5f, new int[]{lighten(start, .18f), start, end, core}, bodyStops, Shader.TileMode.CLAMP);
         highlightShader = new RadialGradient(cx - radius * .32f, cy - radius * .4f, radius * .72f, new int[]{Color.argb(70, 255, 255, 255), Color.TRANSPARENT}, null, Shader.TileMode.CLAMP);
     }
 }
