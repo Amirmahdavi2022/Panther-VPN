@@ -57,7 +57,7 @@
         <service
             android:name=".AethonTileService"
             android:exported="true"
-            android:icon="@drawable/ic_aethon_mono"
+            android:icon="@drawable/ic_stat_panther"
             android:label="@string/tile_name"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>

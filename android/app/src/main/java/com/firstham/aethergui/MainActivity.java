@@ -499,7 +499,7 @@ public final class MainActivity extends AppCompatActivity {
     private void requestQuickSettingsTile() {
         if (Build.VERSION.SDK_INT >= 33) {
             StatusBarManager manager = getSystemService(StatusBarManager.class);
-            manager.requestAddTileService(new ComponentName(this, AethonTileService.class), getString(R.string.tile_name), Icon.createWithResource(this, R.drawable.ic_aethon_mono), getMainExecutor(), result -> Toast.makeText(this, R.string.tile_add_requested, Toast.LENGTH_SHORT).show());
+            manager.requestAddTileService(new ComponentName(this, AethonTileService.class), getString(R.string.tile_name), Icon.createWithResource(this, R.drawable.ic_stat_panther), getMainExecutor(), result -> Toast.makeText(this, R.string.tile_add_requested, Toast.LENGTH_SHORT).show());
             return;
         }
         try { startActivity(new Intent("android.settings.QUICK_SETTINGS_SETTINGS")); }

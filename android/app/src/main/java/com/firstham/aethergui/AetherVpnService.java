@@ -996,7 +996,7 @@ public final class AetherVpnService extends VpnService {
         Intent stop = new Intent(this, AetherVpnService.class).setAction(ACTION_STOP);
         PendingIntent disconnect = PendingIntent.getService(this, 1, stop, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_aethon_mono)
+                .setSmallIcon(R.drawable.ic_stat_panther)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(text)
                 .setOngoing(true)

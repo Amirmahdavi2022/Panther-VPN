@@ -216,7 +216,7 @@ final class AppUpdateManager {
         Intent action = new Intent(context, AppUpdateReceiver.class).setAction(UpdateConfig.ACTION_DOWNLOAD);
         PendingIntent pending = PendingIntent.getBroadcast(context, 2902, action, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         String body = context.getString(R.string.new_update_versions, BuildConfig.VERSION_NAME, version) + "\n" + (TextUtils.isEmpty(notes) ? context.getString(R.string.no_release_notes) : notes.trim());
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.ic_aethon_mono)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.ic_stat_panther)
                 .setContentTitle(context.getString(R.string.new_update_title)).setContentText(context.getString(R.string.new_update_versions, BuildConfig.VERSION_NAME, version))
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body)).setOnlyAlertOnce(true).setAutoCancel(true).addAction(0, context.getString(R.string.start_update), pending);
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build());
@@ -229,7 +229,7 @@ final class AppUpdateManager {
         if (!notificationsAllowed(context)) return;
         Intent action = new Intent(context, AppUpdateReceiver.class).setAction(UpdateConfig.ACTION_INSTALL);
         PendingIntent pending = PendingIntent.getBroadcast(context, 2903, action, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.ic_aethon_mono)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.ic_stat_panther)
                 .setContentTitle(context.getString(R.string.new_update_title)).setContentText(context.getString(R.string.update_ready_install))
                 .setAutoCancel(true).setOnlyAlertOnce(true).addAction(0, context.getString(R.string.install_update), pending);
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build());
@@ -239,7 +239,7 @@ final class AppUpdateManager {
     static void notifyFailure(Context context, int messageId) {
         createNotificationChannel(context);
         if (!notificationsAllowed(context)) return;
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.ic_aethon_mono)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID).setSmallIcon(R.drawable.ic_stat_panther)
                 .setContentTitle(context.getString(R.string.app_updates)).setContentText(context.getString(messageId)).setAutoCancel(true).setOnlyAlertOnce(true);
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build());
     }
