@@ -107,7 +107,7 @@ public final class ConnectionOrbView extends View {
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(radius * 0.055f);
         paint.setColor(withAlpha(start, 46));
-        canvas.drawCircle(cx, cy, radius * 1.1f, paint);
+        if (state != CONNECTED) canvas.drawCircle(cx, cy, radius * 1.1f, paint);
 
         // Progress arc sweeping around the track. Solid, not dashed: at this radius a dashed
         // stroke renders as a ring of loose dots that reads as a rendering fault rather than as
@@ -116,9 +116,13 @@ public final class ConnectionOrbView extends View {
         paint.setShader(null);
         paint.setColor(state == ERROR ? end : start);
         paint.setStrokeCap(Paint.Cap.ROUND);
-        float sweep = state == CONNECTED ? 300f : state == CONNECTING ? 110f : state == ERROR ? 60f : 82f;
-        float rotation = state == CONNECTING ? phase * 360f : state == CONNECTED ? phase * 45f : -phase * 20f;
-        canvas.drawArc(arc, rotation - 90f, sweep, false, paint);
+        // No sweeping arc once connected: the whole face carries the state instead, which reads
+        // faster than a ring and does not depend on the arc and the body agreeing on a colour.
+        if (state != CONNECTED) {
+            float sweep = state == CONNECTING ? 110f : state == ERROR ? 60f : 82f;
+            float rotation = state == CONNECTING ? phase * 360f : -phase * 20f;
+            canvas.drawArc(arc, rotation - 90f, sweep, false, paint);
+        }
 
         // Ripple: a single ring pushing outwards the moment the tunnel comes up.
         if (ripple < 1f) {
