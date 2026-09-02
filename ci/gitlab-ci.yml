@@ -1,0 +1,93 @@
+stages:
+  - build
+
+# Why this file lives on GitLab and clones from GitHub:
+# The GitHub account is flagged, which blocks OAuth authorization for third-party CI. A plain git
+# clone over HTTPS with a token is not OAuth and is unaffected, so the pipeline fetches the source
+# itself rather than relying on any GitHub integration. Copy this file into a GitLab project as
+# .gitlab-ci.yml - the GitLab project's own contents are irrelevant, it only hosts the pipeline.
+#
+# Required CI/CD variables (Settings -> CI/CD -> Variables), all Masked, none Protected:
+#   GH_TOKEN                   GitHub token with Contents write
+#   ANDROID_KEYSTORE_BASE64    base64 of the release keystore  (type: Variable, not File)
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS          release
+#   ANDROID_KEY_PASSWORD
+# Optional, set when you click "Run pipeline":
+#   RELEASE_TAG                e.g. v2.7.1 - leave unset and the APKs stay as job artifacts
+
+build-apks:
+  stage: build
+  image: mingc/android-build-box:latest
+  timeout: 90m
+  variables:
+    GIT_STRATEGY: none
+    ANDROID_KEYSTORE_PATH: ".android-signing/panther.jks"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
+    NDK_VERSION: "27.2.12479018"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - git clone --recurse-submodules https://x-access-token:${GH_TOKEN}@github.com/amirmahdavi2023/Panther-VPN.git src
+    - cd src
+    - test -n "$RELEASE_TAG" && git checkout "$RELEASE_TAG" || echo "Building the tip of main."
+
+    # The image ships several NDKs but not necessarily the pinned one. Install it if missing.
+    - export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+    - |
+      if [ ! -d "$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" ]; then
+        yes | sdkmanager --install "ndk;$NDK_VERSION" > /dev/null
+      fi
+    - export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+
+    - bash scripts/fetch-android-assets.sh
+
+    # A green build once shipped with a core missing from it, so check before trusting the APK.
+    - |
+      missing=""
+      for abi in arm64-v8a armeabi-v7a x86_64; do
+        for lib in libaether.so libhev-socks5-tunnel.so; do
+          p="android/app/src/main/jniLibs/$abi/$lib"
+          [ -f "$p" ] || missing="$missing $p"
+        done
+      done
+      [ -f android/app/libs/ca.psiphon.aar ] || missing="$missing ca.psiphon.aar"
+      [ -z "$missing" ] || { echo "Native cores missing:$missing"; exit 1; }
+
+    # vpnLib runs its own R8 pass and publishes obfuscated classes while consumers compile against
+    # the un-obfuscated ones, so a missing keep rule only shows up as a crash on device. Let :app
+    # do the shrinking instead.
+    - |
+      f=android/vpnLib/build.gradle
+      grep -q 'minifyEnabled[[:space:]]\+true' "$f" || { echo "Expected 'minifyEnabled true' in $f."; exit 1; }
+      sed -i 's/minifyEnabled[[:space:]]\+true/minifyEnabled false/' "$f"
+
+    - mkdir -p android/.android-signing
+    - echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/.android-signing/panther.jks
+    - test -s android/.android-signing/panther.jks || { echo "Keystore decoded to nothing."; exit 1; }
+
+    - cd android && ./gradlew --no-daemon testDebugUnitTest :app:assembleRelease && cd ..
+
+    - |
+      version="${RELEASE_TAG#v}"
+      [ -n "$version" ] || version=$(node -p "require('./package.json').version")
+      mkdir -p ../release
+      out=android/app/build/outputs/apk/release
+      cp "$out/app-universal-release.apk"   "../release/Panther-VPN-v${version}-Universal.apk"
+      cp "$out/app-arm64-v8a-release.apk"   "../release/Panther-VPN-v${version}-ARM64.apk"
+      cp "$out/app-armeabi-v7a-release.apk" "../release/Panther-VPN-v${version}-ARMv7.apk"
+      cp "$out/app-x86_64-release.apk"      "../release/Panther-VPN-v${version}-x86_64.apk"
+      (cd ../release && sha256sum *.apk > SHA256SUMS.txt)
+
+    - |
+      if [ -n "$RELEASE_TAG" ]; then
+        RELEASE_DIR=../release bash scripts/publish-github-release.sh "$RELEASE_TAG"
+      else
+        echo "No RELEASE_TAG set - the APKs are attached to this job as artifacts."
+      fi
+  artifacts:
+    name: "panther-apks"
+    expire_in: 30 days
+    paths:
+      - release/
