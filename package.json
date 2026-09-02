@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "fetch:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-android-assets.ps1",
-    "build:android": "cd android && gradlew.bat assembleRelease"
+    "build:android": "cd android && gradlew.bat assembleRelease",
+    "fetch:android:posix": "bash scripts/fetch-android-assets.sh"
   }
 }

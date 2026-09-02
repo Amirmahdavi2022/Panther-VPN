@@ -1,0 +1,107 @@
+workflows:
+  android-release:
+    name: Panther Android release
+    # Codemagic runs this on its own builders. Nothing here touches GitHub Actions, which is the
+    # whole point of the file: the repository can still be built when Actions is unavailable.
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      java: 17
+      groups:
+        # Create this group in Codemagic (Teams/App settings -> Environment variables) with:
+        #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
+        #   ANDROID_KEY_PASSWORD, GH_TOKEN
+        # Mark every one of them Secure.
+        - panther_signing
+      vars:
+        # Set this when you start a build to publish a GitHub release, e.g. v2.7.0.
+        # Leave it empty and you still get the APKs as build artifacts, just no release.
+        RELEASE_TAG: ""
+        ANDROID_KEYSTORE_PATH: ".android-signing/panther.jks"
+        GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
+    scripts:
+      - name: Check out the pinned vpnLib submodule
+        script: git submodule update --init --recursive
+
+      - name: Check the notices match the core we actually pin
+        script: |
+          # NOTICE.md is a licence document, so naming a different core version than the build
+          # downloads is a compliance problem rather than a typo. It drifted once already.
+          pin=$(grep -o '"v[0-9]\+\.[0-9]\+\.[0-9]\+"' scripts/fetch-android-assets.sh | head -n 1 | tr -d '"')
+          [ -n "$pin" ] || { echo "Could not read the pinned Aether version."; exit 1; }
+          grep -q "$pin" NOTICE.md || { echo "NOTICE.md does not mention the pinned Aether core $pin."; exit 1; }
+          echo "NOTICE.md and the build agree on Aether $pin."
+
+      - name: Install the Android NDK
+        script: |
+          yes | sdkmanager --install "ndk;27.2.12479018" >/dev/null
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT" >> $CM_ENV
+
+      - name: Fetch verified native assets
+        script: bash scripts/fetch-android-assets.sh
+
+      - name: Verify every native core landed
+        script: |
+          # A green build once shipped with a core missing from it. Fail loudly instead.
+          missing=""
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            for lib in libaether.so libhev-socks5-tunnel.so; do
+              p="android/app/src/main/jniLibs/$abi/$lib"
+              if [ -f "$p" ]; then ls -l "$p"; else missing="$missing $p"; fi
+            done
+          done
+          [ -f android/app/libs/ca.psiphon.aar ] || missing="$missing android/app/libs/ca.psiphon.aar"
+          [ -z "$missing" ] || { echo "Native cores missing:$missing"; exit 1; }
+
+      - name: Let :app shrink the VPN engine, not vpnLib itself
+        script: |
+          # vpnLib ships `minifyEnabled true`, so it runs its OWN R8 pass and publishes an
+          # obfuscated library. Consumers still COMPILE against the un-obfuscated classes, so any
+          # engine class the library's proguard file forgets to keep compiles fine and then throws
+          # NoClassDefFoundError on device. That is exactly what crashed the app on launch.
+          f=android/vpnLib/build.gradle
+          [ -f "$f" ] || { echo "$f is missing - was the submodule checked out?"; exit 1; }
+          grep -q 'minifyEnabled[[:space:]]\+true' "$f" || { echo "Expected 'minifyEnabled true' in $f and did not find it. Refusing to build a shape nobody has checked."; exit 1; }
+          sed -i.bak 's/minifyEnabled[[:space:]]\+true/minifyEnabled false/' "$f" && rm -f "$f.bak"
+          ! grep -q 'minifyEnabled[[:space:]]\+true' "$f" || { echo "Patch did not apply to $f."; exit 1; }
+          echo "vpnLib self-minification disabled."
+
+      - name: Run unit tests
+        script: cd android && ./gradlew --no-daemon --stacktrace testDebugUnitTest
+
+      - name: Prepare the signing key
+        script: |
+          mkdir -p android/.android-signing
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/.android-signing/panther.jks
+          [ -s android/.android-signing/panther.jks ] || { echo "The keystore decoded to nothing - check ANDROID_KEYSTORE_BASE64."; exit 1; }
+
+      - name: Build signed APKs
+        script: cd android && ./gradlew --no-daemon --stacktrace :app:assembleRelease :app:lintRelease
+
+      - name: Stage release files
+        script: |
+          # The tag is the release's identity, so name the files after it. package.json was the
+          # old source and it drifted: two builds once shipped files with the same wrong version.
+          version="${RELEASE_TAG#v}"
+          [ -n "$version" ] || version=$(node -p "require('./package.json').version")
+          mkdir -p release
+          out=android/app/build/outputs/apk/release
+          cp "$out/app-universal-release.apk"   "release/Panther-VPN-v${version}-Universal.apk"
+          cp "$out/app-arm64-v8a-release.apk"   "release/Panther-VPN-v${version}-ARM64.apk"
+          cp "$out/app-armeabi-v7a-release.apk" "release/Panther-VPN-v${version}-ARMv7.apk"
+          cp "$out/app-x86_64-release.apk"      "release/Panther-VPN-v${version}-x86_64.apk"
+          (cd release && sha256sum *.apk > SHA256SUMS.txt)
+          ls -la release
+
+      - name: Publish the GitHub release
+        script: |
+          if [ -z "$RELEASE_TAG" ]; then
+            echo "No RELEASE_TAG set, so the APKs stay as build artifacts only."
+            exit 0
+          fi
+          bash scripts/publish-github-release.sh "$RELEASE_TAG"
+    artifacts:
+      - release/*
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/reports/**/*
