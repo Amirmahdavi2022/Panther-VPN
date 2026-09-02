@@ -65,6 +65,13 @@ public final class AetherVpnService extends VpnService {
     // The Global engine sweeps for a working route on a cold start, which is slower
     // than the other core's endpoint scan.
     private static final long GLOBAL_TIMEOUT_MS = 150_000L;
+    // Edge scan tuning. The sample is wide enough to survive a whole prefix being filtered, the
+    // timeout short enough that a dead address costs little, and the cache long enough that
+    // reconnecting a few minutes later does not sweep all over again.
+    private static final int EDGE_SAMPLE_SIZE = 40;
+    private static final int EDGE_PROBE_TIMEOUT_MS = 1_200;
+    private static final int EDGE_PARALLELISM = 16;
+    private static final long EDGE_CACHE_MS = 30 * 60 * 1000L;
     private static final String TAG = "AetherVpnService";
 
     private final ExecutorService worker = Executors.newCachedThreadPool();
@@ -240,6 +247,9 @@ public final class AetherVpnService extends VpnService {
             if (stopping || generation.get() != session) return;
             Log.e(TAG, "Connection failed", error);
             sendLog("Error: " + safeMessage(error));
+            // The cached edge answered a UDP probe once, which is not the same as being usable.
+            // If the connection failed, stop trusting it and sweep again next time.
+            forgetScannedPeer();
             if (killSwitch && vpnInterface != null && !stopping) {
                 stopAetherOnly();
                 updateState("blocked", getString(R.string.service_blocked));
@@ -305,6 +315,7 @@ public final class AetherVpnService extends VpnService {
         if ("masque".equals(protocol)) env.put("AETHER_MASQUE_HTTP2", "h2".equals(transport) ? "1" : "0");
         env.put("TMPDIR", getCacheDir().getAbsolutePath());
         String peer = request.getStringExtra("peer");
+        if (peer == null || peer.trim().isEmpty()) peer = resolveScannedPeer();
         if (peer != null && !peer.trim().isEmpty()) env.put("AETHER_PEER", peer.trim());
 
         masqueH3GatewayUnavailable = false;
@@ -317,6 +328,63 @@ public final class AetherVpnService extends VpnService {
         Thread logs = new Thread(() -> readAetherLogs(process, protocol, transport), "aether-log-reader");
         logs.setDaemon(true);
         logs.start();
+    }
+
+    /**
+     * Finds an edge address for the core to dial, when the user has not pinned one themselves.
+     *
+     * The core ships a single anycast address; on a network that blackholes it, connecting simply
+     * never works. This sweeps a sample of Cloudflare's edge in parallel and hands over whichever
+     * one answered fastest. Three deliberate properties:
+     *
+     *  - A result is cached per network, because a sweep on every connect would add seconds to the
+     *    common case where the previous winner still works.
+     *  - The cache is short-lived. Which address answers is a property of the network, and networks
+     *    change under you (wifi to mobile, one ISP's filtering rules to another's).
+     *  - Finding nothing returns null, which leaves AETHER_PEER unset and the core on its own
+     *    default. A failed scan must never be worse than not scanning at all.
+     */
+    private String resolveScannedPeer() {
+        try {
+            SharedPreferences preferences = getSharedPreferences("settings", MODE_PRIVATE);
+            if (!preferences.getBoolean("edgeScan", true)) return null;
+
+            String cached = preferences.getString("scannedPeer", "");
+            long cachedAt = preferences.getLong("scannedPeerAt", 0L);
+            if (!cached.isEmpty() && System.currentTimeMillis() - cachedAt < EDGE_CACHE_MS) {
+                sendLog("Edge scan: reusing " + cached);
+                return cached;
+            }
+
+            updateState("scanning", getString(R.string.service_scanning_edges));
+            long started = System.currentTimeMillis();
+            String best = EndpointScanner.bestEndpoint(
+                    EDGE_SAMPLE_SIZE, EDGE_PROBE_TIMEOUT_MS, EDGE_PARALLELISM,
+                    EndpointScanner.UDP_PROBE, new java.util.Random());
+            long elapsed = System.currentTimeMillis() - started;
+
+            if (best == null) {
+                sendLog("Edge scan: nothing answered in " + elapsed + "ms; using the core's default");
+                return null;
+            }
+            sendLog("Edge scan: chose " + best + " in " + elapsed + "ms");
+            preferences.edit().putString("scannedPeer", best).putLong("scannedPeerAt", System.currentTimeMillis()).apply();
+            return best;
+        } catch (Throwable failure) {
+            // Never let the scan take the connection down with it.
+            sendLog("Edge scan skipped: " + safeMessage(failure));
+            return null;
+        }
+    }
+
+    /** Drops the cached edge so the next connect sweeps again. Called when a connection fails. */
+    private void forgetScannedPeer() {
+        try {
+            getSharedPreferences("settings", MODE_PRIVATE).edit()
+                    .remove("scannedPeer").remove("scannedPeerAt").apply();
+        } catch (Throwable ignored) {
+            // Nothing to do; the cache expires on its own anyway.
+        }
     }
 
     private void readAetherLogs(Process process, String protocol, String transport) {
