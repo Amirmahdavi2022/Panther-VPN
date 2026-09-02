@@ -1,0 +1,180 @@
+package com.firstham.aethergui;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+
+/**
+ * Where the Stealth engine's endpoints come from.
+ *
+ * Every one of these pools publishes a plain text list of public proxy URIs and rebuilds it on a
+ * schedule. None of them is trustworthy on its own, and the honest reason is written on their own
+ * pages: they test from a CI runner in Europe. A server that answers there frequently does not
+ * answer from a filtered network. So this layer's job is only to gather candidates as widely and
+ * as cheaply as possible; deciding what actually works is {@link EndpointPool}'s job, using
+ * evidence from the device itself.
+ *
+ * Two rules that matter more than the source list:
+ *
+ *  - Fetching goes THROUGH the tunnel, never direct. On the networks Panther exists for, the hosts
+ *    below are blocked, so a direct fetch is the one thing guaranteed to fail exactly when it is
+ *    needed. The carrier tunnel gets us to them.
+ *  - A source that fails is skipped, never fatal. Sources disappear, get renamed, go private. One
+ *    dead URL must cost its own entries and nothing else.
+ *
+ * Android-free, so the merging and failure handling are all checkable on a desktop JVM.
+ */
+final class ConfigSources {
+
+    /** How many endpoints we are willing to carry forward from one refresh. */
+    static final int MAX_CANDIDATES = 400;
+
+    /**
+     * The pools, most trusted first. Order matters: on a tie the earlier source's entry is kept,
+     * and the earlier entries are the ones offered to the tester first.
+     *
+     * Every path here was fetched and parsed for real before being written down — the obvious
+     * guesses (All_Configs_Sub.txt and friends) were all 404s. Prefer a source's own curated or
+     * per-protocol file over its full dump: the dumps run to several megabytes, which is a lot of
+     * traffic to pull through a tunnel for a list we are going to re-test on the device anyway.
+     *
+     * These are fetched as data, not vendored into the repo — we read a public list at runtime the
+     * way any subscription client does, rather than redistributing anyone's files.
+     */
+    static final String[][] SOURCES = {
+            // host, path, label
+            {"raw.githubusercontent.com", "/0xRadikal/Free-v2ray-Configs/main/top100.txt", "radikal-top"},
+            {"raw.githubusercontent.com", "/0xRadikal/Free-v2ray-Configs/main/protocols/hysteria2.txt", "radikal-hy2"},
+            {"raw.githubusercontent.com", "/MahanKenway/Freedom-V2Ray/main/configs/vless_sub.txt", "freedom-vless"},
+            {"raw.githubusercontent.com", "/MahanKenway/Freedom-V2Ray/main/configs/trojan_sub.txt", "freedom-trojan"},
+            {"raw.githubusercontent.com", "/Delta-Kronecker/V2ray-Config/main/config/countries/de.txt", "delta-de"},
+            {"raw.githubusercontent.com", "/Delta-Kronecker/V2ray-Config/main/config/countries/nl.txt", "delta-nl"},
+    };
+
+    /** How a document is retrieved. The service supplies one that goes through the live tunnel. */
+    interface Fetcher {
+        /** Returns the document body, or null when the source could not be read. */
+        String fetch(String host, String path) throws Exception;
+    }
+
+    /** What one refresh produced, so the caller can log something meaningful. */
+    static final class Refresh {
+        final List<ProxyConfig> configs;
+        final List<String> succeeded;
+        final List<String> failed;
+
+        Refresh(List<ProxyConfig> configs, List<String> succeeded, List<String> failed) {
+            this.configs = configs;
+            this.succeeded = succeeded;
+            this.failed = failed;
+        }
+
+        boolean isEmpty() { return configs.isEmpty(); }
+
+        String summary() {
+            return configs.size() + " endpoints from " + succeeded.size() + "/"
+                    + (succeeded.size() + failed.size()) + " sources"
+                    + (failed.isEmpty() ? "" : " (failed: " + join(failed) + ")");
+        }
+
+        private static String join(List<String> items) {
+            StringBuilder out = new StringBuilder();
+            for (String item : items) {
+                if (out.length() > 0) out.append(", ");
+                out.append(item);
+            }
+            return out.toString();
+        }
+    }
+
+    private ConfigSources() { }
+
+    /**
+     * Reads every source and merges the results.
+     *
+     * Deliberately keeps going after a failure and returns whatever it got. A partial list is
+     * worth far more than an exception: with two sources out of five reachable we can still put a
+     * tunnel up, and on a bad network two out of five is the normal case, not the exceptional one.
+     */
+    static Refresh refresh(Fetcher fetcher) { return refresh(fetcher, SOURCES, MAX_CANDIDATES); }
+
+    static Refresh refresh(Fetcher fetcher, String[][] sources, int limit) {
+        List<ProxyConfig> merged = new ArrayList<>();
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        List<String> succeeded = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
+
+        for (String[] source : sources) {
+            String label = source.length > 2 ? source[2] : source[0];
+            String body = null;
+            try {
+                body = fetcher.fetch(source[0], source[1]);
+            } catch (Throwable unreachable) {
+                body = null;
+            }
+            if (body == null || body.trim().isEmpty()) {
+                failed.add(label);
+                continue;
+            }
+            List<ProxyConfig> parsed = ProxyConfig.parseDocument(body);
+            if (parsed.isEmpty()) {
+                // The document arrived but held nothing usable; that is a source failure too, and
+                // worth telling apart from a network failure in the log.
+                failed.add(label + " (unusable)");
+                continue;
+            }
+            succeeded.add(label);
+            for (ProxyConfig config : parsed) {
+                if (merged.size() >= limit) break;
+                if (seen.add(config.key())) merged.add(config);
+            }
+        }
+        return new Refresh(merged, succeeded, failed);
+    }
+
+    /**
+     * Picks the candidates worth spending an on-device test on, spreading them across protocols.
+     *
+     * Without this, a pool that is ninety per cent plain VLESS would fill the whole test budget
+     * with one protocol, and if that protocol is the one being filtered today the test finds
+     * nothing. Interleaving by protocol means a filtered protocol costs us a share of the budget
+     * rather than all of it.
+     */
+    static List<ProxyConfig> shortlist(List<ProxyConfig> configs, int budget) {
+        List<ProxyConfig> out = new ArrayList<>();
+        if (configs == null || configs.isEmpty() || budget <= 0) return out;
+
+        List<ProxyConfig> reality = new ArrayList<>();
+        List<ProxyConfig> hysteria = new ArrayList<>();
+        List<ProxyConfig> tuic = new ArrayList<>();
+        List<ProxyConfig> rest = new ArrayList<>();
+        for (ProxyConfig config : configs) {
+            if (config.isReality()) reality.add(config);
+            else if ("hysteria2".equals(config.protocol)) hysteria.add(config);
+            else if ("tuic".equals(config.protocol)) tuic.add(config);
+            else rest.add(config);
+        }
+
+        List<List<ProxyConfig>> buckets = new ArrayList<>();
+        buckets.add(reality);
+        buckets.add(hysteria);
+        buckets.add(tuic);
+        buckets.add(rest);
+
+        int index = 0;
+        boolean tookSomething = true;
+        while (out.size() < budget && tookSomething) {
+            tookSomething = false;
+            for (List<ProxyConfig> bucket : buckets) {
+                if (out.size() >= budget) break;
+                if (index < bucket.size()) {
+                    out.add(bucket.get(index));
+                    tookSomething = true;
+                }
+            }
+            index++;
+        }
+        return Collections.unmodifiableList(out);
+    }
+}
