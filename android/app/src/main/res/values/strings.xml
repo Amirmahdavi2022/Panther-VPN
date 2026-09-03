@@ -48,6 +48,15 @@
     <string name="service_global_carrier_failed">The carrier tunnel would not start, so Global could not be reached.</string>
     <string name="service_global_carrier_lost">The carrier tunnel dropped, which took Global with it.</string>
     <string name="service_global_starting">Finding a Global route…</string>
+    <string name="service_stealth_carrier">Looking for a way out…</string>
+    <string name="service_stealth_refreshing">Refreshing the endpoint list…</string>
+    <string name="service_stealth_testing">Testing %1$d endpoints on this device…</string>
+    <string name="service_stealth_starting">Dialling the best endpoint…</string>
+    <string name="service_stealth_swapping">That endpoint stopped answering — switching…</string>
+    <string name="service_stealth_stopped">The Stealth connection dropped.</string>
+    <string name="service_stealth_exhausted">Stealth went through every endpoint it had without finding one that holds. Try Turbo, or try again in a moment.</string>
+    <string name="service_stealth_failed">Stealth could not find a working endpoint. Try Turbo, or try again in a moment.</string>
+    <string name="service_stealth_no_endpoints">Stealth has no endpoints saved yet and could not reach its sources. Connect with Turbo once and it will pick some up.</string>
     <string name="engine_turbo">Turbo</string>
     <string name="engine_turbo_detail">Fastest. Keeps you where you are.</string>
     <string name="engine_global">Global</string>
@@ -164,6 +173,7 @@
     <string name="service_blocked">Tunnel stopped; network remains blocked by fail-closed mode</string>
     <string name="service_blocked_notification">Traffic blocked - reconnect or disconnect</string>
     <string name="service_global_degraded">Global is unreachable right now — staying connected on Turbo</string>
+    <string name="service_stealth_degraded">Stealth could not get a foothold right now — staying connected on Turbo</string>
     <string name="service_scanning_edges">Finding a reachable edge for your network</string>
     <string name="service_identity_ready">Identity ready; finding the best gateway</string>
     <string name="service_testing_gateways">Testing reachable gateways</string>
