@@ -218,6 +218,7 @@ public final class MainActivity extends AppCompatActivity {
         renderEngine();
         binding.engineTurbo.setOnClickListener(v -> selectEngine("turbo"));
         binding.engineGlobal.setOnClickListener(v -> selectEngine("global"));
+        binding.engineStealth.setOnClickListener(v -> selectEngine("stealth"));
         binding.locationCard.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); refreshLocation(); });
         binding.chooseAppsButton.setOnClickListener(v -> openAppSelection());
         binding.advancedToggle.setOnClickListener(v -> { boolean show = binding.advancedContainer.getVisibility() != View.VISIBLE; binding.advancedContainer.setVisibility(show ? View.VISIBLE : View.GONE); binding.advancedToggle.setText(show ? R.string.hide_advanced : R.string.show_advanced); });
@@ -419,12 +420,23 @@ public final class MainActivity extends AppCompatActivity {
 
     /** Paints the selector so the armed engine is never ambiguous. */
     private void renderEngine() {
-        boolean global = "global".equals(engine());
-        binding.engineTurbo.setBackgroundResource(global ? R.drawable.engine_card : R.drawable.engine_card_selected);
-        binding.engineGlobal.setBackgroundResource(global ? R.drawable.engine_card_selected : R.drawable.engine_card);
-        binding.engineTurboTitle.setTextColor(ContextCompat.getColor(this, global ? R.color.text : R.color.blue_600));
-        binding.engineGlobalTitle.setTextColor(ContextCompat.getColor(this, global ? R.color.blue_600 : R.color.text));
+        String armed = engine();
+        // An unrecognised stored value would otherwise leave the row with nothing lit at all.
+        if (!"global".equals(armed) && !"stealth".equals(armed)) armed = "turbo";
+        paintEngine(binding.engineTurbo, binding.engineTurboTitle, "turbo".equals(armed),
+                R.drawable.engine_card_selected, R.color.blue_600);
+        paintEngine(binding.engineGlobal, binding.engineGlobalTitle, "global".equals(armed),
+                R.drawable.engine_card_selected, R.color.blue_600);
+        // Stealth carries its own colour, because it is a different kind of connection from the
+        // other two and should not be read as a variation on either.
+        paintEngine(binding.engineStealth, binding.engineStealthTitle, "stealth".equals(armed),
+                R.drawable.engine_card_selected_violet, R.color.stealth_violet);
         renderExitLocation();
+    }
+
+    private void paintEngine(View card, TextView title, boolean armed, int armedBackground, int armedColour) {
+        card.setBackgroundResource(armed ? armedBackground : R.drawable.engine_card);
+        title.setTextColor(ContextCompat.getColor(this, armed ? armedColour : R.color.text));
     }
 
     private void selectEngine(String choice) {

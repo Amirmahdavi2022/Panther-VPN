@@ -26,6 +26,11 @@
     <color name="blue_50">#101014</color>
     <color name="accent_violet">#4DA3FF</color>
     <color name="accent_cyan">#6FD3FF</color>
+    <!-- The one deliberate exception to the single-accent rule: the Stealth engine is a
+         different kind of connection from the other two, so it is a different colour. Used
+         only on its own card and nowhere else. -->
+    <color name="stealth_violet">#A97BFF</color>
+    <color name="stealth_violet_soft">#1B1030</color>
 
     <color name="green">#3DDC84</color>
     <color name="green_soft">#0B1F14</color>
