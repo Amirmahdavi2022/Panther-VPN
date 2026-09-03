@@ -50,18 +50,6 @@ jobs:
           }
           Write-Host "NOTICE.md and the build agree on Aether $pin."
 
-          # Same rule for the Stealth engine library. It drifted once for Aether; it will drift
-          # again for anything that is pinned in one file and described in another.
-          $sline = (Get-Content scripts/fetch-android-assets.ps1) | Where-Object { $_ -match '^\s*\$stealthCoreVersion\s*=' } | Select-Object -First 1
-          if (-not $sline) { throw 'Could not find the $stealthCoreVersion line in the fetch script.' }
-          $sfound = [regex]::Matches($sline, '"(v[\d.]+)"')
-          if ($sfound.Count -eq 0) { throw "No pinned version in: $sline" }
-          $spin = $sfound[$sfound.Count - 1].Groups[1].Value
-          if ((Get-Content NOTICE.md -Raw) -notmatch [regex]::Escape($spin)) {
-            throw "NOTICE.md does not mention the pinned Stealth core $spin."
-          }
-          Write-Host "NOTICE.md and the build agree on the Stealth core $spin."
-
       - name: Fetch verified Android native assets
         run: npm run fetch:android
       - name: Verify every native core landed in jniLibs
@@ -79,9 +67,6 @@ jobs:
           $aar = 'android/app/libs/ca.psiphon.aar'
           if (-not (Test-Path $aar)) { throw "The Global engine library is missing: $aar" }
           Write-Host "$aar $((Get-Item $aar).Length) bytes"
-          $stealth = 'android/app/libs/libv2ray.aar'
-          if (-not (Test-Path $stealth)) { throw "The Stealth engine library is missing: $stealth" }
-          Write-Host "$stealth $((Get-Item $stealth).Length) bytes"
 
       - name: Let :app shrink the VPN engine, not vpnLib itself
         shell: pwsh

@@ -6,8 +6,6 @@ $hevVersion = "2.16.0"
 # built from source. Pinned by hash: the publisher does not sign this asset.
 $globalCoreVersion = "v2.0.40"
 $globalCoreSha256 = "6e5a1402013e755b2e5e10a2715b18462fc06b6a8c1d610ffcd21f2fa80dfa1e"
-$stealthCoreVersion = "v26.8.20"
-$stealthCoreSha256 = "670cf11d9d10a6bb6548ac4f593acfa4339155732f6f8de4d45923f30a74deed"
 $hevCommit = "0a05221275a51a884d93328c55fc2fbc9e9b6974"
 $ndkVersion = "27.2.12479018"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -136,36 +134,6 @@ try {
     }
     Copy-Item -LiteralPath $extracted.FullName -Destination $globalAar -Force
     Write-Host "Global engine library verified and staged ($([math]::Round((Get-Item $globalAar).Length / 1MB, 1)) MB)"
-
-    # --- Stealth engine library ---------------------------------------------------------------
-    # Published as a single prebuilt AAR, so again no Go toolchain here. The geo databases and the
-    # x86 native library are stripped before staging: the Stealth config never writes a geoip: or
-    # geosite: rule, and abiFilters already refuses to package x86. 56 MB becomes 35 MB.
-    $stealthAar = Join-Path $temp "libv2ray.aar"
-    $stealthUrl = "https://github.com/2dust/AndroidLibXrayLite/releases/download/$stealthCoreVersion/libv2ray.aar"
-    Write-Host "Downloading the Stealth engine library $stealthCoreVersion"
-    Invoke-WebRequest -UseBasicParsing $stealthUrl -OutFile $stealthAar
-    $actual = Get-Sha256 $stealthAar
-    if ($actual -ne $stealthCoreSha256) {
-        throw "Stealth engine library hash mismatch. Expected $stealthCoreSha256, got $actual."
-    }
-    $stealthWork = Join-Path $temp "stealth-aar"
-    if (Test-Path $stealthWork) { Remove-Item -Recurse -Force $stealthWork }
-    Expand-Archive -LiteralPath $stealthAar -DestinationPath $stealthWork -Force
-    foreach ($dat in @('geoip.dat','geosite.dat','geoip-only-cn-private.dat')) {
-        Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $stealthWork "assets/$dat")
-    }
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $stealthWork "jni/x86")
-    foreach ($required in @('classes.jar','AndroidManifest.xml','jni/arm64-v8a/libgojni.so')) {
-        if (-not (Test-Path (Join-Path $stealthWork $required))) {
-            throw "The Stealth engine library is missing $required after repacking."
-        }
-    }
-    $stealthSlim = Join-Path $temp "libv2ray-slim.aar"
-    if (Test-Path $stealthSlim) { Remove-Item -Force $stealthSlim }
-    Compress-Archive -Path (Join-Path $stealthWork '*') -DestinationPath $stealthSlim
-    Copy-Item -LiteralPath $stealthSlim -Destination (Join-Path $libsDir "libv2ray.aar") -Force
-    Write-Host "Stealth engine library verified and staged ($([math]::Round((Get-Item (Join-Path $libsDir 'libv2ray.aar')).Length / 1MB, 1)) MB)"
 
     $ndkRoot = Resolve-NdkRoot
     $ndkBuild = Join-Path $ndkRoot $(if ($IsWindows -or $PSVersionTable.PSEdition -eq "Desktop") { "ndk-build.cmd" } else { "ndk-build" })

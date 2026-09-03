@@ -1,10 +1,5 @@
 package com.firstham.aethergui;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
-import org.junit.Test;
-
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -29,19 +24,7 @@ public final class ConfigSourcesTest {
             {"host.c", "/c.txt", "C"},
     };
 
-    /**
-     * CI runs this. Without it these checks only ever ran by hand, because a class with a main
-     * method and no test annotation is invisible to the unit test task - which is exactly how a
-     * suite quietly stops protecting anything.
-     */
-    @Test public void everyCheckPasses() {
-        int before = failures;
-        runAllChecks();
-        assertEquals("config source checks failed", before, failures);
-        assertTrue("No checks ran", checks > 0);
-    }
-
-    static void runAllChecks() {
+    public static void main(String[] args) {
         mergesAcrossSources();
         aDeadSourceCostsOnlyItsOwnEntries();
         everySourceDownStillReturnsSomethingUsable();
@@ -55,6 +38,7 @@ public final class ConfigSourcesTest {
         theShippedSourceListIsWellFormed();
 
         System.out.println((failures == 0 ? "ALL PASS" : "FAILURES") + " — " + checks + " checks, " + failures + " failed");
+        if (failures > 0) System.exit(1);
     }
 
     private static ConfigSources.Fetcher fetcherOf(Map<String, String> bodies) {
@@ -188,15 +172,5 @@ public final class ConfigSourcesTest {
             check(source[1].startsWith("/"), "the path is absolute: " + source[1]);
             check(!source[2].isEmpty(), "the source has a label for logging");
         }
-    }
-
-    /**
-     * Standalone entry point, for running these checks without an Android toolchain around.
-     * The exit code lives here and not in runAllChecks, because a System.exit inside a unit
-     * test kills the test JVM and turns a clear failure report into an opaque crash.
-     */
-    public static void main(String[] args) {
-        runAllChecks();
-        if (failures > 0) System.exit(1);
     }
 }

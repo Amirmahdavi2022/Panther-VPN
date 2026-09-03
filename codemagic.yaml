@@ -52,7 +52,6 @@ workflows:
             done
           done
           [ -f android/app/libs/ca.psiphon.aar ] || missing="$missing android/app/libs/ca.psiphon.aar"
-          [ -f android/app/libs/libv2ray.aar ] || missing="$missing android/app/libs/libv2ray.aar"
           [ -z "$missing" ] || { echo "Native cores missing:$missing"; exit 1; }
 
       - name: Let :app shrink the VPN engine, not vpnLib itself
