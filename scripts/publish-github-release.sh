@@ -7,7 +7,7 @@
 set -euo pipefail
 
 TAG="${1:?Usage: publish-github-release.sh <tag>}"
-REPO="${GH_REPO:-amirmahdavi2023/Panther-VPN}"
+REPO="${GH_REPO:-Amirmahdavi2022/Panther-VPN}"
 DIR="${RELEASE_DIR:-release}"
 : "${GH_TOKEN:?GH_TOKEN is not set}"
 

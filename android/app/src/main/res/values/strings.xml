@@ -137,7 +137,7 @@
     <string name="feature_secure">Encrypted</string>
     <string name="feature_stable">Free</string>
     <string name="telegram_handle" translatable="false">@parsv2r</string>
-    <string name="license_line" translatable="false">AGPL-3.0 · github.com/amirmahdavi2023/Panther-VPN</string>
+    <string name="license_line" translatable="false">AGPL-3.0 · github.com/Amirmahdavi2022/Panther-VPN</string>
     <string name="about">About</string>
     <string name="about_summary">Panther VPN for Android</string>
     <string name="about_thanks_title">Thank you for choosing Panther</string>

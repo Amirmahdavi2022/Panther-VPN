@@ -1,10 +1,10 @@
 package com.firstham.aethergui;
 
 final class UpdateConfig {
-    static final String API_URL = "https://api.github.com/repos/amirmahdavi2023/Panther-VPN/releases?per_page=30";
-    static final String RELEASE_ASSET = "Panther-VPN-v%s-Android-Universal.apk";
+    static final String API_URL = "https://api.github.com/repos/Amirmahdavi2022/Panther-VPN/releases?per_page=30";
+    static final String RELEASE_ASSET = "Panther-VPN-v%s-Universal.apk";
     static final String CHECKSUM_ASSET = "SHA256SUMS.txt";
-    static final String RELEASE_DOWNLOAD_PREFIX = "https://github.com/amirmahdavi2023/Panther-VPN/releases/download/";
+    static final String RELEASE_DOWNLOAD_PREFIX = "https://github.com/Amirmahdavi2022/Panther-VPN/releases/download/";
     static final String PREFS = "app_updates";
     static final String KEY_LATEST_VERSION = "latest_version";
     static final String KEY_RELEASE_NOTES = "release_notes";

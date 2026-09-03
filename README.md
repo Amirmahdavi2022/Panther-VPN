@@ -2,7 +2,7 @@
 
 یه کلاینت VPN اندروید و متن‌باز. نه اکانت می‌خواد، نه اشتراک، نه کانفیگی که باید از جایی کپی کنی. نصبش کن، Connect رو بزن، تموم.
 
-[نسخه‌ها](https://github.com/amirmahdavi2023/Panther-VPN/releases) · [گزارش امنیتی](SECURITY.md) · [مشارکت](CONTRIBUTING.md) · [مجوز کتابخونه‌ها](NOTICE.md)
+[نسخه‌ها](https://github.com/Amirmahdavi2022/Panther-VPN/releases) · [گزارش امنیتی](SECURITY.md) · [مشارکت](CONTRIBUTING.md) · [مجوز کتابخونه‌ها](NOTICE.md)
 
 ## اصلاً چیکار می‌کنه
 
@@ -59,7 +59,7 @@ Global اونیه که جابه‌جات می‌کنه. به‌جای اینکه
 به JDK 17 و اندروید SDK و NDK نسخهٔ `27.2.12479018` نیاز داری.
 
 ```bash
-git clone --recurse-submodules https://github.com/amirmahdavi2023/Panther-VPN.git
+git clone --recurse-submodules https://github.com/Amirmahdavi2022/Panther-VPN.git
 cd Panther-VPN
 npm run fetch:android
 cd android && ./gradlew assembleRelease

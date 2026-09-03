@@ -29,7 +29,7 @@ build-apks:
     - if: $CI_PIPELINE_SOURCE == "web"
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
-    - git clone --recurse-submodules https://x-access-token:${GH_TOKEN}@github.com/amirmahdavi2023/Panther-VPN.git src
+    - git clone --recurse-submodules https://x-access-token:${GH_TOKEN}@github.com/Amirmahdavi2022/Panther-VPN.git src
     - cd src
     - test -n "$RELEASE_TAG" && git checkout "$RELEASE_TAG" || echo "Building the tip of main."
 

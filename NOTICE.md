@@ -11,7 +11,7 @@ Panther is not affiliated with, endorsed by, or supported by the Aethon or Aethe
 projects. Do not report Panther issues to them.
 
 Distributed under the same AGPL-3.0 license as the upstream project.
-Complete corresponding source: https://github.com/amirmahdavi2023/Panther-VPN
+Complete corresponding source: https://github.com/Amirmahdavi2022/Panther-VPN
 
 ## Aether
 
