@@ -58,9 +58,12 @@
     <string name="service_stealth_failed">Stealth could not find a working endpoint. Try Turbo, or try again in a moment.</string>
     <string name="service_stealth_no_endpoints">Stealth has no endpoints saved yet and could not reach its sources. Connect with Turbo once and it will pick some up.</string>
     <string name="engine_turbo">Turbo</string>
-    <string name="engine_turbo_detail">Fastest. Keeps you where you are.</string>
+    <!-- Three cards share one row now, so these are kept short and roughly the same length. -->
+    <string name="engine_turbo_detail">Fastest. Stays local.</string>
     <string name="engine_global">Global</string>
-    <string name="engine_global_detail">Comes out in another country.</string>
+    <string name="engine_global_detail">Comes out abroad.</string>
+    <string name="engine_stealth">Stealth</string>
+    <string name="engine_stealth_detail">Hardest to block.</string>
     <string name="engine_label">ENGINE</string>
     <string name="location_refreshing">Checking location…</string>
     <string name="upload_label">&#x2191; Upload</string>
