@@ -363,21 +363,24 @@ public final class MainActivity extends AppCompatActivity {
         String orbLabel = connected ? getString(R.string.disconnect) : transitioning ? ("disconnecting".equals(state) ? getString(R.string.disconnecting) : getString(R.string.connecting)) : getString(R.string.connect);
         binding.connectButton.setConnectionState(state, orbLabel);
         binding.connectButton.setContentDescription(orbLabel);
-        binding.connectionStatus.setText(connected ? R.string.status_connected : transitioning ? ("disconnecting".equals(state) ? R.string.status_disconnecting : R.string.status_connecting) : ("error".equals(state) || "blocked".equals(state) ? R.string.status_error : R.string.status_disconnected));
+        binding.connectionStatus.setText(connected ? (degraded ? R.string.status_connected_carrier : R.string.status_connected) : transitioning ? ("disconnecting".equals(state) ? R.string.status_disconnecting : R.string.status_connecting) : ("error".equals(state) || "blocked".equals(state) ? R.string.status_error : R.string.status_disconnected));
         binding.statusDot.setBackgroundResource(connected ? R.drawable.status_dot_connected : transitioning ? R.drawable.status_dot_connecting : R.drawable.status_dot);
         binding.progress.setVisibility(View.GONE);
         if (connected) {
-            binding.connectionMessage.setVisibility(View.GONE);
+            // 🚨 A degrade is a connected state carrying bad news: the armed engine did not come
+            // up and the carrier is holding the tunnel instead. The test for it used to sit in
+            // the else-branch below, where "connected" is false by construction, so the line was
+            // written and thrown away on every single degraded connection. The screen looked like
+            // an ordinary success and the one sentence explaining otherwise never appeared.
+            binding.connectionMessage.setText(message == null ? "" : message);
+            binding.connectionMessage.setVisibility(
+                    degraded && message != null && !message.isEmpty() ? View.VISIBLE : View.GONE);
             binding.connectionInfo.setVisibility(View.VISIBLE);
             renderLocation();
         }
         else if (transitioning) { binding.connectionMessage.setVisibility(View.GONE); binding.connectionInfo.setVisibility(View.VISIBLE); }
         else {
-            // A degrade is a connected state carrying bad news: the armed engine did not come up
-            // and something else is holding the tunnel. It was being hidden along with every other
-            // connected message, so the user saw an ordinary success and no explanation at all.
-            boolean showMessage = "error".equals(state) || "blocked".equals(state)
-                    || (degraded && "connected".equals(state));
+            boolean showMessage = "error".equals(state) || "blocked".equals(state);
             binding.connectionMessage.setText(message == null ? getString(R.string.status_error) : message);
             binding.connectionMessage.setVisibility(showMessage ? View.VISIBLE : View.GONE);
             binding.connectionInfo.setVisibility(View.VISIBLE);

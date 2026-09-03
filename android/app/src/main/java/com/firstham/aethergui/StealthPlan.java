@@ -186,4 +186,49 @@ final class StealthPlan {
 
     /** True once a run has swapped so often that it is not going to settle. */
     static boolean exhausted(int swaps) { return swaps > MAX_SWAPS; }
+
+    /** Dial the endpoint directly, from this network. */
+    static final boolean DIRECT = false;
+
+    /** Dial the endpoint through the carrier tunnel, so the connection starts somewhere else. */
+    static final boolean CHAINED = true;
+
+    /**
+     * The ways to reach one endpoint, in the order worth trying them.
+     *
+     * <p>🔑 There are two different reasons an endpoint fails, and only one of them is the
+     * endpoint's fault. It can be dead — nothing answers it from anywhere. Or it can be alive and
+     * simply unreachable <em>from this network</em>, which is the ordinary case on a filtered
+     * connection and says nothing about the server at all. Trying both ways is what tells those
+     * two apart, and it is why a failure is only written into the pool once every way has failed:
+     * benching a healthy endpoint because the local network blocks it would slowly empty the pool
+     * of exactly the servers worth keeping.
+     *
+     * <p>Direct comes first when nothing is known, because it is one hop rather than two and every
+     * byte is faster for it. Once a run has learned which way works, that way is remembered and
+     * tried first next time, so the cost of finding out is paid once rather than on every connect.
+     *
+     * @param carrierAvailable whether a carrier tunnel is up to dial through
+     * @param preferChained    what worked last time on this device
+     */
+    static boolean[] dialModes(boolean carrierAvailable, boolean preferChained) {
+        if (!carrierAvailable) return new boolean[] { DIRECT };
+        return preferChained
+                ? new boolean[] { CHAINED, DIRECT }
+                : new boolean[] { DIRECT, CHAINED };
+    }
+
+    /**
+     * The modes left to try once one of them has been proved to work on this run.
+     *
+     * <p>Proving costs a full timeout per endpoint. Paying it once per run is the point of
+     * knowing; paying it per candidate would make a swap slower than the drop it is hiding.
+     */
+    static boolean[] dialModes(boolean carrierAvailable, boolean preferChained, boolean proven,
+                               boolean provenMode) {
+        if (proven && (carrierAvailable || provenMode == DIRECT)) {
+            return new boolean[] { provenMode };
+        }
+        return dialModes(carrierAvailable, preferChained);
+    }
 }

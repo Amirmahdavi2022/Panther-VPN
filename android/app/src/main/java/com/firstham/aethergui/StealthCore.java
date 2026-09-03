@@ -70,6 +70,17 @@ public final class StealthCore {
     private final EndpointPool pool;
     private final int socksPort;
     private final Listener listener;
+    /** A {@code host:port} SOCKS proxy to dial endpoints through, or null to only dial direct. */
+    private final String carrier;
+
+    /** Which way worked last time on this device, tried first so the cost of learning is paid once. */
+    private final boolean preferChained;
+
+    /** Whether this run has established which way reaches an endpoint from this network. */
+    private final AtomicBoolean modeProven = new AtomicBoolean();
+
+    /** The way that worked, once {@link #modeProven} is set. */
+    private final AtomicBoolean chained = new AtomicBoolean();
 
     private final AtomicReference<ProxyConfig> current = new AtomicReference<>();
     private final AtomicReference<Process> process = new AtomicReference<>();
@@ -78,13 +89,16 @@ public final class StealthCore {
     private final List<String> attempted = new ArrayList<>();
 
     public StealthCore(Context host, EndpointPool pool, Listener listener) {
-        this(host, pool, XrayConfig.SOCKS_PORT, listener);
+        this(host, pool, XrayConfig.SOCKS_PORT, null, false, listener);
     }
 
-    public StealthCore(Context host, EndpointPool pool, int socksPort, Listener listener) {
+    public StealthCore(Context host, EndpointPool pool, int socksPort, String carrier,
+                       boolean preferChained, Listener listener) {
         this.host = host;
         this.pool = pool;
         this.socksPort = socksPort;
+        this.carrier = XrayConfig.carrierHop(carrier) == null ? null : carrier.trim();
+        this.preferChained = preferChained;
         this.listener = listener;
     }
 
@@ -93,6 +107,9 @@ public final class StealthCore {
 
     /** The endpoint currently carrying traffic, or null before one has been proved. */
     public ProxyConfig current() { return current.get(); }
+
+    /** Whether the live endpoint is being dialled through the carrier rather than directly. */
+    public boolean isChained() { return modeProven.get() && chained.get(); }
 
     public boolean isConnected() { return connected.get() && !stopped.get(); }
 
@@ -177,22 +194,44 @@ public final class StealthCore {
         return null;
     }
 
+    /**
+     * Tries one endpoint every way this network allows, and only calls it dead when all of them
+     * have failed.
+     *
+     * <p>🚨 A direct failure is not evidence about the endpoint. On a filtered network it is the
+     * expected outcome for a healthy server, so writing it into the pool would bench the good
+     * endpoints one connect at a time until nothing worth dialling was left. The failure is
+     * recorded once, after the last mode, and describes the endpoint rather than the network.
+     */
     private boolean dial(ProxyConfig candidate) {
-        stopProcess();
         long began = System.currentTimeMillis();
+        boolean[] modes = StealthPlan.dialModes(carrier != null, preferChained,
+                modeProven.get(), chained.get());
+        for (boolean viaCarrier : modes) {
+            if (stopped.get()) return false;
+            if (dialOnce(candidate, viaCarrier, began)) return true;
+        }
+        pool.recordFailure(candidate.key(), System.currentTimeMillis());
+        return false;
+    }
+
+    /** One endpoint, one way of reaching it. Leaves nothing running when it returns false. */
+    private boolean dialOnce(ProxyConfig candidate, boolean viaCarrier, long began) {
+        String route = viaCarrier ? " through the carrier" : " directly";
+        stopProcess();
         try {
-            File config = writeConfig(candidate);
+            File config = writeConfig(candidate, viaCarrier ? carrier : null);
             startProcess(config);
         } catch (Throwable error) {
-            listener.onLog("Stealth could not start on " + candidate + ": " + error.getMessage());
-            pool.recordFailure(candidate.key(), System.currentTimeMillis());
+            listener.onLog("Stealth could not start on " + candidate + route + ": "
+                    + error.getMessage());
             stopProcess();
             return false;
         }
 
         if (!waitForListener()) {
-            listener.onLog("Stealth started on " + candidate + " but never opened its listener");
-            pool.recordFailure(candidate.key(), System.currentTimeMillis());
+            listener.onLog("Stealth started on " + candidate + route
+                    + " but never opened its listener");
             stopProcess();
             return false;
         }
@@ -201,8 +240,8 @@ public final class StealthCore {
         long latency = SocksProbe.latencyMillis(XrayConfig.SOCKS_LISTEN, socksPort,
                 CANDIDATE_TIMEOUT_MS);
         if (latency < 0) {
-            listener.onLog("Stealth started on " + candidate + " but nothing came back through it");
-            pool.recordFailure(candidate.key(), System.currentTimeMillis());
+            listener.onLog("Stealth started on " + candidate + route
+                    + " but nothing came back through it");
             stopProcess();
             return false;
         }
@@ -210,7 +249,14 @@ public final class StealthCore {
         pool.recordSuccess(candidate.key(), latency, System.currentTimeMillis());
         current.set(candidate);
         connected.set(true);
-        listener.onLog("Stealth is up on " + candidate + " in "
+        if (!modeProven.get()) {
+            modeProven.set(true);
+            chained.set(viaCarrier);
+            listener.onLog(viaCarrier
+                    ? "Stealth reaches its endpoints through the carrier on this network"
+                    : "Stealth reaches its endpoints directly on this network");
+        }
+        listener.onLog("Stealth is up on " + candidate + route + " in "
                 + (System.currentTimeMillis() - began) + "ms, proved in " + latency + "ms");
         listener.onEndpoint(candidate);
         listener.onState("connected", host.getString(R.string.service_connected));
@@ -303,9 +349,9 @@ public final class StealthCore {
         }
     }
 
-    private File writeConfig(ProxyConfig candidate) throws Exception {
+    private File writeConfig(ProxyConfig candidate, String hop) throws Exception {
         File config = new File(directory(), "stealth.json");
-        byte[] body = XrayConfig.build(candidate, socksPort, "warning")
+        byte[] body = XrayConfig.build(candidate, socksPort, "warning", hop)
                 .getBytes(StandardCharsets.UTF_8);
         try (FileOutputStream out = new FileOutputStream(config)) {
             out.write(body);

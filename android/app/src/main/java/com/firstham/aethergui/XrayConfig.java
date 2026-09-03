@@ -42,6 +42,9 @@ final class XrayConfig {
     /** Loopback only. The proxy must never be reachable from off the device. */
     static final String SOCKS_LISTEN = "127.0.0.1";
 
+    /** The outbound tag the carrier proxy is published under when the engine is chained. */
+    static final String CARRIER_TAG = "carrier";
+
     private XrayConfig() { }
 
     /**
@@ -82,9 +85,19 @@ final class XrayConfig {
         return out;
     }
 
-    /** Builds the config for one endpoint on the standard port. */
+    /** Builds the config for one endpoint on the standard port, dialling out directly. */
     static String build(ProxyConfig endpoint) {
-        return build(endpoint, SOCKS_PORT, "warning");
+        return build(endpoint, SOCKS_PORT, "warning", null);
+    }
+
+    /** Builds the config for one endpoint on the standard port, dialling out through a carrier. */
+    static String build(ProxyConfig endpoint, String carrier) {
+        return build(endpoint, SOCKS_PORT, "warning", carrier);
+    }
+
+    /** Kept so existing callers that never chained read the same as they always did. */
+    static String build(ProxyConfig endpoint, int socksPort, String logLevel) {
+        return build(endpoint, socksPort, logLevel, null);
     }
 
     /**
@@ -93,10 +106,12 @@ final class XrayConfig {
      * @param endpoint  the server to dial; must pass {@link #supports}
      * @param socksPort the loopback port to publish the SOCKS5 proxy on
      * @param logLevel  one of the core's levels: debug, info, warning, error, none
+     * @param carrier   a {@code host:port} SOCKS5 proxy to dial the endpoint <em>through</em>, or
+     *                  null to dial it directly
      * @throws IllegalArgumentException if the endpoint is one the engine cannot dial, so a
      *                                  mistake shows up here rather than as an opaque core error
      */
-    static String build(ProxyConfig endpoint, int socksPort, String logLevel) {
+    static String build(ProxyConfig endpoint, int socksPort, String logLevel, String carrier) {
         if (!supports(endpoint)) {
             throw new IllegalArgumentException("The Stealth engine cannot dial " + endpoint);
         }
@@ -126,8 +141,10 @@ final class XrayConfig {
         json.append("\"dns\":{\"servers\":[\"1.1.1.1\",\"1.0.0.1\",\"8.8.8.8\"],")
             .append("\"queryStrategy\":\"UseIP\",\"disableCache\":false},");
 
+        String[] hop = carrierHop(carrier);
         json.append("\"outbounds\":[");
-        appendProxyOutbound(json, endpoint);
+        appendProxyOutbound(json, endpoint, hop != null);
+        if (hop != null) appendCarrierOutbound(json, hop[0], Integer.parseInt(hop[1]));
         json.append(",{\"tag\":\"block\",\"protocol\":\"blackhole\"}],");
 
         // AsIs keeps the sniffed name as the name: no lookup happens on this device, so a poisoned
@@ -136,7 +153,50 @@ final class XrayConfig {
         return json.toString();
     }
 
-    private static void appendProxyOutbound(StringBuilder json, ProxyConfig endpoint) {
+    /**
+     * The hop that makes this engine survive a network where its own endpoints are blocked.
+     *
+     * <p>🔑 Reaching a public endpoint from the outside is one problem; reaching it from a network
+     * that filters it is another, and no choice of endpoint solves the second. Dialling through
+     * the carrier moves the outgoing connection's origin off this network, so the endpoint is
+     * dialled from wherever the carrier exits instead of from here. The exit the user sees is
+     * still the endpoint's own country - only the first hop changes - which is the whole reason
+     * this engine exists.
+     *
+     * <p>The core's own name for it is {@code sockopt.dialerProxy}: the outbound keeps its
+     * protocol, its TLS and its transport exactly as they were, and only the socket underneath is
+     * opened by another outbound.
+     */
+    private static void appendCarrierOutbound(StringBuilder json, String host, int port) {
+        json.append(",{\"tag\":").append(quote(CARRIER_TAG))
+            .append(",\"protocol\":\"socks\",\"settings\":{\"servers\":[{\"address\":")
+            .append(quote(host)).append(",\"port\":").append(port).append("}]}}");
+    }
+
+    /**
+     * Splits a {@code host:port} carrier address, or returns null if there is nothing usable.
+     *
+     * <p>Null rather than an exception: a missing or malformed carrier means "dial directly",
+     * which is a working configuration, not an error.
+     */
+    static String[] carrierHop(String carrier) {
+        if (carrier == null) return null;
+        String trimmed = carrier.trim();
+        int colon = trimmed.lastIndexOf(':');
+        if (colon <= 0 || colon == trimmed.length() - 1) return null;
+        String host = trimmed.substring(0, colon).trim();
+        if (host.isEmpty()) return null;
+        int port;
+        try {
+            port = Integer.parseInt(trimmed.substring(colon + 1).trim());
+        } catch (NumberFormatException notANumber) {
+            return null;
+        }
+        if (port <= 0 || port > 65535) return null;
+        return new String[] { host, String.valueOf(port) };
+    }
+
+    private static void appendProxyOutbound(StringBuilder json, ProxyConfig endpoint, boolean chained) {
         json.append("{\"tag\":\"proxy\",\"protocol\":").append(quote(protocolName(endpoint)))
             .append(",\"settings\":{");
         switch (endpoint.protocol) {
@@ -145,7 +205,7 @@ final class XrayConfig {
             default:        appendShadowsocks(json, endpoint); break;
         }
         json.append("}");
-        appendStreamSettings(json, endpoint);
+        appendStreamSettings(json, endpoint, chained);
         json.append("}");
     }
 
@@ -189,14 +249,17 @@ final class XrayConfig {
             .append(",\"uot\":false,\"level\":0}]");
     }
 
-    private static void appendStreamSettings(StringBuilder json, ProxyConfig endpoint) {
+    private static void appendStreamSettings(StringBuilder json, ProxyConfig endpoint,
+                                             boolean chained) {
         String network = network(endpoint);
         String security = security(endpoint);
         json.append(",\"streamSettings\":{\"network\":").append(quote(network))
             .append(",\"security\":").append(quote(security))
             // Resolve the server address through the core's own DNS above rather than through the
             // platform, for the same reason.
-            .append(",\"sockopt\":{\"domainStrategy\":\"UseIP\"}");
+            .append(",\"sockopt\":{\"domainStrategy\":\"UseIP\"");
+        if (chained) json.append(",\"dialerProxy\":").append(quote(CARRIER_TAG));
+        json.append("}");
 
         if ("reality".equals(security)) appendReality(json, endpoint);
         else if ("tls".equals(security)) appendTls(json, endpoint);

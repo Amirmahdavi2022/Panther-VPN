@@ -217,6 +217,52 @@ public final class XrayConfigTest {
                 "an unknown log level falls back rather than reaching the core");
     }
 
+    @Test public void dialsDirectlyUnlessGivenACarrier() {
+        String json = XrayConfig.build(parse(VLESS_REALITY));
+        check(!json.contains("dialerProxy"), "a direct config never names a dialer");
+        check(!json.contains("\"tag\":\"carrier\""), "a direct config has no carrier outbound");
+        check(json.contains("\"tag\":\"proxy\""), "the endpoint outbound is still there");
+    }
+
+    @Test public void dialsThroughTheCarrierWhenGivenOne() {
+        String json = XrayConfig.build(parse(VLESS_REALITY), "127.0.0.1:1819");
+        check(json.contains("\"dialerProxy\":\"carrier\""),
+                "the endpoint socket is opened by the carrier outbound");
+        check(json.contains("\"tag\":\"carrier\""), "the carrier outbound is declared");
+        check(json.contains("\"protocol\":\"socks\",\"settings\":{\"servers\":[{\"address\":\"127.0.0.1\",\"port\":1819}]}"),
+                "the carrier points at the tunnel already running on this device");
+    }
+
+    @Test public void chainingChangesNothingAboutTheEndpointItself() {
+        // The whole value of chaining is that only the first hop moves. If the transport, the
+        // TLS or the credentials differed between the two, the exit would differ too.
+        String direct = XrayConfig.build(parse(VLESS_REALITY));
+        String chained = XrayConfig.build(parse(VLESS_REALITY), "127.0.0.1:1819");
+        check(chained.contains("\"realitySettings\""), "reality survives chaining");
+        check(direct.contains("\"realitySettings\""), "reality is there to begin with");
+        int cut = direct.indexOf(",\"sockopt\"");
+        check(cut > 0 && chained.startsWith(direct.substring(0, cut)),
+                "everything before the socket options is byte-identical");
+    }
+
+    @Test public void carriesEveryProtocolAndTransportThroughTheCarrier() {
+        for (String uri : new String[] { VLESS_REALITY, VLESS_WS_TLS, TROJAN_GRPC, SHADOWSOCKS }) {
+            String json = XrayConfig.build(parse(uri), "127.0.0.1:1819");
+            check(json.contains("\"dialerProxy\":\"carrier\""),
+                    "chaining applies to " + uri.substring(0, uri.indexOf(':')));
+        }
+    }
+
+    @Test public void treatsAnUnusableCarrierAsNoCarrierAtAll() {
+        // A malformed address means "dial directly", which works, rather than a thrown
+        // exception, which would lose an endpoint over a typo.
+        for (String bad : new String[] { null, "", "   ", "127.0.0.1", "127.0.0.1:", ":1819",
+                                         "127.0.0.1:port", "127.0.0.1:0", "127.0.0.1:99999" }) {
+            String json = XrayConfig.build(parse(VLESS_REALITY), bad);
+            check(!json.contains("dialerProxy"), "an unusable carrier dials direct: " + bad);
+        }
+    }
+
     /** CI runs this; it fails the build if any check above failed. */
     @Test public void everyCheckPasses() {
         int before = failures;
@@ -240,6 +286,11 @@ public final class XrayConfigTest {
         writesNoRuleThatNeedsTheGeoDatabases();
         fallsBackSensiblyWhenFieldsAreMissing();
         rejectsAnImpossibleSocksPort();
+        dialsDirectlyUnlessGivenACarrier();
+        dialsThroughTheCarrierWhenGivenOne();
+        chainingChangesNothingAboutTheEndpointItself();
+        carriesEveryProtocolAndTransportThroughTheCarrier();
+        treatsAnUnusableCarrierAsNoCarrierAtAll();
     }
 
     // --- helpers -------------------------------------------------------------------------------
@@ -286,6 +337,7 @@ public final class XrayConfigTest {
      */
     public static void main(String[] args) {
         new XrayConfigTest().runAllChecks();
+        System.out.println("XrayConfig: " + checks + " checks, " + failures + " failures");
         if (failures > 0) System.exit(1);
     }
 }

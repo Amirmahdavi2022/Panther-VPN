@@ -583,7 +583,16 @@ public final class AetherVpnService extends VpnService {
         }
 
         updateState("securing", getString(R.string.service_stealth_starting));
-        StealthCore core = new StealthCore(this, pool, new StealthCore.Listener() {
+        // 🔑 The carrier is handed to the engine, not just used for the fetch. Dialling a public
+        // endpoint straight out of a filtered network is the case this engine was failing on: the
+        // servers were alive, the route to them was not. Given the carrier the engine can open the
+        // connection from wherever the carrier exits instead, and the exit the user ends up with
+        // is still the endpoint's own country - only the first hop moves. Which way works is
+        // remembered, so the next connect starts with the answer instead of finding it again.
+        String carrierAddress = carrier ? value(request, "socks", "127.0.0.1:1819") : null;
+        boolean preferChained = stateStore.getBoolean("stealthChained", false);
+        StealthCore core = new StealthCore(this, pool, XrayConfig.SOCKS_PORT, carrierAddress,
+                preferChained, new StealthCore.Listener() {
             @Override public void onState(String state, String message) {
                 // The engine reports its own progress while it is still working through
                 // candidates. Only surface that before we are connected; afterwards the monitor
@@ -612,9 +621,11 @@ public final class AetherVpnService extends VpnService {
             stealthCore = null;
             return false;
         }
+        stateStore.edit().putBoolean("stealthChained", core.isChained()).apply();
         request.putExtra("socks", XrayConfig.SOCKS_LISTEN + ":" + core.socksPort());
         sendLog("Stealth engine ready; routing the tunnel through "
-                + XrayConfig.SOCKS_LISTEN + ":" + core.socksPort());
+                + XrayConfig.SOCKS_LISTEN + ":" + core.socksPort()
+                + (core.isChained() ? " (dialling out through the carrier)" : " (dialling out directly)"));
         return true;
     }
 

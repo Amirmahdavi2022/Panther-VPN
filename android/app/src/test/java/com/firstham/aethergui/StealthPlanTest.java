@@ -203,6 +203,63 @@ public final class StealthPlanTest {
      * standalone run reporting every problem instead of stopping at the first. That counter has to
      * be asserted somewhere or a red run would report green, and this is where.
      */
+    @Test public void withoutACarrierThereIsOnlyOneWayToDial() {
+        boolean[] modes = StealthPlan.dialModes(false, false);
+        check(modes.length == 1 && modes[0] == StealthPlan.DIRECT,
+                "no carrier means direct only");
+        // Even a remembered preference for the carrier cannot invent one that is not there.
+        boolean[] remembered = StealthPlan.dialModes(false, true);
+        check(remembered.length == 1 && remembered[0] == StealthPlan.DIRECT,
+                "a remembered carrier route is ignored when there is no carrier");
+    }
+
+    @Test public void triesBothWaysBeforeCallingAnEndpointDead() {
+        boolean[] modes = StealthPlan.dialModes(true, false);
+        check(modes.length == 2, "with a carrier there are two ways to try");
+        check(modes[0] == StealthPlan.DIRECT, "direct is tried first when nothing is known");
+        check(modes[1] == StealthPlan.CHAINED, "the carrier is the fallback");
+    }
+
+    @Test public void startsWithWhateverWorkedLastTime() {
+        boolean[] modes = StealthPlan.dialModes(true, true);
+        check(modes.length == 2, "the other way is still kept as a fallback");
+        check(modes[0] == StealthPlan.CHAINED, "a remembered carrier route is tried first");
+        check(modes[1] == StealthPlan.DIRECT, "direct remains available");
+    }
+
+    @Test public void stopsPayingToLearnOnceThisRunKnows() {
+        boolean[] proven = StealthPlan.dialModes(true, false, true, StealthPlan.CHAINED);
+        check(proven.length == 1 && proven[0] == StealthPlan.CHAINED,
+                "a proved route is the only one tried again on this run");
+        boolean[] provenDirect = StealthPlan.dialModes(true, true, true, StealthPlan.DIRECT);
+        check(provenDirect.length == 1 && provenDirect[0] == StealthPlan.DIRECT,
+                "a proved direct route beats the remembered preference");
+        check(StealthPlan.dialModes(true, false, false, StealthPlan.CHAINED).length == 2,
+                "nothing proved yet means both ways are still on the table");
+    }
+
+    @Test public void aProvedCarrierRouteIsNotReusedAfterTheCarrierGoesAway() {
+        // The carrier dropping is exactly when the proof stops being true, and dialling through
+        // something that is no longer running would fail every candidate for the wrong reason.
+        boolean[] modes = StealthPlan.dialModes(false, true, true, StealthPlan.CHAINED);
+        check(modes.length == 1 && modes[0] == StealthPlan.DIRECT,
+                "without a carrier the engine falls back to dialling direct");
+    }
+
+    @Test public void readsACarrierAddressOrDeclinesToGuess() {
+        String[] hop = XrayConfig.carrierHop("127.0.0.1:1819");
+        check(hop != null && hop[0].equals("127.0.0.1") && hop[1].equals("1819"),
+                "a plain host:port is read");
+        check(XrayConfig.carrierHop(" 127.0.0.1:1819 ") != null, "surrounding space is tolerated");
+        check(XrayConfig.carrierHop(null) == null, "no carrier is not an error");
+        check(XrayConfig.carrierHop("127.0.0.1") == null, "a missing port is refused");
+        check(XrayConfig.carrierHop("127.0.0.1:") == null, "an empty port is refused");
+        check(XrayConfig.carrierHop(":1819") == null, "an empty host is refused");
+        check(XrayConfig.carrierHop("127.0.0.1:notaport") == null, "a non-numeric port is refused");
+        check(XrayConfig.carrierHop("127.0.0.1:0") == null, "port zero is refused");
+        check(XrayConfig.carrierHop("127.0.0.1:70000") == null, "an out-of-range port is refused");
+    }
+
     @Test public void everyCheckPasses() {
         int before = failures;
         runAllChecks();
@@ -229,6 +286,12 @@ public final class StealthPlanTest {
         verifiesOnFirstLookAndThenOnTheInterval();
         aTunnelThatLastedResetsTheSwapCount();
         givesUpOnlyAfterRealPersistence();
+        withoutACarrierThereIsOnlyOneWayToDial();
+        triesBothWaysBeforeCallingAnEndpointDead();
+        startsWithWhateverWorkedLastTime();
+        stopsPayingToLearnOnceThisRunKnows();
+        aProvedCarrierRouteIsNotReusedAfterTheCarrierGoesAway();
+        readsACarrierAddressOrDeclinesToGuess();
         System.out.println("  " + checks + " checks, " + failures + " failures");
     }
 
