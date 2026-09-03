@@ -133,7 +133,7 @@ jobs:
         run: |
           Set-Location android
           ./gradlew.bat --stacktrace :app:assembleRelease :app:lintRelease 2>&1 |
-            Tee-Object -Append -FilePath "$env:GITHUB_WORKSPACE/build.log" -Append
+            Tee-Object -Append -FilePath "$env:GITHUB_WORKSPACE/build.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate Android pull request build
