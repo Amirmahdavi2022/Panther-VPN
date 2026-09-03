@@ -50,15 +50,34 @@ jobs:
           }
           Write-Host "NOTICE.md and the build agree on Aether $pin."
 
+          # Same rule for the Stealth core. Aether's pin drifted from NOTICE.md once already, and
+          # anything pinned in one file and described in another will drift eventually.
+          $sline = (Get-Content scripts/fetch-android-assets.ps1) | Where-Object { $_ -match '^\s*\$stealthCoreVersion\s*=' } | Select-Object -First 1
+          if (-not $sline) { throw 'Could not find the $stealthCoreVersion line in the fetch script.' }
+          $sfound = [regex]::Matches($sline, '"(v[\d.]+)"')
+          if ($sfound.Count -eq 0) { throw "No pinned version in: $sline" }
+          $spin = $sfound[$sfound.Count - 1].Groups[1].Value
+          if ((Get-Content NOTICE.md -Raw) -notmatch [regex]::Escape($spin)) {
+            throw "NOTICE.md does not mention the pinned Stealth core $spin."
+          }
+          Write-Host "NOTICE.md and the build agree on the Stealth core $spin."
+
       - name: Fetch verified Android native assets
-        run: npm run fetch:android
+        shell: pwsh
+        run: |
+          # Tee into build.log so that when this step is the one that fails, the failure publisher
+          # below still has something to publish. Raw Actions logs are not always downloadable,
+          # and a failure nobody can read costs a whole round trip to diagnose.
+          Write-Host "go: $(if (Get-Command go -ErrorAction SilentlyContinue) { (go version) } else { 'NOT INSTALLED' })"
+          npm run fetch:android 2>&1 | Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify every native core landed in jniLibs
         shell: pwsh
         run: |
           # A green build once shipped with a core missing from it. Fail loudly instead.
           $missing = @()
           foreach ($abi in @('arm64-v8a','armeabi-v7a','x86_64')) {
-            foreach ($lib in @('libaether.so','libhev-socks5-tunnel.so')) {
+            foreach ($lib in @('libaether.so','libhev-socks5-tunnel.so','libxray.so')) {
               $p = "android/app/src/main/jniLibs/$abi/$lib"
               if (-not (Test-Path $p)) { $missing += $p } else { Write-Host "$p $((Get-Item $p).Length) bytes" }
             }
@@ -91,7 +110,7 @@ jobs:
         run: |
           Set-Location android
           ./gradlew.bat --no-daemon --stacktrace testDebugUnitTest 2>&1 |
-            Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log"
+            Tee-Object -Append -FilePath "$env:GITHUB_WORKSPACE/build.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare Android signing key
@@ -114,7 +133,7 @@ jobs:
         run: |
           Set-Location android
           ./gradlew.bat --stacktrace :app:assembleRelease :app:lintRelease 2>&1 |
-            Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log" -Append
+            Tee-Object -Append -FilePath "$env:GITHUB_WORKSPACE/build.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate Android pull request build
@@ -149,6 +168,10 @@ jobs:
           Write-Host "Failure log pushed to the ci-failures branch as ci-logs/$short.log"
 
       - name: Stage release files
+        # A pull request never gets as far as signed release APKs - the two steps that produce
+        # them are already gated the same way - so without this guard the first pull request
+        # opened on this repository failed here on a file that was never meant to exist yet.
+        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
@@ -166,6 +189,7 @@ jobs:
           }
 
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
           name: Panther-VPN-Android
           path: release/*

@@ -13,6 +13,11 @@ HEV_COMMIT="0a05221275a51a884d93328c55fc2fbc9e9b6974"
 # this asset, so the hash below is the only integrity check there is.
 GLOBAL_CORE_VERSION="v2.0.40"
 GLOBAL_CORE_SHA256="6e5a1402013e755b2e5e10a2715b18462fc06b6a8c1d610ffcd21f2fa80dfa1e"
+# The Stealth engine's core is built here from source rather than downloaded. The published
+# Android binaries cover arm64 and x86_64 only, and Panther also ships armeabi-v7a; building all
+# three from one pinned commit beats mixing two provenances for one engine.
+STEALTH_CORE_VERSION="v26.3.27"
+STEALTH_CORE_COMMIT="d2758a023cd7f4174a5a5fa4ff66e487d4342ba0"
 NDK_VERSION="27.2.12479018"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -91,6 +96,69 @@ if [ "$actual" != "$GLOBAL_CORE_SHA256" ]; then
 fi
 cp -f "$extracted" "$libs_dir/ca.psiphon.aar"
 echo "Global engine library verified and staged"
+
+# --- Stealth engine core -------------------------------------------------------------------
+# 🚨 This is deliberately NOT the published Android library. That library and the Global engine's
+# library are both gomobile builds carrying the same go/Seq classes and the same libgojni.so, so
+# an APK can only ever load one of them - the native merge step fails, and forcing it through
+# would wire one engine to the other's native code. Shipping the core as its own executable, the
+# way the Turbo core already does, leaves the two engines nothing to collide over.
+if ! command -v go >/dev/null 2>&1; then
+  echo "Go is required to build the Stealth engine core. Install Go 1.26 or newer." >&2
+  exit 1
+fi
+echo "Building the Stealth engine core $STEALTH_CORE_VERSION with $(go version)"
+stealth_src="$temp/xray-core"
+git clone --quiet --branch "$STEALTH_CORE_VERSION" --depth 1 \
+  https://github.com/XTLS/Xray-core.git "$stealth_src"
+stealth_head="$(git -C "$stealth_src" rev-parse HEAD)"
+if [ "$stealth_head" != "$STEALTH_CORE_COMMIT" ]; then
+  echo "Stealth core commit mismatch. Expected $STEALTH_CORE_COMMIT, got $stealth_head." >&2
+  exit 1
+fi
+
+# Reads the ELF machine field, so a binary built for the wrong architecture is caught here rather
+# than as an app that starts and instantly dies on one class of phone.
+elf_machine() {
+  od -An -tx1 -j18 -N2 "$1" 2>/dev/null | tr -d ' \n'
+}
+
+stealth_abis=("arm64-v8a" "armeabi-v7a" "x86_64")
+stealth_goarch=("arm64" "arm" "amd64")
+stealth_elf=("b700" "2800" "3e00")
+
+for i in "${!stealth_abis[@]}"; do
+  abi="${stealth_abis[$i]}"
+  mkdir -p "$destination/$abi"
+  output="$destination/$abi/libxray.so"
+  rm -f "$output"
+
+  # The core's own release workflow builds android/arm64 and android/amd64 and has no 32-bit ARM
+  # target at all. android is tried first for consistency; linux is the fallback and is equally
+  # correct here, because CGO is off so the binary is static and Android is Linux. The usual
+  # reason to care about that difference is name resolution, and the config hands the core its
+  # own resolver precisely so it never asks the platform.
+  built=""
+  for goos in android linux; do
+    if CGO_ENABLED=0 GOOS="$goos" GOARCH="${stealth_goarch[$i]}" GOARM=7 \
+        go build -C "$stealth_src" -o "$output" -trimpath -buildvcs=false \
+        -gcflags="all=-l=4" -ldflags="-s -w -buildid=" ./main 2>/dev/null; then
+      built="$goos"
+      break
+    fi
+  done
+  if [ -z "$built" ]; then echo "Could not build the Stealth core for $abi." >&2; exit 1; fi
+  if [ ! -s "$output" ]; then echo "The Stealth core for $abi is empty." >&2; exit 1; fi
+
+  machine="$(elf_machine "$output")"
+  if [ "$machine" != "${stealth_elf[$i]}" ]; then
+    echo "Stealth core for $abi has ELF machine $machine, expected ${stealth_elf[$i]}." >&2
+    exit 1
+  fi
+  chmod 0755 "$output"
+  size_mb=$(( $(stat -c%s "$output" 2>/dev/null || stat -f%z "$output") / 1048576 ))
+  echo "Built the Stealth core for $abi ($built/${stealth_goarch[$i]}, ${size_mb} MB)"
+done
 
 # --- HEV TUN->SOCKS bridge ------------------------------------------------------------------
 hev_source="$temp/hev-socks5-tunnel"

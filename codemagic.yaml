@@ -46,7 +46,7 @@ workflows:
           # A green build once shipped with a core missing from it. Fail loudly instead.
           missing=""
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            for lib in libaether.so libhev-socks5-tunnel.so; do
+            for lib in libaether.so libhev-socks5-tunnel.so libxray.so; do
               p="android/app/src/main/jniLibs/$abi/$lib"
               if [ -f "$p" ]; then ls -l "$p"; else missing="$missing $p"; fi
             done
