@@ -149,7 +149,7 @@
     <string name="about_mode_relay_title">Global</string>
     <string name="about_mode_relay_body">Comes out in another country, which is what geo-restricted services need. It runs inside the Turbo tunnel rather than beside it, so it works on networks where it could not connect on its own. Slower by nature — two hops instead of one. If it cannot come up, Panther keeps you connected on Turbo instead of dropping you.</string>
     <string name="about_mode_stealth_title">Stealth</string>
-    <string name="about_mode_stealth_body">The hardest one to block. It keeps a list of servers, tests them on your own phone and dials whichever actually works, moving to another the moment one stops. On a network that blocks them outright it opens the connection through the Turbo tunnel instead, so the servers stay reachable — the country you come out in is still the server's own.</string>
+    <string name="about_mode_stealth_body">The hardest one to block. It keeps a list of servers, tests them on your own phone and dials whichever actually works, moving to another the moment one stops. On a network that blocks them outright it opens the connection through the Turbo tunnel instead, so the servers stay reachable — the country you come out in is still the server\'s own.</string>
     <string name="about_credits_title">Built on</string>
     <string name="about_credits_body">Aether · Psiphon · vpnLib · hev-socks5-tunnel\nPanther is independent and not affiliated with any of them. Full licences are in NOTICE.md.</string>
     <string name="telegram_title">Panther on Telegram</string>
