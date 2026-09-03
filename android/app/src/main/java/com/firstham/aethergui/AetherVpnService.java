@@ -22,6 +22,7 @@ import androidx.core.app.NotificationCompat;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -65,9 +66,11 @@ public final class AetherVpnService extends VpnService {
     // The Global engine sweeps for a working route on a cold start, which is slower
     // than the other core's endpoint scan.
     private static final long GLOBAL_TIMEOUT_MS = 150_000L;
-    // True when Global was asked for but could not start and we kept the carrier tunnel instead.
-    // Held so the connected message tells the truth about which engine the user actually has.
+    // True when an engine was asked for but could not start and we kept the carrier tunnel
+    // instead. Held so the connected message tells the truth about which engine the user has,
+    // along with the line to show, because Global and Stealth degrade for different reasons.
     private boolean degradedToCarrier = false;
+    private volatile String degradedNotice;
     // Edge scan tuning. The sample is wide enough to survive a whole prefix being filtered, the
     // timeout short enough that a dead address costs little, and the cache long enough that
     // reconnecting a few minutes later does not sweep all over again.
@@ -101,6 +104,9 @@ public final class AetherVpnService extends VpnService {
     private volatile String currentEndpoint = "";
     private volatile String currentLocationDetail = "";
     private volatile GlobalCore globalCore;
+    private volatile StealthCore stealthCore;
+    /** The pool the live Stealth engine is dialling from, kept so its history can be saved. */
+    private volatile EndpointPool stealthPool;
     private volatile String currentRegion = "";
     /** Encoded by {@link GlobalRegions#encode}: what the Global engine offered on this run. */
     private volatile String currentAvailableRegions = "";
@@ -220,8 +226,30 @@ public final class AetherVpnService extends VpnService {
             updateState("starting", getString(R.string.service_launching));
             updateState("scanning", getString(R.string.service_scanning));
             degradedToCarrier = false;
-            boolean global = "global".equals(value(request, "engine", "turbo"));
-            if (global) {
+            degradedNotice = null;
+            String engine = value(request, "engine", "turbo");
+            boolean global = "global".equals(engine);
+            boolean stealth = "stealth".equals(engine);
+            if (stealth) {
+                // Same contract as Global: whichever engine ends up carrying the connection has
+                // written its own loopback port into the socks extra by the time this block ends,
+                // and everything downstream goes on reading that one extra.
+                if (!startStealthCore(request, session)) {
+                    // Stealth may well have brought a carrier tunnel up on its way to failing -
+                    // it fetches its endpoint list through one. A working tunnel sitting right
+                    // there is worth more than an error screen, so keep it. If there is no
+                    // carrier either, there is genuinely nothing to fall back to.
+                    Process carrier = aetherProcess;
+                    if (carrier == null || !carrier.isAlive()) {
+                        throw new IllegalStateException(getString(R.string.service_stealth_failed));
+                    }
+                    stealth = false;
+                    degradedToCarrier = true;
+                    degradedNotice = getString(R.string.service_stealth_degraded);
+                    sendLog("Stealth did not come up; staying on the carrier tunnel instead");
+                    updateState("securing", degradedNotice);
+                }
+            } else if (global) {
                 // The Global engine picks its own loopback port, so it has to be started before
                 // anything downstream reads the socks extra. Everything after this point - the TUN
                 // bridge, the location lookup, the ping probe - goes on reading that one extra and
@@ -234,8 +262,9 @@ public final class AetherVpnService extends VpnService {
                     // points at the carrier, because only a successful Global start overwrites it.
                     global = false;
                     degradedToCarrier = true;
+                    degradedNotice = getString(R.string.service_global_degraded);
                     sendLog("Global did not come up; staying on the carrier tunnel instead");
-                    updateState("securing", getString(R.string.service_global_degraded));
+                    updateState("securing", degradedNotice);
                 }
             } else if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
                 throw new IllegalStateException(aetherExitMessage("Turbo did not open its SOCKS5 listener"));
@@ -249,12 +278,13 @@ public final class AetherVpnService extends VpnService {
             } else {
                 establishVpn(request);
                 connectedAt = System.currentTimeMillis();
-                updateState("connected", getString(degradedToCarrier
-                        ? R.string.service_global_degraded : R.string.service_protected));
+                updateState("connected", degradedToCarrier && degradedNotice != null
+                        ? degradedNotice : getString(R.string.service_protected));
                 updateNotification(getString("smart".equals(connectionMode) ? R.string.service_smart_protected : R.string.service_aethon_protected));
             }
             scheduleLocationLookup(request, session);
-            if (global) monitorGlobal(request, session);
+            if (stealth) monitorStealth(request, session);
+            else if (global) monitorGlobal(request, session);
             else monitorAether(request, session);
         } catch (Exception error) {
             if (stopping || generation.get() != session) return;
@@ -495,6 +525,229 @@ public final class AetherVpnService extends VpnService {
             }
             Thread.sleep(2_000L);
         }
+    }
+
+    /**
+     * Brings the Stealth engine up and publishes the port it listens on, so the rest of the
+     * connection path is identical to the other two engines'.
+     *
+     * <p>🔑 The carrier plays a different part here than it does for Global. Global runs
+     * <em>inside</em> the carrier and cannot exist without it. Stealth dials its own endpoints
+     * directly and only wants a tunnel to fetch its endpoint list through, because the config
+     * sources are blocked on exactly the networks this engine exists for. So a carrier that will
+     * not start costs the refresh, not the connection: the pool this device scored and saved
+     * earlier is enough to dial from, and being able to come up with no fetch at all is the whole
+     * reason this engine is worth having.
+     *
+     * <p>When the carrier does come up it is left running. It costs one idle process, and it buys
+     * the fallback in {@code runConnection} if the engine then fails to find a working endpoint.
+     */
+    private boolean startStealthCore(Intent request, long session) throws Exception {
+        currentRegion = "";
+        EndpointPool pool = loadStealthPool();
+        stealthPool = pool;
+        long savedAt = stealthPoolSavedAt();
+
+        updateState("scanning", getString(R.string.service_stealth_carrier));
+        boolean carrier = false;
+        try {
+            carrier = startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS);
+        } catch (Exception error) {
+            sendLog("Stealth could not raise a carrier to fetch through: " + safeMessage(error));
+        }
+        if (generation.get() != session || stopping) return false;
+        if (!carrier) {
+            // Nothing half-started is left behind to hold the port or the battery.
+            stopAetherOnly();
+            sendLog("No carrier tunnel; Stealth falls back to the endpoints this device saved");
+        }
+
+        StealthPlan.Decision decision =
+                StealthPlan.decide(pool, savedAt, carrier, System.currentTimeMillis());
+        sendLog("Stealth pool: " + decision.reason);
+        if (decision.isStuck()) {
+            throw new IllegalStateException(getString(R.string.service_stealth_no_endpoints));
+        }
+        if (decision.refresh) {
+            refreshStealthPool(pool, request, session);
+            if (generation.get() != session || stopping) return false;
+        }
+        if (StealthPlan.ready(pool, System.currentTimeMillis()) == 0) {
+            // A carrier is up, so this is the same situation as the engine failing to dial: hand
+            // the decision back and let the caller keep the working tunnel rather than fail hard.
+            if (carrier) {
+                sendLog("Stealth found nothing in its pool that this core can dial");
+                return false;
+            }
+            throw new IllegalStateException(getString(R.string.service_stealth_no_endpoints));
+        }
+
+        updateState("securing", getString(R.string.service_stealth_starting));
+        StealthCore core = new StealthCore(this, pool, new StealthCore.Listener() {
+            @Override public void onState(String state, String message) {
+                // The engine reports its own progress while it is still working through
+                // candidates. Only surface that before we are connected; afterwards the monitor
+                // owns the state, exactly as it does for the other engine.
+                if (generation.get() != session || stopping) return;
+                if (!"connected".equals(state)) updateState(state, message);
+            }
+
+            @Override public void onLog(String line) { sendLog(line); }
+
+            @Override public void onEndpoint(ProxyConfig endpoint) {
+                if (generation.get() != session || stopping) return;
+                // Only the protocol and the host, never the label: a pool entry's label is
+                // whatever its author typed and is often an advert or an outright lie about
+                // where the server is. The location card answers that question for real.
+                sendLog("Stealth is carrying traffic through " + endpoint);
+            }
+        });
+        stealthCore = core;
+        boolean up = core.start();
+        // Saved either way. A run that failed still learned which endpoints are dead, and that is
+        // worth as much next time as knowing which one worked.
+        saveStealthPool(pool);
+        if (!up) {
+            core.stop();
+            stealthCore = null;
+            return false;
+        }
+        request.putExtra("socks", XrayConfig.SOCKS_LISTEN + ":" + core.socksPort());
+        sendLog("Stealth engine ready; routing the tunnel through "
+                + XrayConfig.SOCKS_LISTEN + ":" + core.socksPort());
+        return true;
+    }
+
+    /**
+     * Fetches fresh endpoints through the carrier tunnel and tests them on this device.
+     *
+     * <p>Never throws. Every step of this is optional: a source that is down, a fetch that returns
+     * junk or a test pass where nothing answers all leave the saved pool exactly as it was, which
+     * is still something to dial. Only an empty pool is fatal, and that is decided by the caller.
+     */
+    private void refreshStealthPool(EndpointPool pool, Intent request, long session) {
+        final String carrier = value(request, "socks", "127.0.0.1:1819");
+        updateState("scanning", getString(R.string.service_stealth_refreshing));
+        ConfigSources.Refresh refresh = ConfigSources.refresh(new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) throws Exception {
+                return socksHttpGet(carrier, host, path);
+            }
+        });
+        sendLog("Stealth sources: " + refresh.summary());
+        if (generation.get() != session || stopping || refresh.isEmpty()) return;
+
+        List<ProxyConfig> candidates = StealthPlan.candidates(refresh.configs);
+        if (candidates.isEmpty()) {
+            sendLog("Stealth: nothing in that fetch is a protocol this core can dial");
+            return;
+        }
+        updateState("scanning", getString(R.string.service_stealth_testing, candidates.size()));
+        EndpointTester.Outcome outcome = EndpointTester.test(pool, candidates,
+                EndpointTester.NETWORK_PROBE, StealthPlan.TEST_TIMEOUT_MS,
+                StealthPlan.TEST_PARALLELISM, StealthPlan.TEST_ENOUGH, System.currentTimeMillis());
+        sendLog("Stealth tested: " + outcome.summary());
+        saveStealthPool(pool);
+    }
+
+    /**
+     * Watches the Stealth engine and moves it off an endpoint that has stopped working.
+     *
+     * <p>🚨 The check that matters is not whether the core is running. The core answers its own
+     * SOCKS handshake and dials the real server lazily, so an endpoint that has been black-holed
+     * looks perfectly healthy from the outside and would keep the user staring at a connected
+     * screen with no internet. So the tunnel is periodically made to carry a real request.
+     *
+     * <p>A swap does not touch the loopback port, so the TUN interface is never rebuilt and the
+     * apps on top of it do not see the network go away and come back.
+     */
+    private void monitorStealth(Intent request, long session) throws Exception {
+        int swaps = 0;
+        long dialledAt = System.currentTimeMillis();
+        long lastVerifiedAt = dialledAt;
+        while (!stopping && generation.get() == session) {
+            Thread.sleep(StealthPlan.MONITOR_TICK_MS);
+            if (stopping || generation.get() != session) return;
+            StealthCore core = stealthCore;
+            if (core == null) return;
+
+            String failure = null;
+            if (!core.isConnected()) {
+                failure = "the core stopped";
+            } else if (StealthPlan.shouldVerify(lastVerifiedAt, System.currentTimeMillis())) {
+                if (core.verify()) lastVerifiedAt = System.currentTimeMillis();
+                else failure = "the tunnel stopped carrying traffic";
+            }
+            if (failure == null) continue;
+            if (stopping || generation.get() != session) return;
+
+            swaps = StealthPlan.swapsAfter(swaps, System.currentTimeMillis() - dialledAt);
+            if (StealthPlan.exhausted(swaps)) {
+                // Burning through endpoint after endpoint means this network is not going to be
+                // beaten by trying harder. Fail properly so the kill switch and the reconnect
+                // rules get their say, rather than looping forever behind a connected screen.
+                throw new IllegalStateException(getString(R.string.service_stealth_exhausted));
+            }
+            updateState("reconnecting", getString(R.string.service_stealth_swapping));
+            if (!core.swap(failure)) {
+                throw new IllegalStateException(getString(R.string.service_stealth_stopped));
+            }
+            dialledAt = System.currentTimeMillis();
+            lastVerifiedAt = dialledAt;
+            saveStealthPool(stealthPool);
+            updateState("connected", getString("manual".equals(value(request, "connectionMode", "vpn"))
+                    ? R.string.service_proxy_ready : R.string.service_protected));
+            // The exit just changed, so the location on screen is now wrong. Ask again.
+            scheduleLocationLookup(request, session);
+        }
+    }
+
+    private File stealthPoolFile() {
+        return new File(getFilesDir(), StealthPlan.POOL_FILE);
+    }
+
+    /** When the pool was last written, or 0 if it never has been. */
+    private long stealthPoolSavedAt() {
+        File file = stealthPoolFile();
+        return file.isFile() ? file.lastModified() : 0L;
+    }
+
+    /**
+     * Reads the saved pool. A missing or unreadable file is an empty pool, never an error: this
+     * runs on the path that has to keep working when everything else has failed.
+     */
+    private EndpointPool loadStealthPool() {
+        File file = stealthPoolFile();
+        if (!file.isFile()) return new EndpointPool();
+        StringBuilder body = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) body.append(line).append('\n');
+        } catch (Exception error) {
+            sendLog("Stealth could not read its saved pool: " + safeMessage(error));
+            return new EndpointPool();
+        }
+        EndpointPool pool = EndpointPool.deserialise(body.toString());
+        sendLog("Stealth loaded " + pool.size() + " saved endpoints");
+        return pool;
+    }
+
+    private void saveStealthPool(EndpointPool pool) {
+        if (pool == null) return;
+        try {
+            pool.prune(System.currentTimeMillis());
+            try (FileWriter writer = new FileWriter(stealthPoolFile())) {
+                writer.write(pool.serialise());
+            }
+        } catch (Exception error) {
+            // Losing the save costs us the next cold start, not this connection.
+            sendLog("Stealth could not save its pool: " + safeMessage(error));
+        }
+    }
+
+    private void stopStealthOnly() {
+        StealthCore core = stealthCore;
+        stealthCore = null;
+        if (core != null) core.stop();
     }
 
     private void monitorAether(Intent request, long session) throws Exception {
@@ -965,6 +1218,9 @@ public final class AetherVpnService extends VpnService {
         GlobalCore core = globalCore;
         globalCore = null;
         if (core != null) core.stop();
+        stopStealthOnly();
+        stealthPool = null;
+        degradedNotice = null;
         locationLookupSequence.incrementAndGet();
         activeRequest = null;
         connectionEstablished = false;
@@ -991,6 +1247,9 @@ public final class AetherVpnService extends VpnService {
             catch (Exception ignored) { }
             vpnInterface = null;
             stopAetherOnly();
+            // The engine runs as a child process holding a loopback port. Leaving it alive would
+            // stop the next connection from binding that port, so it dies with the runtime.
+            stopStealthOnly();
         }
     }
 
