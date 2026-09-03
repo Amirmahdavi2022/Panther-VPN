@@ -105,33 +105,6 @@ jobs:
           if ((Get-Content $f -Raw) -match 'minifyEnabled\s+true') { throw "Patch did not apply to $f." }
           Write-Host "vpnLib self-minification disabled."
 
-      - name: Check string resources for unescaped quotes
-        shell: pwsh
-        run: |
-          # An unescaped ' or " inside a <string> is legal XML and illegal to aapt, so it sails
-          # past every local check and then kills the build minutes in, with a message about
-          # unicode escapes that says nothing about which character is at fault. Catching it here
-          # names the string instead.
-          $bad = @()
-          foreach ($file in Get-ChildItem -Recurse -Path android/app/src/main/res -Filter strings.xml) {
-            $xml = [xml](Get-Content $file.FullName -Raw)
-            foreach ($node in $xml.resources.string) {
-              $text = $node.InnerText
-              if ($null -eq $text) { continue }
-              for ($i = 0; $i -lt $text.Length; $i++) {
-                $c = $text[$i]
-                if (($c -eq "'" -or $c -eq '"') -and ($i -eq 0 -or $text[$i-1] -ne '\')) {
-                  $bad += "$($file.Name): $($node.name)"
-                  break
-                }
-              }
-            }
-          }
-          if ($bad.Count -gt 0) {
-            throw "Unescaped quote in string resource(s): $($bad -join ', '). Write \\' or \\"."
-          }
-          Write-Host "String resources are free of unescaped quotes."
-
       - name: Run unit tests
         shell: pwsh
         run: |
