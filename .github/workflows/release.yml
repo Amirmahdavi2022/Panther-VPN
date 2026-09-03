@@ -63,7 +63,14 @@ jobs:
           Write-Host "NOTICE.md and the build agree on the Stealth core $spin."
 
       - name: Fetch verified Android native assets
-        run: npm run fetch:android
+        shell: pwsh
+        run: |
+          # Tee into build.log so that when this step is the one that fails, the failure publisher
+          # below still has something to publish. Raw Actions logs are not always downloadable,
+          # and a failure nobody can read costs a whole round trip to diagnose.
+          Write-Host "go: $(if (Get-Command go -ErrorAction SilentlyContinue) { (go version) } else { 'NOT INSTALLED' })"
+          npm run fetch:android 2>&1 | Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify every native core landed in jniLibs
         shell: pwsh
         run: |
@@ -103,7 +110,7 @@ jobs:
         run: |
           Set-Location android
           ./gradlew.bat --no-daemon --stacktrace testDebugUnitTest 2>&1 |
-            Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log"
+            Tee-Object -Append -FilePath "$env:GITHUB_WORKSPACE/build.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare Android signing key
@@ -126,7 +133,7 @@ jobs:
         run: |
           Set-Location android
           ./gradlew.bat --stacktrace :app:assembleRelease :app:lintRelease 2>&1 |
-            Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log" -Append
+            Tee-Object -Append -FilePath "$env:GITHUB_WORKSPACE/build.log" -Append
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate Android pull request build

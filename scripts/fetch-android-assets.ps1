@@ -142,6 +142,8 @@ try {
     # engine's library are both gomobile builds carrying the same go/Seq classes and the same
     # libgojni.so, so an APK can only ever load one of the two. The core ships as its own
     # executable instead, the way the Turbo core already does.
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'   # a native command writing to stderr must not abort us
     if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
         throw "Go is required to build the Stealth engine core. Install Go 1.26 or newer."
     }
@@ -171,8 +173,12 @@ try {
         $built = $null
         foreach ($goos in @('android','linux')) {
             $env:CGO_ENABLED = '0'; $env:GOOS = $goos; $env:GOARCH = $target.Arch; $env:GOARM = '7'
-            go build -C $stealthSrc -o $output -trimpath -buildvcs=false -gcflags="all=-l=4" -ldflags="-s -w -buildid=" ./main 2>$null
+            # Do NOT swallow stderr here. When both targets fail this output is the only
+            # evidence of why, and PowerShell 5.1 can turn a native command's stderr into a
+            # terminating error, which would hide the real message behind a generic one.
+            $log = & go build -C $stealthSrc -o $output -trimpath -buildvcs=false -gcflags="all=-l=4" -ldflags="-s -w -buildid=" ./main 2>&1
             if ($LASTEXITCODE -eq 0 -and (Test-Path $output)) { $built = $goos; break }
+            Write-Host "  $goos/$($target.Arch) did not build: $($log -join ' ')"
         }
         Remove-Item Env:CGO_ENABLED, Env:GOOS, Env:GOARCH, Env:GOARM -ErrorAction SilentlyContinue
         if (-not $built) { throw "Could not build the Stealth core for $($target.Abi)." }
@@ -186,6 +192,7 @@ try {
         }
         Write-Host "Built the Stealth core for $($target.Abi) ($built/$($target.Arch), $([math]::Round((Get-Item $output).Length / 1MB, 1)) MB)"
     }
+    $ErrorActionPreference = $previousErrorAction
 
     $ndkRoot = Resolve-NdkRoot
     $ndkBuild = Join-Path $ndkRoot $(if ($IsWindows -or $PSVersionTable.PSEdition -eq "Desktop") { "ndk-build.cmd" } else { "ndk-build" })
