@@ -152,6 +152,12 @@ final class ProxyConfig {
 
         int at = rest.lastIndexOf('@');
         String credential = rest.substring(0, at);
+        // Some pools percent-encode the base64 padding, so the credential arrives as
+        // ...Mg%3D%3D. Decoding is only safe when there is actually a percent sign in it: base64
+        // uses '+' as a character, and URLDecoder would turn that into a space and quietly corrupt
+        // the password. A corrupted password is worse than a skipped line - it produces an endpoint
+        // that looks fine and can never authenticate.
+        if (credential.indexOf('%') >= 0) credential = decode(credential);
         String decodedCredential = base64(credential);
         if (decodedCredential != null) credential = decodedCredential;
 

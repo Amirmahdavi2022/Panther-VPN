@@ -1,5 +1,10 @@
 package com.firstham.aethergui;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import org.junit.Test;
+
 import java.util.List;
 
 /** Run with: java -cp <classes> com.firstham.aethergui.EndpointPoolTest */
@@ -22,7 +27,19 @@ public final class EndpointPoolTest {
         return pool;
     }
 
-    public static void main(String[] args) {
+    /**
+     * CI runs this. Without it these checks only ever ran by hand, because a class with a main
+     * method and no test annotation is invisible to the unit test task - which is exactly how a
+     * suite quietly stops protecting anything.
+     */
+    @Test public void everyCheckPasses() {
+        int before = failures;
+        runAllChecks();
+        assertEquals("endpoint pool checks failed", before, failures);
+        assertTrue("No checks ran", checks > 0);
+    }
+
+    static void runAllChecks() {
         mergeKeepsHistory();
         provenBeatsUnproven();
         oneLuckySuccessDoesNotOutrankAConsistentRecord();
@@ -37,7 +54,6 @@ public final class EndpointPoolTest {
         corruptedSavedLinesCostOneEntryNotTheList();
 
         System.out.println((failures == 0 ? "ALL PASS" : "FAILURES") + " — " + checks + " checks, " + failures + " failed");
-        if (failures > 0) System.exit(1);
     }
 
     private static void mergeKeepsHistory() {
@@ -180,5 +196,15 @@ public final class EndpointPoolTest {
                 "an entry with unreadable history is kept with its history dropped");
         List<EndpointPool.Entry> ranked = pool.ranked(NOW);
         check(ranked.size() == 3 && ranked.get(0) != null, "the reloaded pool still ranks");
+    }
+
+    /**
+     * Standalone entry point, for running these checks without an Android toolchain around.
+     * The exit code lives here and not in runAllChecks, because a System.exit inside a unit
+     * test kills the test JVM and turns a clear failure report into an opaque crash.
+     */
+    public static void main(String[] args) {
+        runAllChecks();
+        if (failures > 0) System.exit(1);
     }
 }

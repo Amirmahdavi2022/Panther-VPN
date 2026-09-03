@@ -36,3 +36,11 @@
 -keep class go.** { *; }
 -keep class psi.** { *; }
 -keep class ca.psiphon.** { *; }
+
+# The Stealth engine. Another gomobile library, so the same reasoning as above applies: every
+# call crosses a generated JNI bridge R8 cannot follow, and the failure mode is a
+# NoClassDefFoundError the moment someone taps connect rather than anything the build would
+# catch. These are the library's own published rules, repeated here rather than relied on.
+-keep class libv2ray.** { *; }
+-keep interface libv2ray.** { *; }
+-dontwarn libv2ray.**

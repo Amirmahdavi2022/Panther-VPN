@@ -13,6 +13,10 @@ HEV_COMMIT="0a05221275a51a884d93328c55fc2fbc9e9b6974"
 # this asset, so the hash below is the only integrity check there is.
 GLOBAL_CORE_VERSION="v2.0.40"
 GLOBAL_CORE_SHA256="6e5a1402013e755b2e5e10a2715b18462fc06b6a8c1d610ffcd21f2fa80dfa1e"
+# The Stealth engine's core, published as a single prebuilt AAR. Same deal as above: unsigned by
+# the publisher, so this hash is the only integrity check there is.
+STEALTH_CORE_VERSION="v26.8.20"
+STEALTH_CORE_SHA256="670cf11d9d10a6bb6548ac4f593acfa4339155732f6f8de4d45923f30a74deed"
 NDK_VERSION="27.2.12479018"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -91,6 +95,43 @@ if [ "$actual" != "$GLOBAL_CORE_SHA256" ]; then
 fi
 cp -f "$extracted" "$libs_dir/ca.psiphon.aar"
 echo "Global engine library verified and staged"
+
+# --- Stealth engine library -----------------------------------------------------------------
+stealth_aar="$temp/libv2ray.aar"
+echo "Downloading the Stealth engine library $STEALTH_CORE_VERSION"
+curl -fsSL -o "$stealth_aar" \
+  "https://github.com/2dust/AndroidLibXrayLite/releases/download/$STEALTH_CORE_VERSION/libv2ray.aar"
+actual="$(sha256 "$stealth_aar")"
+if [ "$actual" != "$STEALTH_CORE_SHA256" ]; then
+  echo "Stealth engine library hash mismatch. Expected $STEALTH_CORE_SHA256, got $actual." >&2
+  exit 1
+fi
+
+# The published AAR carries two geo databases (28 MB on disk, about 9 MB packed) plus an x86
+# native library. The databases exist to resolve routing rules written as geoip:xx / geosite:xx,
+# and the Stealth config never writes one - everything goes out through the single proxy
+# outbound. x86 is dropped because abiFilters already refuses to package it. Neither can be
+# missed by something that never asks for it, and XrayConfigTest asserts that no generated
+# config ever references a geo rule, which is what makes this safe rather than merely smaller.
+stealth_work="$temp/stealth-aar"
+rm -rf "$stealth_work"
+mkdir -p "$stealth_work"
+unzip -oq "$stealth_aar" -d "$stealth_work"
+for dat in geoip.dat geosite.dat geoip-only-cn-private.dat; do
+  rm -f "$stealth_work/assets/$dat"
+done
+rm -rf "$stealth_work/jni/x86"
+if [ -z "$(ls -A "$stealth_work/assets" 2>/dev/null)" ]; then rmdir "$stealth_work/assets" 2>/dev/null || true; fi
+for required in classes.jar AndroidManifest.xml jni/arm64-v8a/libgojni.so; do
+  if [ ! -f "$stealth_work/$required" ]; then
+    echo "The Stealth engine library is missing $required after repacking." >&2; exit 1
+  fi
+done
+(cd "$stealth_work" && zip -qr "$temp/libv2ray-slim.aar" .)
+cp -f "$temp/libv2ray-slim.aar" "$libs_dir/libv2ray.aar"
+before_mb=$(( $(stat -c%s "$stealth_aar" 2>/dev/null || stat -f%z "$stealth_aar") / 1048576 ))
+after_mb=$(( $(stat -c%s "$libs_dir/libv2ray.aar" 2>/dev/null || stat -f%z "$libs_dir/libv2ray.aar") / 1048576 ))
+echo "Stealth engine library verified and staged (${before_mb} MB -> ${after_mb} MB after dropping the geo databases and x86)"
 
 # --- HEV TUN->SOCKS bridge ------------------------------------------------------------------
 hev_source="$temp/hev-socks5-tunnel"

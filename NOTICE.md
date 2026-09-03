@@ -41,6 +41,26 @@ Psiphon and its marks belong to Psiphon Inc. Panther is an independent client an
 is not affiliated with, endorsed by or supported by them. Do not report Panther
 issues to Psiphon.
 
+## Stealth engine
+
+The Stealth engine is the Xray core from https://github.com/XTLS/Xray-core
+(Mozilla Public License 2.0), reached through the Android binding
+https://github.com/2dust/AndroidLibXrayLite (GNU LGPL v3.0). Both are compatible
+with the AGPL-3.0 this project is under.
+
+It ships as the official prebuilt `libv2ray.aar` from release **v26.8.20**. That
+asset is not signed by the publisher, so the build pins it by SHA-256 in
+`scripts/fetch-android-assets.ps1` and refuses to build if the hash does not match.
+
+The staged copy is repacked before use: the two geo databases and the x86 native
+library are removed. Panther writes no `geoip:` or `geosite:` routing rule, and the
+build does not package the x86 ABI, so neither is reachable. No code is changed.
+The unmodified upstream asset is available at the release linked above.
+
+Xray, XTLS and their marks belong to their respective authors. Panther is an
+independent client and is not affiliated with, endorsed by or supported by them.
+Do not report Panther issues to those projects.
+
 ## HEV Socks5 Tunnel
 
 Android VPN routing uses HEV Socks5 Tunnel v2.16.0 from

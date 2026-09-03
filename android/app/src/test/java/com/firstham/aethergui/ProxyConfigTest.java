@@ -1,5 +1,10 @@
 package com.firstham.aethergui;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import org.junit.Test;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -15,7 +20,19 @@ public final class ProxyConfigTest {
         if (!ok) { failures++; System.out.println("  FAIL: " + what); }
     }
 
-    public static void main(String[] args) {
+    /**
+     * CI runs this. Without it these checks only ever ran by hand, because a class with a main
+     * method and no test annotation is invisible to the unit test task - which is exactly how a
+     * suite quietly stops protecting anything.
+     */
+    @Test public void everyCheckPasses() {
+        int before = failures;
+        runAllChecks();
+        assertEquals("config parser checks failed", before, failures);
+        assertTrue("No checks ran", checks > 0);
+    }
+
+    static void runAllChecks() {
         parsesVlessReality();
         parsesHysteria2();
         parsesTuicAndHy2Alias();
@@ -29,7 +46,6 @@ public final class ProxyConfigTest {
         surviveAMixedRealisticDocument();
 
         System.out.println((failures == 0 ? "ALL PASS" : "FAILURES") + " — " + checks + " checks, " + failures + " failed");
-        if (failures > 0) System.exit(1);
     }
 
     private static void parsesVlessReality() {
@@ -175,5 +191,15 @@ public final class ProxyConfigTest {
         }
         check(reality == 1, "the reality entry is identifiable for scoring");
         check(hysteria == 1, "the hysteria2 entry is identifiable for scoring");
+    }
+
+    /**
+     * Standalone entry point, for running these checks without an Android toolchain around.
+     * The exit code lives here and not in runAllChecks, because a System.exit inside a unit
+     * test kills the test JVM and turns a clear failure report into an opaque crash.
+     */
+    public static void main(String[] args) {
+        runAllChecks();
+        if (failures > 0) System.exit(1);
     }
 }
