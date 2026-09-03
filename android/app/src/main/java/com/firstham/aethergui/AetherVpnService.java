@@ -1286,7 +1286,10 @@ public final class AetherVpnService extends VpnService {
         intent.putExtra("state", state).putExtra("message", message).putExtra("endpoint", currentEndpoint)
                 .putExtra("locationDetail", currentLocationDetail)
                 .putExtra("region", currentRegion)
-                .putExtra("availableRegions", currentAvailableRegions);
+                .putExtra("availableRegions", currentAvailableRegions)
+                // The one case where a connected tunnel is not the engine the user armed. Without
+                // this the screen looks like an ordinary success and the explanation is thrown away.
+                .putExtra("degraded", degradedToCarrier);
         sendBroadcast(intent, INTERNAL_PERMISSION);
     }
 

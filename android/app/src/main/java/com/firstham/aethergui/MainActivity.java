@@ -63,6 +63,9 @@ public final class MainActivity extends AppCompatActivity {
     private String endpoint = "";
     private String locationDetail = "";
     private String region = "";
+    /** True while the armed engine failed and the carrier tunnel is holding the connection. */
+    private boolean degraded = false;
+
     /** True while the chosen exit location routes through the OpenVPN relay engine. */
     private boolean relayMode;
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
@@ -86,6 +89,7 @@ public final class MainActivity extends AppCompatActivity {
                 region = intent.getStringExtra("region");
                 rememberAvailableRegions(intent.getStringExtra("availableRegions"));
                 rememberVerdict();
+                degraded = intent.getBooleanExtra("degraded", false);
                 renderState(intent.getStringExtra("state"), intent.getStringExtra("message"));
             }
             else if (AetherVpnService.ACTION_STATS.equals(intent.getAction())) renderStats(intent);
@@ -368,7 +372,16 @@ public final class MainActivity extends AppCompatActivity {
             renderLocation();
         }
         else if (transitioning) { binding.connectionMessage.setVisibility(View.GONE); binding.connectionInfo.setVisibility(View.VISIBLE); }
-        else { boolean showError = "error".equals(state) || "blocked".equals(state); binding.connectionMessage.setText(message == null ? getString(R.string.status_error) : message); binding.connectionMessage.setVisibility(showError ? View.VISIBLE : View.GONE); binding.connectionInfo.setVisibility(View.VISIBLE); }
+        else {
+            // A degrade is a connected state carrying bad news: the armed engine did not come up
+            // and something else is holding the tunnel. It was being hidden along with every other
+            // connected message, so the user saw an ordinary success and no explanation at all.
+            boolean showMessage = "error".equals(state) || "blocked".equals(state)
+                    || (degraded && "connected".equals(state));
+            binding.connectionMessage.setText(message == null ? getString(R.string.status_error) : message);
+            binding.connectionMessage.setVisibility(showMessage ? View.VISIBLE : View.GONE);
+            binding.connectionInfo.setVisibility(View.VISIBLE);
+        }
         preferences.edit().putString("state", state).putString("message", message == null ? "" : message).apply();
         if (!connected) resetStats();
     }

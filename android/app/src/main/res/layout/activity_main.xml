@@ -50,6 +50,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:baselineAligned="false"
+                        android:layoutDirection="ltr"
                         android:orientation="horizontal">
 
                         <LinearLayout android:id="@+id/engine_turbo" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginHorizontal="3dp" android:layout_weight="1" android:background="@drawable/engine_card_selected" android:clickable="true" android:focusable="true" android:orientation="vertical" android:paddingHorizontal="10dp" android:paddingVertical="12dp">
