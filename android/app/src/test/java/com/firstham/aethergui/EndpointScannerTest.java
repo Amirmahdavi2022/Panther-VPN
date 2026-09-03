@@ -1,5 +1,10 @@
 package com.firstham.aethergui;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import org.junit.Test;
+
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.util.ArrayList;
@@ -23,7 +28,19 @@ public final class EndpointScannerTest {
         }
     }
 
-    public static void main(String[] args) throws Exception {
+    /**
+     * CI runs this. Without it these checks only ever ran by hand, because a class with a main
+     * method and no test annotation is invisible to the unit test task - which is exactly how a
+     * suite quietly stops protecting anything.
+     */
+    @Test public void everyCheckPasses() throws Exception {
+        int before = failures;
+        runAllChecks();
+        assertEquals("edge scanner checks failed", before, failures);
+        assertTrue("No checks ran", checks > 0);
+    }
+
+    static void runAllChecks() throws Exception {
         candidatesAreWellFormed();
         candidatesRespectTheLimit();
         candidatesAreUnique();
@@ -36,7 +53,6 @@ public final class EndpointScannerTest {
         probesRunInParallel();
 
         System.out.println((failures == 0 ? "ALL PASS" : "FAILURES") + " — " + checks + " checks, " + failures + " failed");
-        if (failures > 0) System.exit(1);
     }
 
     private static void candidatesAreWellFormed() {
@@ -198,5 +214,15 @@ public final class EndpointScannerTest {
         check(results.size() == 24, "every candidate was probed");
         check(peak.get() > 1, "probes really overlap rather than running one at a time");
         check(elapsed < 24 * 120, "the sweep is faster than a serial pass would be");
+    }
+
+    /**
+     * Standalone entry point, for running these checks without an Android toolchain around.
+     * The exit code lives here and not in runAllChecks, because a System.exit inside a unit
+     * test kills the test JVM and turns a clear failure report into an opaque crash.
+     */
+    public static void main(String[] args) throws Exception {
+        runAllChecks();
+        if (failures > 0) System.exit(1);
     }
 }

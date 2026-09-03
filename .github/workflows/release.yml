@@ -50,6 +50,18 @@ jobs:
           }
           Write-Host "NOTICE.md and the build agree on Aether $pin."
 
+          # Same rule for the Stealth core. Aether's pin drifted from NOTICE.md once already, and
+          # anything pinned in one file and described in another will drift eventually.
+          $sline = (Get-Content scripts/fetch-android-assets.ps1) | Where-Object { $_ -match '^\s*\$stealthCoreVersion\s*=' } | Select-Object -First 1
+          if (-not $sline) { throw 'Could not find the $stealthCoreVersion line in the fetch script.' }
+          $sfound = [regex]::Matches($sline, '"(v[\d.]+)"')
+          if ($sfound.Count -eq 0) { throw "No pinned version in: $sline" }
+          $spin = $sfound[$sfound.Count - 1].Groups[1].Value
+          if ((Get-Content NOTICE.md -Raw) -notmatch [regex]::Escape($spin)) {
+            throw "NOTICE.md does not mention the pinned Stealth core $spin."
+          }
+          Write-Host "NOTICE.md and the build agree on the Stealth core $spin."
+
       - name: Fetch verified Android native assets
         run: npm run fetch:android
       - name: Verify every native core landed in jniLibs
@@ -58,7 +70,7 @@ jobs:
           # A green build once shipped with a core missing from it. Fail loudly instead.
           $missing = @()
           foreach ($abi in @('arm64-v8a','armeabi-v7a','x86_64')) {
-            foreach ($lib in @('libaether.so','libhev-socks5-tunnel.so')) {
+            foreach ($lib in @('libaether.so','libhev-socks5-tunnel.so','libxray.so')) {
               $p = "android/app/src/main/jniLibs/$abi/$lib"
               if (-not (Test-Path $p)) { $missing += $p } else { Write-Host "$p $((Get-Item $p).Length) bytes" }
             }
