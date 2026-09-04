@@ -1,62 +1,68 @@
 # Panther VPN
 
-یه کلاینت VPN اندروید و متن‌باز. نه اکانت می‌خواد، نه اشتراک، نه کانفیگی که باید از جایی کپی کنی. نصبش کن، Connect رو بزن، تموم.
+An open-source Android VPN client. No account, no subscription, no config to paste in from somewhere. Install it, hit Connect, done.
 
-[نسخه‌ها](https://github.com/Amirmahdavi2022/Panther-VPN/releases) · [گزارش امنیتی](SECURITY.md) · [مشارکت](CONTRIBUTING.md) · [مجوز کتابخونه‌ها](NOTICE.md)
+[Releases](https://github.com/Amirmahdavi2022/Panther-VPN/releases) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Licences](NOTICE.md)
 
-## اصلاً چیکار می‌کنه
+## What it actually does
 
-بیشتر اپ‌های VPN رایگانی که تو گیت‌هاب پیدا می‌کنی در عمل کانفیگ‌منیجرن. یه رابط قشنگ بهت می‌دن و بعدش خودت باید بری دنبال یه سرور سالم بگردی و بچسبونی توش. پانتر شبکه رو با خودش میاره.
+Most of the free VPN apps you'll find on GitHub are config managers. They hand you a nice interface and then you go hunting for a working server to paste in. Panther brings the network with it.
 
-| حالت | از کجا درمیای | سرعت | سرور خودت لازمه؟ |
+| Engine | Where you come out | Speed | Needs your own server? |
 |---|---|---|---|
-| **Turbo** | نزدیک‌ترین دیتاسنتر کلادفلر | سریع‌ترین | نه |
-| **Global** | یه کشور دیگه | کندتر، دو تا هاپ | نه |
-| **Custom** | هرجا که خودت بگی | بستگی داره | آره |
+| **Turbo** | Nearest Cloudflare datacenter | Fastest | No |
+| **Global** | Another country | Slower, two hops | No |
+| **Stealth** | Wherever the server is | Fast, single hop | No |
 
-Turbo و Global دوتا کارتن بالای دکمهٔ اتصال و بینشون سوییچ می‌کنی. پیش‌فرض Turbo ــه و هیچ‌کدوم هیچی ازت نمی‌خوان.
+The three sit as cards above the connect button and you switch between them. Turbo is the default and none of them ask you for anything.
 
-Turbo روی WARP کلادفلر و هستهٔ Aether کار می‌کنه. آی‌پی و اپراتورت رو مخفی می‌کنه ولی جابه‌جات نمی‌کنه، چون WARP اصلاً برای همین ساخته شده که موقعیت تقریبیت رو حفظ کنه. سایت‌ها هنوز همون کشوری رو می‌بینن که واقعاً توش هستی.
+Turbo hides your IP and your ISP but doesn't move you, because the network behind it is built to preserve your rough location on purpose. Sites still see the country you're actually in. That's not a bug, it's the design.
 
-Global اونیه که جابه‌جات می‌کنه. به‌جای اینکه خودش مستقیم بزنه بیرون، از داخل Turbo رد می‌شه و همین باعث می‌شه روی شبکه‌های فیلترشده هم بالا بیاد. کشور خروجی رو می‌تونی خودت انتخاب کنی یا بذاری خودکار بمونه.
+Global is the one that moves you. Instead of dialling straight out, it runs inside the Turbo tunnel, which is what lets it come up on filtered networks at all. Pick an exit country or leave it automatic.
 
-## انتخاب کشور
+Stealth is the hardest one to block. It keeps a list of servers, tests them on your own phone, dials whichever actually works, and moves to another the moment one stops. Single hop, so it's fast. If a network blocks those servers outright it opens the connection through Turbo instead, so they stay reachable either way.
 
-از نسخهٔ ۲.۶ به بعد، وقتی Global رو انتخاب کنی یه کارت بالای صفحه میاد که کشور خروجی رو ازش عوض می‌کنی. حالت پیش‌فرض خودکاره و معمولاً هم سریع‌ترینه، پس دستی انتخاب کن فقط وقتی که واقعاً بهش نیاز داری.
+## Picking a country
 
-یه چیز کوچیک که کار رو راه می‌ندازه: هر بار که وصل می‌شی، اپ یادش می‌مونه تونل از کدوم کشور دراومده. دفعهٔ بعد که لیست رو باز کنی زیر اون کشور نوشته دفعهٔ قبل وصل شد. بقیه می‌شن امتحان‌نشده. یعنی لیست بعد از چند بار اتصال از حالت حدسی درمیاد.
+Arm Global or Stealth and a card appears at the top of the screen for the exit country. Automatic is the default and usually the fastest, so pick manually only when you actually need to.
 
-فراتر از این چیزی ادعا نمی‌کنه. اینکه فلان سایت یا سرویس از فلان خروجی بالا میاد یا نه، جوابیه که هفته به هفته عوض می‌شه و حتی بین دو تا اکانت روی یه خروجی هم فرق داره. یه تیک سبز بیات بدتر از نبودنشه، پس اون قسمتش با خودته.
+They get their countries from different places, which is why the two lists aren't the same. Global asks its own engine which regions it knows about. Stealth can only offer a country it has measured real servers in, so its list is shorter, and every country on it was counted before it went in. A country offering three servers is a country that fails right after you've chosen it.
 
-## کارت موقعیت
+On Stealth, changing country doesn't drop you. The new server is proved on a side port next to the live tunnel first, and only takes over once it has answered. If nothing in that country answers, you stay on the connection you had.
 
-بعد از وصل شدن، صفحهٔ اصلی می‌گه واقعاً از کجا دراومدی. کشور، شهر، آی‌پی عمومی و صاحب اون آی‌پی.
+Small thing that makes the list useful: every time you connect, the app remembers which country the tunnel came out in. Next time you open the list that country says it connected before, and the rest say untried. After a few connections the list stops being a guess.
 
-اینو با پرسیدن از یه سرویس عمومی درمیاره و از داخل تونل می‌پرسه، یعنی از همون SOCKS که هسته بالا آورده. پس اون سرویس فقط آدرس خروجی رو می‌بینه و هیچ‌وقت گوشی تو رو. هیچ کلید API جایی نیست و هیچی ذخیره نمی‌شه. روی کارت بزنی دوباره چک می‌کنه.
+It doesn't claim anything beyond that. Whether some site or service works from a given exit is an answer that changes week to week and differs between two accounts on the same exit. A stale green tick is worse than none, so that part's on you.
 
-روی Global یه جواب دوم هم هست که مستقیم از خود موتور میاد و کشوری که ازش وصل شده رو اسم می‌بره. اگه این با نتیجهٔ آی‌پی نخوند، کارت هر دوتا رو نشون می‌ده به‌جای اینکه یکیشون رو برنده اعلام کنه. یه موقعیت که بی‌سروصدا غلطه بدتر از موقعیتیه که آشکارا نیاز به نگاه دوباره داره.
+## The location card
 
-چهار تا سرویس تو لیسته و تا وقتی یکی جواب بده می‌ره پایین:
+Once you're connected the home screen tells you where you actually came out. Country, city, public IP, and who owns that IP.
+
+It works this out by asking a public service, and it asks through the tunnel, over the same local SOCKS the engine opened. So the service only ever sees the exit address, never your phone. No API keys anywhere, nothing stored. Tap the card to check again.
+
+On Global there's a second answer that comes from the engine itself and names the country it connected through. When that disagrees with the IP lookup, the card shows both rather than declaring a winner. A location that's quietly wrong is worse than one that's visibly worth a second look.
+
+Four services in the list, tried in order until one answers:
 
 1. `speed.cloudflare.com/meta`
 2. `www.cloudflare.com/cdn-cgi/trace`
 3. `ipwho.is`
 4. `ipapi.co`
 
-کلادفلر اوله چون هسته به‌هرحال از شبکهٔ خود کلادفلر خارج می‌شه، پس اون یکی هیچ‌وقت محدودمون نمی‌کنه. سه تای بعدی برای وقتین که خود کلادفلر در دسترس نباشه. اگه هر چهارتا بیفتن، به‌جای یه جواب غلط فقط می‌نویسه موقعیت در دسترس نیست.
+Cloudflare goes first because the core exits through Cloudflare's network anyway, so that one can never be the thing holding us up. The next three are for when Cloudflare isn't reachable. If all four fall over it says location unavailable rather than making something up.
 
-## چیزهایی که بهتره بدونی
+## Things worth knowing
 
-- **Turbo کشورت رو عوض نمی‌کنه.** این باگ نیست، خود WARP اینطوری طراحی شده. کشور دیگه می‌خوای برو رو Global.
-- **Global کندتره.** دو تا هاپه و این هزینهٔ بیرون رفتنه.
-- **اولین اتصال Global طول می‌کشه.** یکی دو دقیقه تا حامل بالا بیاد و مسیر پیدا کنه. بعدش سریع‌تره.
-- **هرکی خروجی رو می‌گردونه ترافیک بیرون‌رفته رو می‌بینه.** مثل هر VPN دیگه‌ای. از HTTPS استفاده کن.
-- **این ناشناسی نیست.** فقط جایی که ترافیکت انگار ازش میاد رو عوض می‌کنه. تو رو غیرقابل ردیابی نمی‌کنه و اگه واقعاً به Tor نیاز داری جایگزینش نیست.
-- **فقط اندروید.** کلاینت ویندوز از نسخهٔ ۲.۰.۰ حذف شد.
+- **Turbo doesn't change your country.** Not a bug, that's how the underlying network is built. Want a different country, use Global or Stealth.
+- **Global is slower.** Two hops. That's the price of coming out somewhere else.
+- **The first Global connection takes a while.** A minute or two for the carrier to come up and find a route. It's quicker after that.
+- **Whoever runs the exit can see the traffic leaving it.** Same as any VPN. Use HTTPS.
+- **This isn't anonymity.** It changes where your traffic appears to come from. It doesn't make you untraceable and it's not a substitute for Tor if you actually need Tor.
+- **Android only.** The Windows client went away in 2.0.0.
 
-## ساختن از سورس
+## Building from source
 
-به JDK 17 و اندروید SDK و NDK نسخهٔ `27.2.12479018` نیاز داری.
+You need JDK 17, the Android SDK, and NDK `27.2.12479018`.
 
 ```bash
 git clone --recurse-submodules https://github.com/Amirmahdavi2022/Panther-VPN.git
@@ -65,37 +71,32 @@ npm run fetch:android
 cd android && ./gradlew assembleRelease
 ```
 
-`--recurse-submodules` رو جا ننداز. موتور OpenVPN یه ساب‌ماژول پین‌شده‌ست و بدونش بیلد همون اول می‌ترکه.
+Don't skip `--recurse-submodules`. The OpenVPN engine is a pinned submodule and the build falls over immediately without it.
 
-`npm run fetch:android` هسته‌های نیتیو رو میاره و SHA-256 شون رو چک می‌کنه. موتور Global هم از همین‌جا میاد و به‌صورت یه کتابخونهٔ رسمی از پیش ساخته‌شدهٔ اندروید عرضه شده. هیچ‌جای این پروژه Go کامپایل نمی‌شه و مرحلهٔ gomobile هم نداریم. اون کتابخونه توسط منتشرکننده‌ش امضا نشده، پس بیلد با SHA-256 پینش می‌کنه و اگه هش جابه‌جا شه همون‌جا وایمیسته.
+`npm run fetch:android` pulls the native cores and checks their SHA-256. The Global engine comes from here too, shipped as an official prebuilt Android library. Nothing in this project compiles Go and there's no gomobile step. That library isn't signed by its publisher, so the build pins it by SHA-256 and stops there if the hash moves.
 
-هر هستهٔ نیتیو از ریلیز خودش گرفته می‌شه و قبل از اینکه بره تو APK با یه SHA-256 منتشرشده چک می‌شه. CI هم اگه هر هسته‌ای تو `jniLibs` نباشه بیلد رو رد می‌کنه، چون یه بار یه بیلد سبز بدون یکی از هسته‌ها منتشر شد و تجربهٔ خوبی نبود.
+Every native core is taken from its own release and checked against a published SHA-256 before it goes anywhere near the APK. CI also fails the build if any core is missing from `jniLibs`, because a green build once shipped without one and that wasn't fun.
 
-### تست‌ها
+### Tests
 
 ```bash
 cd android && ./gradlew testReleaseUnitTest
 ```
 
-بخش‌های پارس و منطق عمداً جاوای خالی‌ان و هیچ تایپ اندرویدی توشون نیست، برای همین تست واقعی دارن. همینا هم دقیقاً همون‌هایین که وقتی خراب می‌شن، دیباگ کردنشون از روی اسکرین‌شات عذاب‌آوره.
+The parsing and the decision logic are deliberately plain Java with no Android types in them, which is what makes them testable for real. They're also exactly the parts that are miserable to debug from a screenshot when they go wrong.
 
-## به‌روز موندن
+## Staying current
 
-- **هسته‌های نیتیو** رو یه جاب هفتگی می‌پاد و هر وقت آپستریم ریلیز بده PR باز می‌کنه. مرج نمی‌کنه، چون کد نیتیوی که رو گوشی همه می‌شینه اول باید بیلد شه و یکی نگاهش کنه.
-- **خود اپ** ریلیزهای گیت‌هاب رو چک می‌کنه و می‌تونه خودش آپدیت رو نصب کنه. هم SHA-256 رو تأیید می‌کنه هم مطمئن می‌شه APK جدید با همون گواهی نسخهٔ نصب‌شده امضا شده.
-- **فایل مجوزها** تو CI با نسخهٔ هسته‌ای که بیلد واقعاً پین کرده مقایسه می‌شه. یه بار بیات شد و کسی نفهمید، الان بیلد رد می‌شه.
+- **Native cores** are watched by a weekly job that opens a PR whenever upstream ships a release. It doesn't merge, because native code that lands on everyone's phone should get built and looked at first.
+- **The app itself** checks GitHub releases and can install an update on its own. It verifies the SHA-256 and checks the new APK is signed with the same certificate as the installed one.
+- **The licence file** is compared in CI against the core version the build actually pins. It went stale once without anyone noticing, so now the build fails instead.
 
-## تشکر و مجوز
+## Licence
 
-پانتر تحت AGPL-3.0 منتشر شده و روی کار بقیه ساخته شده:
+Panther is AGPL-3.0 and is built on other people's work. Full credits and licences are in [NOTICE.md](NOTICE.md).
 
-- [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether) برای هستهٔ WARP
-- [hoang-rio/vpnLib](https://github.com/hoang-rio/vpnLib) برای موتور OpenVPN اندروید (GPL-3.0)
-- [heiher/hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel) برای پل TUN
-- [Psiphon-Labs/psiphon-tunnel-core](https://github.com/Psiphon-Labs/psiphon-tunnel-core) برای موتور Global (GPL-3.0). پانتر هیچ وابستگی‌ای بهشون نداره، پس لطفاً باگ پانتر رو براشون نفرستید.
+Panther isn't affiliated with or supported by any of those projects, so please don't send them Panther bugs.
 
-پانتر یه فورک از [hamvex/AetherGUI](https://github.com/hamvex/AetherGUI) ــه و به هیچ‌کدوم از پروژه‌های بالا وابسته نیست و از طرف هیچ‌کدومشون هم پشتیبانی نمی‌شه. کردیت کامل تو [NOTICE.md](NOTICE.md) هست.
+## One small ask
 
-## یه خواهش کوچیک
-
-اگه پانتر برات کار کرد و به دردت خورد، یه ستاره به مخزن بده. واقعاً کمک می‌کنه پروژه دیده شه و به دست کسایی برسه که بهش نیاز دارن. باگی هم دیدی یا ایده‌ای داشتی، خوشحال می‌شم بشنوم. ممنون که وقت گذاشتی.
+If Panther worked for you, star the repo. It genuinely helps the project get seen by people who need it. Found a bug or have an idea, I'd like to hear it. Thanks for reading this far.
