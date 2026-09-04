@@ -122,6 +122,41 @@ final class EndpointPool {
         return all;
     }
 
+    /**
+     * Best first, but with the endpoints in {@code country} ahead of everything else.
+     *
+     * <p>A country is a preference, never a constraint. If it were a constraint, a user who picked
+     * Japan on a night when no Japanese endpoint answers would get no tunnel at all — which is a
+     * worse outcome than a working tunnel somewhere else, and one they cannot diagnose. So the
+     * endpoints they asked for are tried first, every one of them, and the rest of the pool sits
+     * behind as the reason the app stays connected instead of failing.
+     *
+     * <p>The exit country the user is actually given is read from the live tunnel and shown on the
+     * location card, so preferring is never the same as pretending.
+     */
+    List<Entry> rankedFor(String country, long now) {
+        List<Entry> ordered = ranked(now);
+        if (StealthRegions.isAutomatic(country)) return ordered;
+        List<Entry> wanted = new ArrayList<>();
+        List<Entry> rest = new ArrayList<>();
+        for (Entry entry : ordered) {
+            if (StealthRegions.matches(entry.config, country)) wanted.add(entry);
+            else rest.add(entry);
+        }
+        wanted.addAll(rest);
+        return wanted;
+    }
+
+    /** How many endpoints this pool holds in a country, benched ones included. */
+    int countIn(String country) {
+        if (StealthRegions.isAutomatic(country)) return entries.size();
+        int count = 0;
+        for (Entry entry : entries.values()) {
+            if (StealthRegions.matches(entry.config, country)) count++;
+        }
+        return count;
+    }
+
     /** The endpoint to dial now, or null when every single one is benched. */
     Entry best(long now) {
         Entry winner = null;

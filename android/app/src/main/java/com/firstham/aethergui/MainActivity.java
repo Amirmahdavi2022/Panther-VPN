@@ -303,36 +303,62 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** The Global exit country card. Only meaningful while Global is the armed engine. */
+    /** The exit country card. Both Global and Stealth can choose one; Turbo cannot. */
     private void renderExitLocation() {
-        boolean global = "global".equals(engine());
-        binding.exitLocationCard.setVisibility(global ? View.VISIBLE : View.GONE);
+        String armed = engine();
+        boolean choosable = "global".equals(armed) || "stealth".equals(armed);
+        binding.exitLocationCard.setVisibility(choosable ? View.VISIBLE : View.GONE);
         binding.exitLocationLabel.setText(R.string.region_card_label);
-        if (!global) return;
-        String code = GlobalRegions.normalise(preferences.getString("region", GlobalRegions.AUTOMATIC));
+        if (!choosable) return;
+        String code = GlobalRegions.normalise(preferences.getString(regionKey(), ""));
         binding.exitLocationValue.setText(code.isEmpty()
                 ? getString(R.string.picker_automatic)
                 : ExitLocation.flag(code) + "  " + GlobalRegions.name(code));
     }
 
+    /**
+     * Which preference the card writes to.
+     *
+     * <p>The two engines deliberately do not share one. A country chosen for Global is a region
+     * handed to its own engine; a country chosen for Stealth is a filter over a pool of public
+     * endpoints. Sharing the key would have a choice made for one silently applied by the other,
+     * and the countries on offer are not even the same list.
+     */
+    private String regionKey() {
+        return "stealth".equals(engine()) ? "stealthRegion" : "region";
+    }
+
     private void showRegionPicker() {
-        String current = preferences.getString("region", GlobalRegions.AUTOMATIC);
-        RegionPicker.show(this, preferences, current, code -> {
+        boolean stealth = "stealth".equals(engine());
+        String key = regionKey();
+        String current = preferences.getString(key, "");
+        RegionPicker.OnPicked picked = code -> {
             String chosen = GlobalRegions.normalise(code);
             if (chosen.equals(GlobalRegions.normalise(current))) return;
-            preferences.edit().putString("region", chosen).apply();
+            preferences.edit().putString(key, chosen).apply();
             renderExitLocation();
-            // The region is read when the engine starts, so a live tunnel has to be rebuilt for
-            // the choice to mean anything. Doing it here is less surprising than leaving the card
-            // claiming a country the tunnel is not actually using.
+            if (stealth) {
+                // Stealth reads this while it is running. The service proves an endpoint in the
+                // new country on a staging port before it takes the live one, so there is nothing
+                // to tear down here and nothing for the user to sit through.
+                return;
+            }
+            // Global reads its region only when the engine starts, so a live tunnel has to be
+            // rebuilt for the choice to mean anything. Doing it here is less surprising than
+            // leaving the card claiming a country the tunnel is not actually using.
             if (shouldDisconnect()) {
                 endpoint = "";
                 locationDetail = "";
                 region = "";
-                    renderState("starting", getString(R.string.status_connecting));
+                renderState("starting", getString(R.string.status_connecting));
                 startSelectedEngine();
             }
-        });
+        };
+        if (stealth) {
+            RegionPicker.show(this, preferences, current, StealthRegions.offered(), picked);
+        } else {
+            RegionPicker.show(this, preferences, current, picked);
+        }
     }
 
     /** Keeps the engine's own region list so the picker can offer it before the next connection. */

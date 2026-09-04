@@ -195,6 +195,114 @@ public final class ConfigSourcesTest {
      * The exit code lives here and not in runAllChecks, because a System.exit inside a unit
      * test kills the test JVM and turns a clear failure report into an opaque crash.
      */
+
+    /** Picking a country reads that country's own published list, not the general pools. */
+    @Test public void countryRefreshReadsThatCountrysList() {
+        final java.util.List<String> asked = new java.util.ArrayList<>();
+        ConfigSources.Fetcher fetcher = new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) {
+                asked.add(host + path);
+                return "vless://11111111-2222-3333-4444-555555555555@jp1.example.com:443"
+                        + "?security=tls#\uD83C\uDDEF\uD83C\uDDF5 Japan-1";
+            }
+        };
+        ConfigSources.Refresh refresh = ConfigSources.refreshCountry(fetcher, "jp", 50);
+        assertEquals(1, asked.size());
+        assertTrue(asked.get(0), asked.get(0).endsWith("/countries/jp.txt"));
+        assertEquals(1, refresh.configs.size());
+        assertEquals("JP", StealthRegions.countryOf(refresh.configs.get(0)));
+        assertEquals(1, refresh.succeeded.size());
+    }
+
+    /** A country we do not offer must cost nothing at all - no fetch, no 404, no exception. */
+    @Test public void countryRefreshRefusesACountryWeDoNotOffer() {
+        ConfigSources.Fetcher exploding = new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) {
+                throw new AssertionError("should not have fetched " + host + path);
+            }
+        };
+        assertTrue(ConfigSources.refreshCountry(exploding, "ZZ", 50).isEmpty());
+        assertTrue(ConfigSources.refreshCountry(exploding, "", 50).isEmpty());
+        assertTrue(ConfigSources.refreshCountry(exploding, null, 50).isEmpty());
+    }
+
+    /** A dead country list leaves the caller with an empty refresh, never an exception. */
+    @Test public void countryRefreshSurvivesADeadList() {
+        ConfigSources.Fetcher dead = new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) throws Exception {
+                throw new java.io.IOException("unreachable");
+            }
+        };
+        ConfigSources.Refresh refresh = ConfigSources.refreshCountry(dead, "NL", 50);
+        assertTrue(refresh.isEmpty());
+        assertEquals(1, refresh.failed.size());
+    }
+
+
+    /**
+     * The cap used to be spent entirely on the first sources in the list, so the last ones
+     * contributed nothing - which quietly undid the reason for having several. Every source that
+     * answered must get a share.
+     */
+    @Test public void everySourceGetsAShareOfTheCap() {
+        final String[][] sources = {
+                {"h", "/a", "a"}, {"h", "/b", "b"}, {"h", "/c", "c"},
+        };
+        ConfigSources.Fetcher fetcher = new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) {
+                StringBuilder body = new StringBuilder();
+                String tag = path.substring(1);
+                for (int i = 0; i < 50; i++) {
+                    body.append("vless://11111111-2222-3333-4444-555555555555@")
+                        .append(tag).append(i).append(".example.com:443#node\n");
+                }
+                return body.toString();
+            }
+        };
+        ConfigSources.Refresh refresh = ConfigSources.refresh(fetcher, sources, 30);
+        assertEquals(30, refresh.configs.size());
+        int a = 0, b = 0, c = 0;
+        for (ProxyConfig config : refresh.configs) {
+            if (config.host.startsWith("a")) a++;
+            else if (config.host.startsWith("b")) b++;
+            else if (config.host.startsWith("c")) c++;
+        }
+        assertEquals(10, a);
+        assertEquals(10, b);
+        assertEquals(10, c);
+    }
+
+    /** A source that returns fewer entries must not leave the budget unspent. */
+    @Test public void aShortSourceDoesNotWasteTheBudget() {
+        final String[][] sources = { {"h", "/small", "small"}, {"h", "/big", "big"} };
+        ConfigSources.Fetcher fetcher = new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) {
+                int count = path.equals("/small") ? 2 : 40;
+                StringBuilder body = new StringBuilder();
+                String tag = path.substring(1);
+                for (int i = 0; i < count; i++) {
+                    body.append("vless://11111111-2222-3333-4444-555555555555@")
+                        .append(tag).append(i).append(".example.com:443#node\n");
+                }
+                return body.toString();
+            }
+        };
+        assertEquals(20, ConfigSources.refresh(fetcher, sources, 20).configs.size());
+    }
+
+    /** Every configured source must be a distinct file, or we pay for the same bytes twice. */
+    @Test public void theConfiguredSourcesAreAllDistinct() {
+        java.util.Set<String> paths = new java.util.HashSet<>();
+        java.util.Set<String> labels = new java.util.HashSet<>();
+        for (String[] source : ConfigSources.SOURCES) {
+            assertEquals(3, source.length);
+            assertTrue(source[1], source[1].startsWith("/"));
+            assertTrue("duplicate path " + source[1], paths.add(source[0] + source[1]));
+            assertTrue("duplicate label " + source[2], labels.add(source[2]));
+        }
+        assertTrue(ConfigSources.SOURCES.length >= 6);
+    }
+
     public static void main(String[] args) {
         runAllChecks();
         if (failures > 0) System.exit(1);

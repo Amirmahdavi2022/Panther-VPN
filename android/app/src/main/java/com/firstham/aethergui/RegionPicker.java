@@ -74,9 +74,20 @@ public final class RegionPicker {
 
     public static void show(Context context, SharedPreferences preferences, String currentCode,
                             OnPicked callback) {
-        List<String> codes = GlobalRegions.merge(
-                GlobalRegions.decode(preferences.getString("availableRegions", "")));
+        show(context, preferences, currentCode, GlobalRegions.merge(
+                GlobalRegions.decode(preferences.getString("availableRegions", ""))), callback);
+    }
 
+    /**
+     * The same sheet over a caller-supplied country list.
+     *
+     * <p>Global and Stealth answer "which countries can I offer?" in completely different ways.
+     * Global asks its own engine, which reports the regions it knows about. Stealth has no engine
+     * to ask: it can only offer a country it has measured real endpoints in. Both still deserve
+     * the same sheet, so the list comes in from outside rather than being decided here.
+     */
+    public static void show(Context context, SharedPreferences preferences, String currentCode,
+                            List<String> codes, OnPicked callback) {
         BottomSheetDialog sheet = new BottomSheetDialog(context);
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);

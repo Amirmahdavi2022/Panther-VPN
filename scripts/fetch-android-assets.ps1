@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$aetherVersion = if ($env:AETHER_CORE_VERSION) { $env:AETHER_CORE_VERSION } else { "v1.8.0" }
+$aetherVersion = if ($env:AETHER_CORE_VERSION) { $env:AETHER_CORE_VERSION } else { "v1.9.0" }
 $hevVersion = "2.16.0"
 # The Global engine ships as an official prebuilt Android library, so nothing here is
 # built from source. Pinned by hash: the publisher does not sign this asset.

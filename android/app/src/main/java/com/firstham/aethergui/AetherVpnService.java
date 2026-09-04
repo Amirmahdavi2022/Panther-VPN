@@ -13,6 +13,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.VpnService;
+import android.telephony.TelephonyManager;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
@@ -107,6 +108,13 @@ public final class AetherVpnService extends VpnService {
     private volatile StealthCore stealthCore;
     /** The pool the live Stealth engine is dialling from, kept so its history can be saved. */
     private volatile EndpointPool stealthPool;
+    /**
+     * The carrier's SOCKS address, kept because the request's own "socks" extra is rewritten to
+     * the Stealth port once the engine is up. Background probes have to go through the carrier,
+     * and sending them through Stealth itself would have them measure the tunnel they are meant
+     * to find a replacement for.
+     */
+    private volatile String stealthCarrier;
     private volatile String currentRegion = "";
     /** Encoded by {@link GlobalRegions#encode}: what the Global engine offered on this run. */
     private volatile String currentAvailableRegions = "";
@@ -280,7 +288,7 @@ public final class AetherVpnService extends VpnService {
                 connectedAt = System.currentTimeMillis();
                 updateState("connected", degradedToCarrier && degradedNotice != null
                         ? degradedNotice : getString(R.string.service_protected));
-                updateNotification(getString("smart".equals(connectionMode) ? R.string.service_smart_protected : R.string.service_aethon_protected));
+                updateNotification(getString("smart".equals(connectionMode) ? R.string.service_smart_protected : R.string.service_panther_protected));
             }
             scheduleLocationLookup(request, session);
             if (stealth) monitorStealth(request, session);
@@ -562,6 +570,7 @@ public final class AetherVpnService extends VpnService {
             sendLog("No carrier tunnel; Stealth falls back to the endpoints this device saved");
         }
 
+        String wantedCountry = chosenStealthRegion();
         StealthPlan.Decision decision =
                 StealthPlan.decide(pool, savedAt, carrier, System.currentTimeMillis());
         sendLog("Stealth pool: " + decision.reason);
@@ -569,7 +578,7 @@ public final class AetherVpnService extends VpnService {
             throw new IllegalStateException(getString(R.string.service_stealth_no_endpoints));
         }
         if (decision.refresh) {
-            refreshStealthPool(pool, request, session);
+            refreshStealthPool(pool, request, session, wantedCountry);
             if (generation.get() != session || stopping) return false;
         }
         if (StealthPlan.ready(pool, System.currentTimeMillis()) == 0) {
@@ -590,7 +599,14 @@ public final class AetherVpnService extends VpnService {
         // is still the endpoint's own country - only the first hop moves. Which way works is
         // remembered, so the next connect starts with the answer instead of finding it again.
         String carrierAddress = carrier ? value(request, "socks", "127.0.0.1:1819") : null;
-        boolean preferChained = stateStore.getBoolean("stealthChained", false);
+        stealthCarrier = carrierAddress;
+        String networkKey = networkKey();
+        NetworkMemory networks =
+                NetworkMemory.deserialise(stateStore.getString("stealthNetworks", ""));
+        // What worked on THIS network, falling back to the app's old single flag so an upgrade
+        // does not throw away what the device already knew.
+        boolean preferChained =
+                networks.preferChainedOn(networkKey, stateStore.getBoolean("stealthChained", false));
         StealthCore core = new StealthCore(this, pool, XrayConfig.SOCKS_PORT, carrierAddress,
                 preferChained, new StealthCore.Listener() {
             @Override public void onState(String state, String message) {
@@ -612,6 +628,7 @@ public final class AetherVpnService extends VpnService {
             }
         });
         stealthCore = core;
+        core.prefer(wantedCountry);
         boolean up = core.start();
         // Saved either way. A run that failed still learned which endpoints are dead, and that is
         // worth as much next time as knowing which one worked.
@@ -621,7 +638,13 @@ public final class AetherVpnService extends VpnService {
             stealthCore = null;
             return false;
         }
-        stateStore.edit().putBoolean("stealthChained", core.isChained()).apply();
+        networks.remember(networkKey, core.isChained());
+        stateStore.edit()
+                .putBoolean("stealthChained", core.isChained())
+                .putString("stealthNetworks", networks.serialise())
+                .apply();
+        sendLog("Stealth remembered " + (core.isChained() ? "the carrier route" : "the direct route")
+                + " for this network");
         request.putExtra("socks", XrayConfig.SOCKS_LISTEN + ":" + core.socksPort());
         sendLog("Stealth engine ready; routing the tunnel through "
                 + XrayConfig.SOCKS_LISTEN + ":" + core.socksPort()
@@ -636,15 +659,32 @@ public final class AetherVpnService extends VpnService {
      * junk or a test pass where nothing answers all leave the saved pool exactly as it was, which
      * is still something to dial. Only an empty pool is fatal, and that is decided by the caller.
      */
-    private void refreshStealthPool(EndpointPool pool, Intent request, long session) {
+    private void refreshStealthPool(EndpointPool pool, Intent request, long session,
+                                    String country) {
         final String carrier = value(request, "socks", "127.0.0.1:1819");
         updateState("scanning", getString(R.string.service_stealth_refreshing));
-        ConfigSources.Refresh refresh = ConfigSources.refresh(new ConfigSources.Fetcher() {
+        ConfigSources.Fetcher fetcher = new ConfigSources.Fetcher() {
             @Override public String fetch(String host, String path) throws Exception {
                 return socksHttpGet(carrier, host, path);
             }
-        });
+        };
+        ConfigSources.Refresh refresh = ConfigSources.refresh(fetcher);
         sendLog("Stealth sources: " + refresh.summary());
+
+        // A chosen country needs its own list. Two of the general sources are themselves the
+        // Netherlands and Germany lists, so filtering the merged pool by country would offer a
+        // user who picked Japan almost nothing. This is one extra fetch and only when it is asked
+        // for; if it fails the general pool still carries the connection.
+        if (!StealthRegions.isAutomatic(country)) {
+            ConfigSources.Refresh local = ConfigSources.refreshCountry(
+                    fetcher, country, ConfigSources.MAX_CANDIDATES);
+            sendLog("Stealth " + StealthRegions.name(country) + " list: " + local.summary());
+            if (!local.isEmpty()) {
+                List<ProxyConfig> both = new ArrayList<>(local.configs);
+                both.addAll(refresh.configs);
+                refresh = new ConfigSources.Refresh(both, local.succeeded, local.failed);
+            }
+        }
         if (generation.get() != session || stopping || refresh.isEmpty()) return;
 
         List<ProxyConfig> candidates = StealthPlan.candidates(refresh.configs);
@@ -671,15 +711,124 @@ public final class AetherVpnService extends VpnService {
      * <p>A swap does not touch the loopback port, so the TUN interface is never rebuilt and the
      * apps on top of it do not see the network go away and come back.
      */
+    /**
+     * The exit country the user picked for Stealth.
+     *
+     * <p>Read from the app preferences rather than from the service's own state store, and
+     * deliberately not from the start intent: the picker can be used while the tunnel is up, and
+     * an extra captured at connect time would be the country the user wanted an hour ago. The
+     * activity and the service share a process, so a change made in the sheet is visible here as
+     * soon as it is written.
+     */
+    private String chosenStealthRegion() {
+        try {
+            return StealthRegions.normalise(getSharedPreferences("aether", MODE_PRIVATE)
+                    .getString("stealthRegion", StealthRegions.AUTOMATIC));
+        } catch (Throwable unavailable) {
+            return StealthRegions.AUTOMATIC;
+        }
+    }
+
+    /**
+     * A stable name for the network in use, for {@link NetworkMemory}.
+     *
+     * <p>Mobile networks are told apart by operator name, which needs no permission. Wifi networks
+     * are not told apart at all: the SSID is behind a location permission this app does not ask
+     * for. Anything that cannot be read leaves the key unknown rather than guessing, because a
+     * wrong key would teach one network's answer to another.
+     */
+    private String networkKey() {
+        try {
+            ConnectivityManager connectivity =
+                    (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (connectivity == null) return NetworkMemory.UNKNOWN;
+            Network active = connectivity.getActiveNetwork();
+            NetworkCapabilities capabilities =
+                    active == null ? null : connectivity.getNetworkCapabilities(active);
+            if (capabilities == null) return NetworkMemory.UNKNOWN;
+            if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                return NetworkMemory.key(false, null);
+            }
+            TelephonyManager telephony =
+                    (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+            String operator = telephony == null ? null : telephony.getNetworkOperatorName();
+            return NetworkMemory.key(true, operator);
+        } catch (Throwable unavailable) {
+            return NetworkMemory.UNKNOWN;
+        }
+    }
+
+    /**
+     * Probes a few of the endpoints next in line while the tunnel is healthy, so the successor is
+     * proved before it is needed rather than guessed at the moment it is.
+     *
+     * <p>Never throws and never touches the live connection. The probe takes the same route the
+     * engine dials on this network: probing directly while the engine reaches its endpoints
+     * through the carrier would fail on healthy servers and bench the pool a pass at a time, which
+     * is the opposite of the point. If that route cannot be built, the pass is skipped — doing
+     * nothing is always better here than learning something false.
+     */
+    private void runStandbyPass(StealthCore core, String country) {
+        EndpointPool pool = stealthPool;
+        if (pool == null || core == null) return;
+        try {
+            long now = System.currentTimeMillis();
+            ProxyConfig live = core.current();
+            List<ProxyConfig> candidates = StandbyProber.candidates(
+                    pool, country, live == null ? null : live.key(), now, StandbyProber.BATCH);
+            if (candidates.isEmpty()) return;
+
+            EndpointTester.Probe probe = EndpointTester.NETWORK_PROBE;
+            if (core.isChained()) {
+                probe = EndpointTester.throughCarrier(stealthCarrier);
+                if (probe == null) return;
+            }
+            EndpointTester.Outcome outcome = EndpointTester.test(pool, candidates, probe,
+                    StandbyProber.TIMEOUT_MS, StandbyProber.PARALLELISM, 0, now);
+            sendLog("Stealth standby: " + outcome.summary());
+            saveStealthPool(pool);
+        } catch (Throwable harmless) {
+            // A background pass is an optimisation. Losing one costs the next swap a little time
+            // and nothing else, so it must never take the connection down with it.
+            sendLog("Stealth standby pass skipped: " + safeMessage(harmless));
+        }
+    }
+
     private void monitorStealth(Intent request, long session) throws Exception {
         int swaps = 0;
         long dialledAt = System.currentTimeMillis();
         long lastVerifiedAt = dialledAt;
+        long lastStandbyAt = 0;
         while (!stopping && generation.get() == session) {
             Thread.sleep(StealthPlan.MONITOR_TICK_MS);
             if (stopping || generation.get() != session) return;
             StealthCore core = stealthCore;
             if (core == null) return;
+
+            // Keep a proved successor ready while nothing is wrong. Costs a handful of probes
+            // every few minutes and only when there is something to learn.
+            long tick = System.currentTimeMillis();
+            int warm = StandbyProber.warmCount(stealthPool, core.country(),
+                    core.current() == null ? null : core.current().key(), tick);
+            if (StandbyProber.due(dialledAt, lastStandbyAt, warm, tick)) {
+                lastStandbyAt = tick;
+                runStandbyPass(core, core.country());
+                if (stopping || generation.get() != session) return;
+            }
+
+            // A country chosen while the tunnel is up is handled here rather than by reconnecting.
+            // retarget proves the new endpoint on a staging port first and only takes the live one
+            // if it answers, so a country with nothing behind it costs the user nothing at all.
+            String chosen = chosenStealthRegion();
+            if (!chosen.equals(core.country())) {
+                if (core.retarget(chosen)) {
+                    dialledAt = System.currentTimeMillis();
+                    lastVerifiedAt = dialledAt;
+                    saveStealthPool(stealthPool);
+                    scheduleLocationLookup(request, session);
+                }
+                continue;
+            }
 
             String failure = null;
             if (!core.isConnected()) {
@@ -704,6 +853,7 @@ public final class AetherVpnService extends VpnService {
             }
             dialledAt = System.currentTimeMillis();
             lastVerifiedAt = dialledAt;
+            lastStandbyAt = 0;
             saveStealthPool(stealthPool);
             updateState("connected", getString("manual".equals(value(request, "connectionMode", "vpn"))
                     ? R.string.service_proxy_ready : R.string.service_protected));

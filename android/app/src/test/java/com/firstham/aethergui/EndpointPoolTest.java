@@ -203,6 +203,67 @@ public final class EndpointPoolTest {
      * The exit code lives here and not in runAllChecks, because a System.exit inside a unit
      * test kills the test JVM and turns a clear failure report into an opaque crash.
      */
+
+    private static ProxyConfig flagged(String host, String flag) {
+        return ProxyConfig.parse("vless://11111111-2222-3333-4444-555555555555@" + host
+                + ":443?security=tls#" + flag + " node");
+    }
+
+    private static final String NL = "\uD83C\uDDF3\uD83C\uDDF1";
+    private static final String JP = "\uD83C\uDDEF\uD83C\uDDF5";
+
+    /** A chosen country goes to the front of the queue; the rest of the pool stays behind it. */
+    @Test public void rankedForPutsTheChosenCountryFirst() {
+        EndpointPool pool = new EndpointPool();
+        pool.merge(java.util.Arrays.asList(
+                flagged("nl1.example.com", NL),
+                flagged("jp1.example.com", JP),
+                flagged("nl2.example.com", NL)));
+        long now = 1_000_000L;
+        java.util.List<EndpointPool.Entry> ranked = pool.rankedFor("JP", now);
+        assertEquals(3, ranked.size());
+        assertEquals("JP", StealthRegions.countryOf(ranked.get(0).config));
+        // Everything else is still there - a country is a preference, not a filter.
+        assertEquals("NL", StealthRegions.countryOf(ranked.get(1).config));
+        assertEquals("NL", StealthRegions.countryOf(ranked.get(2).config));
+    }
+
+    /** Within the chosen country the ordinary scoring still decides. */
+    @Test public void rankedForKeepsScoringInsideTheCountry() {
+        EndpointPool pool = new EndpointPool();
+        ProxyConfig slow = flagged("nl-slow.example.com", NL);
+        ProxyConfig fast = flagged("nl-fast.example.com", NL);
+        pool.merge(java.util.Arrays.asList(slow, fast));
+        long now = 1_000_000L;
+        pool.recordSuccess(slow.key(), 1800, now);
+        pool.recordSuccess(fast.key(), 60, now);
+        assertEquals(fast.key(), pool.rankedFor("NL", now).get(0).config.key());
+    }
+
+    /** Asking for a country the pool has none of must not lose the pool. */
+    @Test public void rankedForSurvivesACountryWithNothingInIt() {
+        EndpointPool pool = new EndpointPool();
+        pool.merge(java.util.Arrays.asList(flagged("nl1.example.com", NL)));
+        assertEquals(1, pool.rankedFor("JP", 1_000_000L).size());
+        assertEquals(0, pool.countIn("JP"));
+        assertEquals(1, pool.countIn("NL"));
+    }
+
+    /** Automatic must be exactly the ordinary ranking, in the same order. */
+    @Test public void automaticIsTheOrdinaryRanking() {
+        EndpointPool pool = new EndpointPool();
+        pool.merge(java.util.Arrays.asList(
+                flagged("nl1.example.com", NL), flagged("jp1.example.com", JP)));
+        long now = 1_000_000L;
+        java.util.List<EndpointPool.Entry> plain = pool.ranked(now);
+        java.util.List<EndpointPool.Entry> automatic = pool.rankedFor(StealthRegions.AUTOMATIC, now);
+        assertEquals(plain.size(), automatic.size());
+        for (int i = 0; i < plain.size(); i++) {
+            assertEquals(plain.get(i).config.key(), automatic.get(i).config.key());
+        }
+        assertEquals(2, pool.countIn(StealthRegions.AUTOMATIC));
+    }
+
     public static void main(String[] args) {
         runAllChecks();
         if (failures > 0) System.exit(1);
