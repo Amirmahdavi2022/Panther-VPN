@@ -570,8 +570,7 @@ public final class AetherVpnService extends VpnService {
             sendLog("No carrier tunnel; Stealth falls back to the endpoints this device saved");
         }
 
-        String wantedCountry = StealthRegions.normalise(
-                stateStore.getString("stealthRegion", StealthRegions.AUTOMATIC));
+        String wantedCountry = chosenStealthRegion();
         StealthPlan.Decision decision =
                 StealthPlan.decide(pool, savedAt, carrier, System.currentTimeMillis());
         sendLog("Stealth pool: " + decision.reason);
@@ -713,6 +712,24 @@ public final class AetherVpnService extends VpnService {
      * apps on top of it do not see the network go away and come back.
      */
     /**
+     * The exit country the user picked for Stealth.
+     *
+     * <p>Read from the app preferences rather than from the service's own state store, and
+     * deliberately not from the start intent: the picker can be used while the tunnel is up, and
+     * an extra captured at connect time would be the country the user wanted an hour ago. The
+     * activity and the service share a process, so a change made in the sheet is visible here as
+     * soon as it is written.
+     */
+    private String chosenStealthRegion() {
+        try {
+            return StealthRegions.normalise(getSharedPreferences("aether", MODE_PRIVATE)
+                    .getString("stealthRegion", StealthRegions.AUTOMATIC));
+        } catch (Throwable unavailable) {
+            return StealthRegions.AUTOMATIC;
+        }
+    }
+
+    /**
      * A stable name for the network in use, for {@link NetworkMemory}.
      *
      * <p>Mobile networks are told apart by operator name, which needs no permission. Wifi networks
@@ -802,8 +819,7 @@ public final class AetherVpnService extends VpnService {
             // A country chosen while the tunnel is up is handled here rather than by reconnecting.
             // retarget proves the new endpoint on a staging port first and only takes the live one
             // if it answers, so a country with nothing behind it costs the user nothing at all.
-            String chosen = StealthRegions.normalise(
-                    stateStore.getString("stealthRegion", StealthRegions.AUTOMATIC));
+            String chosen = chosenStealthRegion();
             if (!chosen.equals(core.country())) {
                 if (core.retarget(chosen)) {
                     dialledAt = System.currentTimeMillis();
