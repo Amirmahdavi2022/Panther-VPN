@@ -562,6 +562,8 @@ public final class AetherVpnService extends VpnService {
             sendLog("No carrier tunnel; Stealth falls back to the endpoints this device saved");
         }
 
+        String wantedCountry = StealthRegions.normalise(
+                stateStore.getString("stealthRegion", StealthRegions.AUTOMATIC));
         StealthPlan.Decision decision =
                 StealthPlan.decide(pool, savedAt, carrier, System.currentTimeMillis());
         sendLog("Stealth pool: " + decision.reason);
@@ -569,7 +571,7 @@ public final class AetherVpnService extends VpnService {
             throw new IllegalStateException(getString(R.string.service_stealth_no_endpoints));
         }
         if (decision.refresh) {
-            refreshStealthPool(pool, request, session);
+            refreshStealthPool(pool, request, session, wantedCountry);
             if (generation.get() != session || stopping) return false;
         }
         if (StealthPlan.ready(pool, System.currentTimeMillis()) == 0) {
@@ -612,6 +614,7 @@ public final class AetherVpnService extends VpnService {
             }
         });
         stealthCore = core;
+        core.prefer(wantedCountry);
         boolean up = core.start();
         // Saved either way. A run that failed still learned which endpoints are dead, and that is
         // worth as much next time as knowing which one worked.
@@ -636,15 +639,32 @@ public final class AetherVpnService extends VpnService {
      * junk or a test pass where nothing answers all leave the saved pool exactly as it was, which
      * is still something to dial. Only an empty pool is fatal, and that is decided by the caller.
      */
-    private void refreshStealthPool(EndpointPool pool, Intent request, long session) {
+    private void refreshStealthPool(EndpointPool pool, Intent request, long session,
+                                    String country) {
         final String carrier = value(request, "socks", "127.0.0.1:1819");
         updateState("scanning", getString(R.string.service_stealth_refreshing));
-        ConfigSources.Refresh refresh = ConfigSources.refresh(new ConfigSources.Fetcher() {
+        ConfigSources.Fetcher fetcher = new ConfigSources.Fetcher() {
             @Override public String fetch(String host, String path) throws Exception {
                 return socksHttpGet(carrier, host, path);
             }
-        });
+        };
+        ConfigSources.Refresh refresh = ConfigSources.refresh(fetcher);
         sendLog("Stealth sources: " + refresh.summary());
+
+        // A chosen country needs its own list. Two of the general sources are themselves the
+        // Netherlands and Germany lists, so filtering the merged pool by country would offer a
+        // user who picked Japan almost nothing. This is one extra fetch and only when it is asked
+        // for; if it fails the general pool still carries the connection.
+        if (!StealthRegions.isAutomatic(country)) {
+            ConfigSources.Refresh local = ConfigSources.refreshCountry(
+                    fetcher, country, ConfigSources.MAX_CANDIDATES);
+            sendLog("Stealth " + StealthRegions.name(country) + " list: " + local.summary());
+            if (!local.isEmpty()) {
+                List<ProxyConfig> both = new ArrayList<>(local.configs);
+                both.addAll(refresh.configs);
+                refresh = new ConfigSources.Refresh(both, local.succeeded, local.failed);
+            }
+        }
         if (generation.get() != session || stopping || refresh.isEmpty()) return;
 
         List<ProxyConfig> candidates = StealthPlan.candidates(refresh.configs);
@@ -680,6 +700,21 @@ public final class AetherVpnService extends VpnService {
             if (stopping || generation.get() != session) return;
             StealthCore core = stealthCore;
             if (core == null) return;
+
+            // A country chosen while the tunnel is up is handled here rather than by reconnecting.
+            // retarget proves the new endpoint on a staging port first and only takes the live one
+            // if it answers, so a country with nothing behind it costs the user nothing at all.
+            String chosen = StealthRegions.normalise(
+                    stateStore.getString("stealthRegion", StealthRegions.AUTOMATIC));
+            if (!chosen.equals(core.country())) {
+                if (core.retarget(chosen)) {
+                    dialledAt = System.currentTimeMillis();
+                    lastVerifiedAt = dialledAt;
+                    saveStealthPool(stealthPool);
+                    scheduleLocationLookup(request, session);
+                }
+                continue;
+            }
 
             String failure = null;
             if (!core.isConnected()) {

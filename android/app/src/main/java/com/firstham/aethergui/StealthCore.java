@@ -88,6 +88,14 @@ public final class StealthCore {
     private final AtomicBoolean stopped = new AtomicBoolean();
     private final List<String> attempted = new ArrayList<>();
 
+    /**
+     * The exit country the user asked for, or empty for Automatic.
+     *
+     * <p>Mutable because it can change while the tunnel is up: the picker writes a preference and
+     * the monitor hands it here without the connection being torn down.
+     */
+    private final AtomicReference<String> country = new AtomicReference<>(StealthRegions.AUTOMATIC);
+
     public StealthCore(Context host, EndpointPool pool, Listener listener) {
         this(host, pool, XrayConfig.SOCKS_PORT, null, false, listener);
     }
@@ -104,6 +112,12 @@ public final class StealthCore {
 
     /** The loopback port the engine publishes on. Constant for the life of the connection. */
     public int socksPort() { return socksPort; }
+
+    /** The exit country being preferred right now, or empty for Automatic. */
+    public String country() { return country.get(); }
+
+    /** Sets the preferred exit country for the next candidate chosen. Does not re-dial by itself. */
+    public void prefer(String code) { country.set(StealthRegions.normalise(code)); }
 
     /** The endpoint currently carrying traffic, or null before one has been proved. */
     public ProxyConfig current() { return current.get(); }
@@ -145,6 +159,123 @@ public final class StealthCore {
         return dialNextCandidate();
     }
 
+    /**
+     * Moves the tunnel to a different exit country while it is up, without the user seeing a drop.
+     *
+     * <p>The hard part is that the SOCKS port is fixed and only one core can hold it, so the new
+     * endpoint cannot simply be started alongside the old one and swapped in. Instead it is proved
+     * first on a staging port, next to the live tunnel and without touching it: a second core is
+     * started, made to carry a real request, and killed again. Only an endpoint that has actually
+     * answered is worth interrupting a working connection for.
+     *
+     * <p>What the user experiences is therefore either nothing at all — the chosen country had
+     * nothing that answers, and the tunnel they are on is left exactly as it was — or a stall of a
+     * second or two while the proved endpoint takes the port. The TUN interface is never rebuilt
+     * and the VPN never reports itself down, so no app sees a disconnect, and the kill switch has
+     * nothing to trip on.
+     *
+     * @return true when the tunnel is now exiting through the requested country.
+     */
+    public boolean retarget(String code) {
+        String wanted = StealthRegions.normalise(code);
+        String previous = country.getAndSet(wanted);
+        if (wanted.equals(previous)) return false;
+        outsideWantedCountry = false;
+        if (stopped.get() || !connected.get()) return false;
+
+        ProxyConfig live = current.get();
+        if (live != null && StealthRegions.matches(live, wanted)) return true;
+        if (StealthRegions.isAutomatic(wanted)) {
+            // Back to Automatic: the endpoint we are on is still the best-scoring one there is,
+            // so there is nothing worth interrupting a working tunnel for.
+            listener.onLog("Stealth is back on automatic; keeping the endpoint already carrying traffic");
+            return true;
+        }
+
+        ProxyConfig target = bestIn(wanted);
+        if (target == null) {
+            listener.onLog("Stealth has no endpoint in " + StealthRegions.name(wanted)
+                    + " to move to; staying where it is");
+            return false;
+        }
+
+        listener.onLog("Stealth is proving " + target + " in " + StealthRegions.name(wanted)
+                + " before moving to it");
+        if (!provesOffline(target)) {
+            pool.recordFailure(target.key(), System.currentTimeMillis());
+            listener.onLog("Stealth could not reach " + target + "; the tunnel stays where it is");
+            return false;
+        }
+
+        attempted.clear();
+        attempted.add(target.key());
+        if (dial(target)) {
+            listener.onLog("Stealth moved to " + StealthRegions.name(wanted));
+            return true;
+        }
+        // The proved endpoint would not take the live port. The old one is gone by now, so the
+        // ordinary dial loop takes over rather than leaving the tunnel with nothing behind it.
+        listener.onLog("Stealth lost the port moving to " + StealthRegions.name(wanted)
+                + "; reconnecting on whatever answers");
+        return dialNextCandidate();
+    }
+
+    /** The best-scoring endpoint in a country that is not already the live one. */
+    private ProxyConfig bestIn(String wanted) {
+        long now = System.currentTimeMillis();
+        ProxyConfig live = current.get();
+        for (EndpointPool.Entry entry : pool.rankedFor(wanted, now)) {
+            ProxyConfig candidate = entry.config;
+            if (!StealthRegions.matches(candidate, wanted)) break;   // past the wanted country
+            if (entry.score(now) < 0) continue;
+            if (!XrayConfig.supports(candidate)) continue;
+            if (live != null && live.key().equals(candidate.key())) continue;
+            return candidate;
+        }
+        return null;
+    }
+
+    /**
+     * Starts a second core on a staging port, makes it carry a real request and kills it again.
+     *
+     * <p>Runs beside the live tunnel and never touches {@link #process}, so a failure here costs
+     * the user nothing. The route is the one this network has already been shown to allow.
+     */
+    private boolean provesOffline(ProxyConfig candidate) {
+        int stagingPort = socksPort + 1;
+        String hop = isChained() ? carrier : null;
+        Process staged = null;
+        try {
+            staged = launch(writeConfig(candidate, hop, stagingPort, "stealth-staging.json"));
+            long deadline = System.currentTimeMillis() + LISTENER_TIMEOUT_MS;
+            boolean listening = false;
+            while (System.currentTimeMillis() < deadline && !stopped.get()) {
+                if (SocksProbe.reaches(XrayConfig.SOCKS_LISTEN, stagingPort,
+                        SocksProbe.PROBE_HOST, SocksProbe.PROBE_PORT, 800)) {
+                    listening = true;
+                    break;
+                }
+                Thread.sleep(150);
+            }
+            if (!listening) return false;
+            return SocksProbe.latencyMillis(XrayConfig.SOCKS_LISTEN, stagingPort,
+                    CANDIDATE_TIMEOUT_MS) >= 0;
+        } catch (Throwable error) {
+            listener.onLog("Stealth could not stage " + candidate + ": " + error);
+            return false;
+        } finally {
+            if (staged != null) {
+                staged.destroy();
+                try {
+                    for (int i = 0; i < 20 && staged.isAlive(); i++) Thread.sleep(50);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                if (staged.isAlive()) staged.destroyForcibly();
+            }
+        }
+    }
+
     /** Whether the tunnel is still carrying traffic right now. */
     public boolean verify() {
         return SocksProbe.carriesTraffic(XrayConfig.SOCKS_LISTEN, socksPort, CANDIDATE_TIMEOUT_MS);
@@ -184,15 +315,28 @@ public final class StealthCore {
      */
     private ProxyConfig nextCandidate() {
         long now = System.currentTimeMillis();
-        for (EndpointPool.Entry entry : pool.ranked(now)) {
+        String wanted = country.get();
+        for (EndpointPool.Entry entry : pool.rankedFor(wanted, now)) {
             ProxyConfig candidate = entry.config;
             if (entry.score(now) < 0) continue;                       // benched
             if (!XrayConfig.supports(candidate)) continue;
             if (attempted.contains(candidate.key())) continue;
+            if (!StealthRegions.isAutomatic(wanted)
+                    && !StealthRegions.matches(candidate, wanted)
+                    && !outsideWantedCountry) {
+                // Said once per run, not once per candidate: the user chose a country and is
+                // about to be given a different one, and the log is where that is explained.
+                outsideWantedCountry = true;
+                listener.onLog("Stealth has nothing left in " + StealthRegions.name(wanted)
+                        + " that answers; staying connected on another country instead");
+            }
             return candidate;
         }
         return null;
     }
+
+    /** Set once a run has had to leave the chosen country, so the log says it only once. */
+    private volatile boolean outsideWantedCountry;
 
     /**
      * Tries one endpoint every way this network allows, and only calls it dead when all of them
@@ -283,6 +427,10 @@ public final class StealthCore {
     // --- the process ----------------------------------------------------------------------------
 
     private void startProcess(File config) throws Exception {
+        process.set(launch(config));
+    }
+
+    private Process launch(File config) throws Exception {
         File executable = new File(host.getApplicationInfo().nativeLibraryDir, EXECUTABLE);
         if (!executable.isFile()) {
             throw new IllegalStateException("The Stealth engine is missing for this device architecture");
@@ -300,8 +448,8 @@ public final class StealthCore {
         environment.put("TMPDIR", host.getCacheDir().getAbsolutePath());
 
         Process started = builder.start();
-        process.set(started);
         drainOutput(started);
+        return started;
     }
 
     /**
@@ -350,8 +498,13 @@ public final class StealthCore {
     }
 
     private File writeConfig(ProxyConfig candidate, String hop) throws Exception {
-        File config = new File(directory(), "stealth.json");
-        byte[] body = XrayConfig.build(candidate, socksPort, "warning", hop)
+        return writeConfig(candidate, hop, socksPort, "stealth.json");
+    }
+
+    private File writeConfig(ProxyConfig candidate, String hop, int port, String name)
+            throws Exception {
+        File config = new File(directory(), name);
+        byte[] body = XrayConfig.build(candidate, port, "warning", hop)
                 .getBytes(StandardCharsets.UTF_8);
         try (FileOutputStream out = new FileOutputStream(config)) {
             out.write(body);
