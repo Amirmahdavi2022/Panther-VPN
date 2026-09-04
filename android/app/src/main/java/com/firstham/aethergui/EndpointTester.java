@@ -134,6 +134,47 @@ final class EndpointTester {
     };
 
     /** A completed TCP handshake is proof the path is open; nothing is sent afterwards. */
+    /**
+     * A probe that reaches the endpoint the way the engine does when it dials through the carrier.
+     *
+     * <p>Needed because a direct probe answers a different question on a filtered network. If the
+     * engine has proved it can only reach its endpoints through the carrier, probing them directly
+     * fails on servers that are perfectly alive, and every failure benches one — the pool would
+     * empty itself fastest on exactly the networks it exists for. So the probe has to take the
+     * same route the connection would.
+     *
+     * <p>Only TCP endpoints get here: a SOCKS CONNECT cannot carry QUIC, and the endpoints this
+     * core can dial at all ({@link XrayConfig#supports}) are TCP anyway.
+     *
+     * @return a probe, or null when the carrier address is unusable, so the caller can decide
+     *         rather than being handed something that fails everything.
+     */
+    static Probe throughCarrier(String carrier) {
+        if (carrier == null) return null;
+        String trimmed = carrier.trim();
+        int colon = trimmed.lastIndexOf(':');
+        if (colon <= 0 || colon == trimmed.length() - 1) return null;
+        final String proxyHost = trimmed.substring(0, colon);
+        final int proxyPort;
+        try {
+            proxyPort = Integer.parseInt(trimmed.substring(colon + 1).trim());
+        } catch (NumberFormatException notAPort) {
+            return null;
+        }
+        if (proxyHost.isEmpty() || proxyPort <= 0 || proxyPort > 65535) return null;
+        return new Probe() {
+            @Override public long probe(ProxyConfig config, int timeoutMillis) {
+                if (config == null) return -1;
+                long began = System.currentTimeMillis();
+                boolean reached = SocksProbe.reaches(proxyHost, proxyPort,
+                        config.host, config.port, timeoutMillis);
+                if (!reached) return -1;
+                // Never report zero: a latency of 0 reads as "instant" everywhere downstream.
+                return Math.max(1, System.currentTimeMillis() - began);
+            }
+        };
+    }
+
     static long tcpProbe(ProxyConfig config, int timeoutMillis) {
         Socket socket = new Socket();
         try {
