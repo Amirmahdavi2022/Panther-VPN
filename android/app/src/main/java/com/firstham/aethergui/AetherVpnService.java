@@ -288,7 +288,7 @@ public final class AetherVpnService extends VpnService {
                 connectedAt = System.currentTimeMillis();
                 updateState("connected", degradedToCarrier && degradedNotice != null
                         ? degradedNotice : getString(R.string.service_protected));
-                updateNotification(getString("smart".equals(connectionMode) ? R.string.service_smart_protected : R.string.service_aethon_protected));
+                updateNotification(getString("smart".equals(connectionMode) ? R.string.service_smart_protected : R.string.service_panther_protected));
             }
             scheduleLocationLookup(request, session);
             if (stealth) monitorStealth(request, session);

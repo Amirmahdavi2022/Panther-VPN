@@ -6,7 +6,7 @@
 # Aether version drift apart, so a half-updated pin gets caught rather than shipped.
 set -euo pipefail
 
-AETHER_VERSION="${AETHER_CORE_VERSION:-v1.8.0}"
+AETHER_VERSION="${AETHER_CORE_VERSION:-v1.9.0}"
 HEV_VERSION="2.16.0"
 HEV_COMMIT="0a05221275a51a884d93328c55fc2fbc9e9b6974"
 # The Global engine ships as an official prebuilt Android library. The publisher does not sign

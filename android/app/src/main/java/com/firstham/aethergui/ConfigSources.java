@@ -34,10 +34,20 @@ final class ConfigSources {
      * The pools, most trusted first. Order matters: on a tie the earlier source's entry is kept,
      * and the earlier entries are the ones offered to the tester first.
      *
-     * Every path here was fetched and parsed for real before being written down — the obvious
-     * guesses (All_Configs_Sub.txt and friends) were all 404s. Prefer a source's own curated or
-     * per-protocol file over its full dump: the dumps run to several megabytes, which is a lot of
-     * traffic to pull through a tunnel for a list we are going to re-test on the device anyway.
+     * Every path here was fetched, parsed and counted before being written down. Two numbers
+     * decided the list: how many endpoints this core can actually dial out of a source, and how
+     * many of those no other source already has. A source that duplicates another is bytes pulled
+     * through a tunnel for nothing.
+     *
+     * Measured 2026/09/04 against the live files: 8 sources, ~500 KB, about 1600 dialable
+     * endpoints. Four things were dropped on that evidence. The hysteria2 file yielded ZERO
+     * dialable endpoints, because Xray cannot dial hysteria2 at all - 28 KB per refresh for
+     * nothing. The two per-country files were 1 MB between them for one country each, and country
+     * choice fetches its own list on demand now. And two other candidates turned out to be exact
+     * subsets of sources already here.
+     *
+     * Eight repositories rather than three, which is the point: the failure that matters is not
+     * one file going missing, it is one publisher going quiet.
      *
      * These are fetched as data, not vendored into the repo — we read a public list at runtime the
      * way any subscription client does, rather than redistributing anyone's files.
@@ -45,11 +55,13 @@ final class ConfigSources {
     static final String[][] SOURCES = {
             // host, path, label
             {"raw.githubusercontent.com", "/0xRadikal/Free-v2ray-Configs/main/top100.txt", "radikal-top"},
-            {"raw.githubusercontent.com", "/0xRadikal/Free-v2ray-Configs/main/protocols/hysteria2.txt", "radikal-hy2"},
             {"raw.githubusercontent.com", "/MahanKenway/Freedom-V2Ray/main/configs/vless_sub.txt", "freedom-vless"},
             {"raw.githubusercontent.com", "/MahanKenway/Freedom-V2Ray/main/configs/trojan_sub.txt", "freedom-trojan"},
-            {"raw.githubusercontent.com", "/Delta-Kronecker/V2ray-Config/main/config/countries/de.txt", "delta-de"},
-            {"raw.githubusercontent.com", "/Delta-Kronecker/V2ray-Config/main/config/countries/nl.txt", "delta-nl"},
+            {"raw.githubusercontent.com", "/iboxz/free-v2ray-collector/main/main/mix.txt", "iboxz-mix"},
+            {"raw.githubusercontent.com", "/V2RayRoot/V2RayConfig/main/Config/vless.txt", "v2rayroot-vless"},
+            {"raw.githubusercontent.com", "/V2RayRoot/V2RayConfig/main/Config/shadowsocks.txt", "v2rayroot-ss"},
+            {"raw.githubusercontent.com", "/sinavm/SVM/main/lite/subscriptions/xray/normal/reality", "sinavm-reality"},
+            {"raw.githubusercontent.com", "/barry-far/V2ray-Config/main/Splitted-By-Protocol/trojan.txt", "barry-trojan"},
     };
 
     /** How a document is retrieved. The service supplies one that goes through the live tunnel. */
@@ -124,6 +136,7 @@ final class ConfigSources {
 
     static Refresh refresh(Fetcher fetcher, String[][] sources, int limit) {
         List<ProxyConfig> merged = new ArrayList<>();
+        List<List<ProxyConfig>> perSource = new ArrayList<>();
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         List<String> succeeded = new ArrayList<>();
         List<String> failed = new ArrayList<>();
@@ -148,10 +161,23 @@ final class ConfigSources {
                 continue;
             }
             succeeded.add(label);
-            for (ProxyConfig config : parsed) {
+            perSource.add(parsed);
+        }
+
+        // Round robin rather than one source at a time. Concatenating meant the cap was spent
+        // entirely on the first sources in the list and the last ones contributed nothing at all,
+        // which quietly undid the reason for having several of them: the sources that matter most
+        // are the ones the others do not overlap, and those were the ones being dropped.
+        for (int depth = 0; merged.size() < limit; depth++) {
+            boolean tookSomething = false;
+            for (List<ProxyConfig> fromOne : perSource) {
                 if (merged.size() >= limit) break;
+                if (depth >= fromOne.size()) continue;
+                tookSomething = true;
+                ProxyConfig config = fromOne.get(depth);
                 if (seen.add(config.key())) merged.add(config);
             }
+            if (!tookSomething) break;
         }
         return new Refresh(merged, succeeded, failed);
     }

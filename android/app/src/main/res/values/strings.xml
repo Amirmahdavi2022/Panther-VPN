@@ -151,7 +151,7 @@
     <string name="about_mode_stealth_title">Stealth</string>
     <string name="about_mode_stealth_body">The hardest one to block. It keeps a list of servers, tests them on your own phone and dials whichever actually works, moving to another the moment one stops. On a network that blocks them outright it opens the connection through the Turbo tunnel instead, so the servers stay reachable — the country you come out in is still the server\'s own.</string>
     <string name="about_credits_title">Built on</string>
-    <string name="about_credits_body">Aether · Psiphon · vpnLib · hev-socks5-tunnel\nPanther is independent and not affiliated with any of them. Full licences are in NOTICE.md.</string>
+    <string name="about_credits_body">Panther bundles open-source components. Every one of them, with its full licence and attribution, is listed in NOTICE.md alongside the source.</string>
     <string name="telegram_title">Panther on Telegram</string>
     <string name="telegram_summary">Updates, tips, and new releases from @parsv2r.</string>
     <string name="open_channel">Open channel</string>
@@ -167,13 +167,13 @@
     <string name="service_launching">Launching the Panther core</string>
     <string name="service_disconnecting">Closing the tunnel safely</string>
     <string name="service_disconnected">Disconnected safely</string>
-    <string name="service_smart_testing">Testing MASQUE, WireGuard, and WARP-in-WARP</string>
+    <string name="service_smart_testing">Testing transports to find the fastest</string>
     <string name="service_scanning">Scanning for a verified gateway</string>
     <string name="service_proxy_ready">Local SOCKS5 proxy is ready</string>
     <string name="service_proxy_connected">SOCKS5 proxy is connected</string>
     <string name="service_protected">Your device traffic is protected</string>
     <string name="service_smart_protected">Protected with Smart Connect</string>
-    <string name="service_aethon_protected">Protected through Panther VPN</string>
+    <string name="service_panther_protected">Protected through Panther VPN</string>
     <string name="service_blocked">Tunnel stopped; network remains blocked by fail-closed mode</string>
     <string name="service_blocked_notification">Traffic blocked - reconnect or disconnect</string>
     <string name="service_global_degraded">Global is unreachable right now — staying connected on Turbo</string>
