@@ -99,6 +99,29 @@ final class ConfigSources {
      */
     static Refresh refresh(Fetcher fetcher) { return refresh(fetcher, SOURCES, MAX_CANDIDATES); }
 
+    /**
+     * Reads the list for one country instead of the general pools.
+     *
+     * <p>Filtering the general pools by country does not work: two of the six sources are
+     * themselves the Netherlands and Germany lists, so the merged pool is four fifths those two
+     * countries and almost nothing else. Fetching the country's own published list is the only way
+     * a user who picks Japan gets more than the handful of Japanese servers that happened to drift
+     * into a general dump.
+     *
+     * <p>Returns an empty refresh for a country we do not offer, rather than fetching a path that
+     * would 404. A country with no list is a country the picker should not have shown.
+     */
+    static Refresh refreshCountry(Fetcher fetcher, String code, int limit) {
+        String path = StealthRegions.pathFor(code);
+        if (path == null) {
+            List<String> none = new ArrayList<>();
+            return new Refresh(new ArrayList<ProxyConfig>(), none, none);
+        }
+        String label = "country-" + StealthRegions.normalise(code).toLowerCase(java.util.Locale.US);
+        String[][] source = { { StealthRegions.SOURCE_HOST, path, label } };
+        return refresh(fetcher, source, limit);
+    }
+
     static Refresh refresh(Fetcher fetcher, String[][] sources, int limit) {
         List<ProxyConfig> merged = new ArrayList<>();
         LinkedHashSet<String> seen = new LinkedHashSet<>();

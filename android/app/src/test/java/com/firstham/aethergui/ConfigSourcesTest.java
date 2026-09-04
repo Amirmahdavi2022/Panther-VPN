@@ -195,6 +195,49 @@ public final class ConfigSourcesTest {
      * The exit code lives here and not in runAllChecks, because a System.exit inside a unit
      * test kills the test JVM and turns a clear failure report into an opaque crash.
      */
+
+    /** Picking a country reads that country's own published list, not the general pools. */
+    @Test public void countryRefreshReadsThatCountrysList() {
+        final java.util.List<String> asked = new java.util.ArrayList<>();
+        ConfigSources.Fetcher fetcher = new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) {
+                asked.add(host + path);
+                return "vless://11111111-2222-3333-4444-555555555555@jp1.example.com:443"
+                        + "?security=tls#\uD83C\uDDEF\uD83C\uDDF5 Japan-1";
+            }
+        };
+        ConfigSources.Refresh refresh = ConfigSources.refreshCountry(fetcher, "jp", 50);
+        assertEquals(1, asked.size());
+        assertTrue(asked.get(0), asked.get(0).endsWith("/countries/jp.txt"));
+        assertEquals(1, refresh.configs.size());
+        assertEquals("JP", StealthRegions.countryOf(refresh.configs.get(0)));
+        assertEquals(1, refresh.succeeded.size());
+    }
+
+    /** A country we do not offer must cost nothing at all - no fetch, no 404, no exception. */
+    @Test public void countryRefreshRefusesACountryWeDoNotOffer() {
+        ConfigSources.Fetcher exploding = new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) {
+                throw new AssertionError("should not have fetched " + host + path);
+            }
+        };
+        assertTrue(ConfigSources.refreshCountry(exploding, "ZZ", 50).isEmpty());
+        assertTrue(ConfigSources.refreshCountry(exploding, "", 50).isEmpty());
+        assertTrue(ConfigSources.refreshCountry(exploding, null, 50).isEmpty());
+    }
+
+    /** A dead country list leaves the caller with an empty refresh, never an exception. */
+    @Test public void countryRefreshSurvivesADeadList() {
+        ConfigSources.Fetcher dead = new ConfigSources.Fetcher() {
+            @Override public String fetch(String host, String path) throws Exception {
+                throw new java.io.IOException("unreachable");
+            }
+        };
+        ConfigSources.Refresh refresh = ConfigSources.refreshCountry(dead, "NL", 50);
+        assertTrue(refresh.isEmpty());
+        assertEquals(1, refresh.failed.size());
+    }
+
     public static void main(String[] args) {
         runAllChecks();
         if (failures > 0) System.exit(1);
