@@ -73,31 +73,12 @@ public final class MainActivity extends AppCompatActivity {
 
     /** True while the chosen exit location routes through the OpenVPN relay engine. */
     private boolean relayMode;
-    /** When the current connect attempt began, so the screen can show how long it has been going. */
-    private long transitionStartedAt = 0L;
-    /** The last phase the service reported, kept so the ticker can re-render it with the clock. */
-    private String transitionMessage = "";
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
     private final Runnable updateProgressPoll = new Runnable() {
         @Override public void run() {
             if (binding == null) return;
             renderUpdateState();
             if ("downloading".equals(getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE).getString("status", ""))) updateHandler.postDelayed(this, 1000);
-        }
-    };
-
-    /**
-     * Re-renders the connecting line once a second.
-     *
-     * <p>Only the clock changes; the phase text comes from whatever the service last reported. The
-     * point is that the screen keeps moving while a slow engine works, so a long connect reads as
-     * work in progress rather than as an app that has stopped responding.
-     */
-    private final Runnable transitionTick = new Runnable() {
-        @Override public void run() {
-            if (binding == null || transitionStartedAt == 0L) return;
-            renderTransitionMessage();
-            updateHandler.postDelayed(this, 1000L);
         }
     };
 
@@ -334,19 +315,22 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
 
-    /** The exit country card. Both Global and Stealth can choose one; Turbo cannot. */
+    /**
+     * The exit country card, which belongs to Global alone.
+     *
+     * <p>Prowl used to offer one too. It was the wrong shape for that engine: its exit is wherever
+     * the server it managed to dial happens to sit, so a country was a filter over a pool that
+     * might have nothing behind it, and the pool changes under you. The location card already
+     * reports the real exit from the live IP, which is the honest version of the same information.
+     */
     private void renderExitLocation() {
         String armed = engine();
-        boolean choosable = "global".equals(armed) || "stealth".equals(armed);
+        boolean choosable = "global".equals(armed);
         binding.exitLocationCard.setVisibility(choosable ? View.VISIBLE : View.GONE);
-        // 🚨 This label was hardcoded to "Global exit country" for both engines, so arming Stealth
-        // and picking a country left the screen crediting an engine that was not even running.
-        // And when the armed engine degrades onto the carrier the chosen country is not in effect
-        // at all, which is worth saying rather than leaving a flag on screen that means nothing.
-        boolean stealth = "stealth".equals(armed);
+        // When Global degrades onto the carrier the chosen country is not in effect at all, which
+        // is worth saying rather than leaving a flag on screen that means nothing.
         binding.exitLocationLabel.setText(degraded && "connected".equals(state)
-                ? R.string.region_card_label_idle
-                : stealth ? R.string.region_card_label_stealth : R.string.region_card_label_global);
+                ? R.string.region_card_label_idle : R.string.region_card_label_global);
         if (!choosable) return;
         String code = GlobalRegions.normalise(preferences.getString(regionKey(), ""));
         binding.exitLocationValue.setText(code.isEmpty()
@@ -354,20 +338,12 @@ public final class MainActivity extends AppCompatActivity {
                 : ExitLocation.flag(code) + "  " + GlobalRegions.name(code));
     }
 
-    /**
-     * Which preference the card writes to.
-     *
-     * <p>The two engines deliberately do not share one. A country chosen for Global is a region
-     * handed to its own engine; a country chosen for Stealth is a filter over a pool of public
-     * endpoints. Sharing the key would have a choice made for one silently applied by the other,
-     * and the countries on offer are not even the same list.
-     */
+    /** Which preference the card writes to. Only Global has one now. */
     private String regionKey() {
-        return "stealth".equals(engine()) ? "stealthRegion" : "region";
+        return "region";
     }
 
     private void showRegionPicker() {
-        boolean stealth = "stealth".equals(engine());
         String key = regionKey();
         String current = preferences.getString(key, "");
         RegionPicker.OnPicked picked = code -> {
@@ -375,12 +351,6 @@ public final class MainActivity extends AppCompatActivity {
             if (chosen.equals(GlobalRegions.normalise(current))) return;
             preferences.edit().putString(key, chosen).apply();
             renderExitLocation();
-            if (stealth) {
-                // Stealth reads this while it is running. The service proves an endpoint in the
-                // new country on a staging port before it takes the live one, so there is nothing
-                // to tear down here and nothing for the user to sit through.
-                return;
-            }
             // Global reads its region only when the engine starts, so a live tunnel has to be
             // rebuilt for the choice to mean anything. Doing it here is less surprising than
             // leaving the card claiming a country the tunnel is not actually using.
@@ -392,13 +362,7 @@ public final class MainActivity extends AppCompatActivity {
                 startSelectedEngine();
             }
         };
-        if (stealth) {
-            RegionPicker.show(this, preferences, current, StealthRegions.offered(),
-                    R.string.region_picker_note_stealth, RegionPicker.STEALTH_VERDICT_PREFIX,
-                    picked);
-        } else {
-            RegionPicker.show(this, preferences, current, picked);
-        }
+        RegionPicker.show(this, preferences, current, picked);
     }
 
     /** Keeps the engine's own region list so the picker can offer it before the next connection. */
@@ -411,14 +375,11 @@ public final class MainActivity extends AppCompatActivity {
     /** Files a working connection against the country the tunnel actually came out in. */
     private void rememberVerdict() {
         if (region == null || region.isEmpty()) return;
-        // Filed against the engine that made the connection, and only when that engine really is
-        // the one carrying it - a degraded run came out of the carrier, not the armed engine, so
-        // crediting the country to it would teach the picker something untrue.
-        if (degraded) return;
-        RegionPicker.remember(preferences,
-                "stealth".equals(engine())
-                        ? RegionPicker.STEALTH_VERDICT_PREFIX : RegionPicker.GLOBAL_VERDICT_PREFIX,
-                region);
+        // Only Global has a picker to teach, and only when Global is really the engine carrying
+        // the connection - a degraded run came out of the carrier, so crediting the country to it
+        // would file something untrue.
+        if (degraded || !"global".equals(engine())) return;
+        RegionPicker.remember(preferences, RegionPicker.GLOBAL_VERDICT_PREFIX, region);
     }
 
     private void openAppSelection() {
@@ -479,23 +440,6 @@ public final class MainActivity extends AppCompatActivity {
                 .setAction(AetherVpnService.ACTION_CLEAR_LOGS));
     }
 
-    /**
-     * The line under the status pill while a connection is being made.
-     *
-     * <p>The clock only appears after a few seconds. On a fast connect it would flash up and be
-     * gone before it could be read, and a counter that appears on every single connect trains the
-     * user to expect waiting.
-     */
-    private void renderTransitionMessage() {
-        String text = transitionMessage == null || transitionMessage.isEmpty()
-                ? getString(R.string.status_connecting) : transitionMessage;
-        long seconds = transitionStartedAt == 0L
-                ? 0L : (System.currentTimeMillis() - transitionStartedAt) / 1000L;
-        binding.connectionMessage.setText(seconds >= 4
-                ? getString(R.string.status_elapsed, text, seconds) : text);
-        binding.connectionMessage.setVisibility(View.VISIBLE);
-    }
-
     private void renderState(String newState, String message) {
         state = newState == null ? "disconnected" : newState;
         boolean connected = "connected".equals(state);
@@ -507,11 +451,6 @@ public final class MainActivity extends AppCompatActivity {
         binding.connectionStatus.setText(connected ? (degraded ? R.string.status_connected_carrier : R.string.status_connected) : transitioning ? ("disconnecting".equals(state) ? R.string.status_disconnecting : R.string.status_connecting) : ("error".equals(state) || "blocked".equals(state) ? R.string.status_error : R.string.status_disconnected));
         binding.statusDot.setBackgroundResource(connected ? R.drawable.status_dot_connected : transitioning ? R.drawable.status_dot_connecting : R.drawable.status_dot);
         binding.progress.setVisibility(View.GONE);
-        if (!transitioning) {
-            transitionStartedAt = 0L;
-            transitionMessage = "";
-            updateHandler.removeCallbacks(transitionTick);
-        }
         if (connected) {
             // 🚨 A degrade is a connected state carrying bad news: the armed engine did not come
             // up and the carrier is holding the tunnel instead. The test for it used to sit in
@@ -529,14 +468,13 @@ public final class MainActivity extends AppCompatActivity {
         }
         else if (transitioning) {
             // 🚨 This branch used to hide the message outright. Every phase the service reports -
-            // raising the carrier, refreshing the endpoint list, testing endpoints - was thrown
-            // away, so a connect that legitimately takes a minute looked exactly like a frozen
-            // one. The engines are slow enough that saying nothing is the worst thing to say.
-            if (transitionStartedAt == 0L) transitionStartedAt = System.currentTimeMillis();
-            transitionMessage = message == null ? "" : message;
-            renderTransitionMessage();
-            updateHandler.removeCallbacks(transitionTick);
-            updateHandler.postDelayed(transitionTick, 1000L);
+            // raising the carrier, refreshing the server list, testing servers - was thrown away,
+            // so a connect that legitimately takes a minute looked exactly like a frozen one. No
+            // clock: the phase changing is what says the app is working, and a counter ticking up
+            // only ever reads as a wait getting longer.
+            binding.connectionMessage.setText(message == null || message.isEmpty()
+                    ? getString(R.string.status_connecting) : message);
+            binding.connectionMessage.setVisibility(View.VISIBLE);
             binding.connectionInfo.setVisibility(View.VISIBLE);
         }
         else {

@@ -22,7 +22,6 @@
     <string name="status_connected">Panther Active</string>
     <string name="status_connected_carrier">Turbo Active</string>
     <string name="status_connecting">Connecting…</string>
-    <string name="status_elapsed">%1$s · %2$ds</string>
     <string name="tap_to_secure">Tap to secure</string>
     <string name="status_ready_message"></string>
     <string name="status_protected">You are protected</string>
@@ -54,17 +53,17 @@
     <string name="service_stealth_testing">Testing %1$d endpoints on this device…</string>
     <string name="service_stealth_starting">Dialling the best endpoint…</string>
     <string name="service_stealth_swapping">That endpoint stopped answering — switching…</string>
-    <string name="service_stealth_stopped">The Stealth connection dropped.</string>
-    <string name="service_stealth_exhausted">Stealth went through every endpoint it had without finding one that holds. Try Turbo, or try again in a moment.</string>
-    <string name="service_stealth_failed">Stealth could not find a working endpoint. Try Turbo, or try again in a moment.</string>
-    <string name="service_stealth_no_endpoints">Stealth has no endpoints saved yet and could not reach its sources. Connect with Turbo once and it will pick some up.</string>
+    <string name="service_stealth_stopped">The Prowl connection dropped.</string>
+    <string name="service_stealth_exhausted">Prowl went through every server it had without finding one that holds. Try Turbo, or try again in a moment.</string>
+    <string name="service_stealth_failed">Prowl could not find a working server. Try Turbo, or try again in a moment.</string>
+    <string name="service_stealth_no_endpoints">Prowl has no servers saved yet and could not reach its sources. Connect with Turbo once and it will pick some up.</string>
     <string name="engine_turbo">Turbo</string>
     <!-- Three cards share one row now, so these are kept short and roughly the same length. -->
     <string name="engine_turbo_detail">Fastest. Stays local.</string>
     <string name="engine_global">Global</string>
     <string name="engine_global_detail">Comes out abroad.</string>
-    <string name="engine_stealth">Stealth</string>
-    <string name="engine_stealth_detail">Hardest to block.</string>
+    <string name="engine_stealth">Prowl</string>
+    <string name="engine_stealth_detail">Gets through anyway.</string>
     <string name="engine_label">ENGINE</string>
     <string name="location_refreshing">Checking location…</string>
     <string name="upload_label">&#x2191; Upload</string>
@@ -146,8 +145,8 @@
     <string name="about_mode_auto_body">The fast path. Panther probes a spread of edge addresses on your own network and dials whichever answers best, so a blocked address is routed around rather than retried. The exit stays in your own country by design.</string>
     <string name="about_mode_relay_title">Global</string>
     <string name="about_mode_relay_body">Comes out in another country, which is what geo-restricted services need. It runs inside the Turbo tunnel rather than beside it, so it works on networks where it could not connect on its own. Slower by nature — two hops instead of one. If it cannot come up, Panther keeps you connected on Turbo instead of dropping you.</string>
-    <string name="about_mode_stealth_title">Stealth</string>
-    <string name="about_mode_stealth_body">The hardest one to block. It keeps a list of servers, tests them on your own phone and dials whichever actually works, moving to another the moment one stops. On a network that blocks them outright it opens the connection through the Turbo tunnel instead, so the servers stay reachable — the country you come out in is still the server\'s own.</string>
+    <string name="about_mode_stealth_title">Prowl</string>
+    <string name="about_mode_stealth_body">The one that keeps going when the others are blocked. It keeps a list of servers, tests them on your own phone and dials whichever actually works, moving to another the moment one stops. On a network that blocks them outright it opens the connection through the Turbo tunnel instead, so the servers stay reachable — the country you come out in is still the server\'s own.</string>
     <string name="about_support_title">Support channel</string>
     <string name="about_credits_title">Built on</string>
     <string name="about_credits_body">Panther bundles open-source components. Every one of them, with its full licence and attribution, is listed in NOTICE.md alongside the source.</string>
@@ -176,7 +175,7 @@
     <string name="service_blocked">Tunnel stopped; network remains blocked by fail-closed mode</string>
     <string name="service_blocked_notification">Traffic blocked - reconnect or disconnect</string>
     <string name="service_global_degraded">Global is unreachable right now — staying connected on Turbo</string>
-    <string name="service_stealth_degraded">Stealth could not get a foothold right now — staying connected on Turbo</string>
+    <string name="service_stealth_degraded">Prowl could not get through right now — staying connected on Turbo</string>
     <string name="service_scanning_edges">Finding a reachable edge for your network</string>
     <string name="service_identity_ready">Identity ready; finding the best gateway</string>
     <string name="service_testing_gateways">Testing reachable gateways</string>
@@ -238,16 +237,14 @@
     <string name="relay_connecting">Connecting through %1$s…</string>
     <string name="relay_connected">Connected via %1$s</string>
 
-    <!-- Exit country picker. Global and Stealth both use it, so the copy names the engine that
-         is actually armed: a card that says Global while Stealth is selected is a card lying. -->
+    <!-- Exit country picker. Global only: Prowl comes out wherever its server sits, which is not
+         something the user picks, and the location card reports it from the live IP instead. -->
     <string name="region_card_label">Global exit country</string>
     <string name="region_card_label_global">Global exit country</string>
-    <string name="region_card_label_stealth">Stealth exit country</string>
     <string name="region_card_label_idle">Exit country · not in use right now</string>
     <string name="region_picker_title">Exit country</string>
     <string name="region_picker_note">Automatic is usually fastest — pick a country only when you need one.</string>
     <string name="region_picker_note_global">Applies to Global. Automatic is usually fastest — pick a country only when you need one.</string>
-    <string name="region_picker_note_stealth">Applies to Stealth. Automatic is usually fastest — pick a country only when you need one.</string>
 
     <!-- Connection log -->
     <string name="nav_log">Connection log</string>
