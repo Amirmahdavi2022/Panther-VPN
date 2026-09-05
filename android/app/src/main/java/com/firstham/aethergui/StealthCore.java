@@ -58,7 +58,11 @@ public final class StealthCore {
     static final String EXECUTABLE = "libxray.so";
 
     /** How long one candidate gets to start and prove itself before we move on. */
-    static final int CANDIDATE_TIMEOUT_MS = 9_000;
+    // 🔑 Was 9s. Every attempt costs this twice - once direct, once chained - so nine seconds
+    // bought four attempts inside the time budget out of a pool of twenty. Six is still a long
+    // time to wait for a 204 from a proxy that has already accepted the connection, and it buys
+    // roughly half again as many servers tried per connect, which is what actually finds one.
+    static final int CANDIDATE_TIMEOUT_MS = 6_000;
 
     /** How long to wait for the core to open its listener before probing it. */
     static final int LISTENER_TIMEOUT_MS = 4_000;

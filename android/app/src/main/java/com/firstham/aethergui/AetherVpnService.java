@@ -661,8 +661,11 @@ public final class AetherVpnService extends VpnService {
             }
         }
         // Saved either way. A run that failed still learned which endpoints are dead, and that is
-        // worth as much next time as knowing which one worked.
+        // worth as much next time as knowing which one worked. But a failed run must not leave the
+        // pool looking freshly-verified: freshness is the file's own timestamp, so re-saving after
+        // a total failure is what let a device sit on a dead list indefinitely.
         saveStealthPool(pool);
+        if (!up) markStealthPoolStale();
         if (!up) {
             core.stop();
             stealthCore = null;
@@ -886,6 +889,24 @@ public final class AetherVpnService extends VpnService {
     }
 
     /** When the pool was last written, or 0 if it never has been. */
+    /**
+     * Backdates the pool file so the next connect treats it as stale.
+     *
+     * <p>Freshness is the file's modification time, and the pool is saved after every run - a
+     * failed one included, because knowing which servers are dead is worth keeping. Backdating
+     * separates those two facts: keep what was learned, but do not let it claim to be verified.
+     */
+    private void markStealthPoolStale() {
+        try {
+            File file = stealthPoolFile();
+            if (file.isFile()) {
+                file.setLastModified(System.currentTimeMillis() - StealthPlan.POOL_MAX_AGE_MS - 1000L);
+            }
+        } catch (Exception ignored) {
+            // Best effort. Worst case the next connect dials before it fetches, which is survivable.
+        }
+    }
+
     private long stealthPoolSavedAt() {
         File file = stealthPoolFile();
         return file.isFile() ? file.lastModified() : 0L;

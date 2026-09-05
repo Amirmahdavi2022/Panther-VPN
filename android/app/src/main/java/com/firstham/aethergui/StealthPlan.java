@@ -40,16 +40,16 @@ final class StealthPlan {
     static final long POOL_MAX_AGE_MS = 6L * 60L * 60L * 1000L;
 
     /** How many candidates one refresh is willing to probe. */
-    static final int TEST_BUDGET = 24;
+    static final int TEST_BUDGET = 48;
 
     /** How many probes run at once. */
-    static final int TEST_PARALLELISM = 16;
+    static final int TEST_PARALLELISM = 24;
 
     /** How long a single probe gets. */
     static final int TEST_TIMEOUT_MS = 2_500;
 
     /** Stop probing once this many candidates have answered; we need enough, not the best. */
-    static final int TEST_ENOUGH = 8;
+    static final int TEST_ENOUGH = 16;
 
     /** How often the monitor looks at the engine. */
     static final long MONITOR_TICK_MS = 2_000L;
