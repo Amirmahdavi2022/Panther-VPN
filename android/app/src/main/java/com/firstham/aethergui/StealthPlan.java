@@ -168,6 +168,27 @@ final class StealthPlan {
     }
 
     /** Whether the live tunnel is due to be made to carry a real request. */
+    /**
+     * How many checks in a row have to come back empty before a live tunnel is given up on.
+     *
+     * <p>🚨 One was costing working connections. A tunnel that had been carrying real traffic for
+     * a minute - browsing, messaging, DNS, all of it visibly flowing - was thrown away because a
+     * single small request did not come back, and the endpoint it moved to was worse. A probe
+     * failing tells you about that one request: the endpoint may be busy, the check host may be
+     * rate-limiting a shared address, a packet may simply have been lost. Three in a row, spaced
+     * out, is a tunnel that has actually stopped.
+     */
+    static final int VERIFY_FAILURES_BEFORE_SWAP = 3;
+
+    /**
+     * How long to wait before asking again after a check comes back empty.
+     *
+     * <p>Much shorter than the healthy interval: something might be wrong, so this is not the
+     * moment to wait another half minute, but it is also not the moment to hammer an endpoint that
+     * may just be busy.
+     */
+    static final long VERIFY_RECHECK_MS = 5_000L;
+
     static boolean shouldVerify(long lastVerifiedAt, long now) {
         if (lastVerifiedAt <= 0 || lastVerifiedAt > now) return true;
         return now - lastVerifiedAt >= VERIFY_INTERVAL_MS;
@@ -228,6 +249,38 @@ final class StealthPlan {
                                boolean provenMode) {
         if (proven && (carrierAvailable || provenMode == DIRECT)) {
             return new boolean[] { provenMode };
+        }
+        return dialModes(carrierAvailable, preferChained);
+    }
+
+    /**
+     * How many endpoints are tried on the remembered route alone before the other one is tried too.
+     *
+     * <p>The route this network allows is remembered across runs, but nothing in a run knows it is
+     * still true until an endpoint answers - and until then every candidate was being dialled
+     * twice, at a full timeout each. That is the difference between four endpoints inside the time
+     * budget and eight, and the second mode almost never wins: if the carrier route worked on this
+     * network an hour ago, the endpoint that just failed on it failed because it is dead, not
+     * because the route changed.
+     *
+     * <p>Three, not one, because the remembered route can genuinely go stale - a different network
+     * with the same name, a carrier that is no longer up - and after three dead endpoints in a row
+     * that is worth considering. It is not worth considering after the first.
+     */
+    static final int PREFERRED_ONLY_CANDIDATES = 3;
+
+    /**
+     * The modes to try for a candidate, given how many have already failed on the preferred one.
+     *
+     * @param failedOnPreferred endpoints tried on the remembered route this run that did not hold
+     */
+    static boolean[] dialModes(boolean carrierAvailable, boolean preferChained, boolean proven,
+                               boolean provenMode, int failedOnPreferred) {
+        if (proven && (carrierAvailable || provenMode == DIRECT)) {
+            return new boolean[] { provenMode };
+        }
+        if (carrierAvailable && failedOnPreferred < PREFERRED_ONLY_CANDIDATES) {
+            return new boolean[] { preferChained };
         }
         return dialModes(carrierAvailable, preferChained);
     }

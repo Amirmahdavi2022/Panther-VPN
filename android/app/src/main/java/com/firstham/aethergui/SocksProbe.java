@@ -28,15 +28,26 @@ final class SocksProbe {
      * exchange is a few hundred bytes.
      *
      * <p>There is more than one on purpose. Every endpoint this probe judges is judged by whether
-     * a reply comes back from ONE host, so a network that interferes with that single host makes
-     * every endpoint in the world look dead. Cloudflare's is still first - it is the smallest and
-     * the most widely reachable - but the others exist so that verdict can be checked against a
-     * different operator before it is believed.
+     * a reply comes back from ONE host, so a host that a given endpoint cannot reach makes that
+     * endpoint look dead when it is not.
+     *
+     * <p>🚨 Cloudflare's check is deliberately LAST, and this is the single most expensive lesson
+     * in this file. A large share of every public pool is served by Cloudflare Workers, and a
+     * Worker cannot open a connection to a Cloudflare address - the platform blocks it, by design,
+     * to stop traffic looping back through itself. So a Worker endpoint that carries YouTube and
+     * Telegram perfectly will fail a probe aimed at cp.cloudflare.com every single time, and the
+     * app will condemn it and move on to the next one, which is also a Worker, which also fails.
+     * That is not a network problem and no amount of retrying gets past it: it is the probe target
+     * disqualifying the endpoints it is supposed to be measuring.
+     *
+     * <p>{@link #chooseTarget} cannot catch it either, because it picks a target through the
+     * carrier, and the carrier reaches Cloudflare fine. Cloudflare's host stays in the list only
+     * as a last resort for a network where the other two are unreachable.
      */
     static final String[][] PROBE_TARGETS = {
-        { "cp.cloudflare.com", "/generate_204" },
         { "www.gstatic.com", "/generate_204" },
         { "detectportal.firefox.com", "/success.txt" },
+        { "cp.cloudflare.com", "/generate_204" },
     };
     static final int PROBE_PORT = 80;
 
@@ -171,6 +182,27 @@ final class SocksProbe {
     /** The standard check: does this tunnel actually work right now? */
     static boolean isUsable(String proxyHost, int proxyPort, int timeoutMs) {
         return carriesTraffic(proxyHost, proxyPort, timeoutMs);
+    }
+
+    /**
+     * The same question, asked of a second host before the answer is believed to be "no".
+     *
+     * <p>For judging a candidate, one host is the right trade: a wrong "no" costs one endpoint out
+     * of hundreds and the loop moves on. For judging a tunnel the user is already on, a wrong "no"
+     * costs them the connection they are using, so it is worth a second opinion from a different
+     * operator - one host being unreachable through an endpoint says nothing about whether the
+     * endpoint carries traffic.
+     *
+     * <p>Only ever pays for the extra request when the first one failed, which on a healthy tunnel
+     * is never.
+     */
+    static boolean carriesTrafficConfirmed(String proxyHost, int proxyPort, int timeoutMs) {
+        if (exchangeMillis(proxyHost, proxyPort, timeoutMs) >= 0) return true;
+        for (int index = 0; index < PROBE_TARGETS.length; index++) {
+            if (index == target) continue;
+            if (exchangeMillis(proxyHost, proxyPort, timeoutMs, index) >= 0) return true;
+        }
+        return false;
     }
 
     /**

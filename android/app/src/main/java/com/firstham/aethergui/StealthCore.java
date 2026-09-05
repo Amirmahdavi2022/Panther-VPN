@@ -163,6 +163,7 @@ public final class StealthCore {
     public boolean start(long budgetMs) {
         stopped.set(false);
         attempted.clear();
+        failedOnPreferred = 0;
         listener.onState("starting", host.getString(R.string.status_connecting));
         return dialNextCandidate(budgetMs);
     }
@@ -306,7 +307,9 @@ public final class StealthCore {
 
     /** Whether the tunnel is still carrying traffic right now. */
     public boolean verify() {
-        return SocksProbe.carriesTraffic(XrayConfig.SOCKS_LISTEN, socksPort, CANDIDATE_TIMEOUT_MS);
+        // Confirmed rather than plain: a false "no" here throws away a tunnel the user is using.
+        return SocksProbe.carriesTrafficConfirmed(XrayConfig.SOCKS_LISTEN, socksPort,
+                CANDIDATE_TIMEOUT_MS);
     }
 
     public void stop() {
@@ -391,14 +394,18 @@ public final class StealthCore {
     private boolean dial(ProxyConfig candidate) {
         long began = System.currentTimeMillis();
         boolean[] modes = StealthPlan.dialModes(carrier != null, preferChained,
-                modeProven.get(), chained.get());
+                modeProven.get(), chained.get(), failedOnPreferred);
         for (boolean viaCarrier : modes) {
             if (stopped.get()) return false;
             if (dialOnce(candidate, viaCarrier, began)) return true;
+            if (viaCarrier == preferChained) failedOnPreferred++;
         }
         pool.recordFailure(candidate.key(), System.currentTimeMillis());
         return false;
     }
+
+    /** Endpoints this run that failed on the route this network is remembered as allowing. */
+    private volatile int failedOnPreferred;
 
     /** One endpoint, one way of reaching it. Leaves nothing running when it returns false. */
     private boolean dialOnce(ProxyConfig candidate, boolean viaCarrier, long began) {

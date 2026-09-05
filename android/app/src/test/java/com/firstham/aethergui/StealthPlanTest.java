@@ -238,6 +238,40 @@ public final class StealthPlanTest {
                 "nothing proved yet means both ways are still on the table");
     }
 
+    @Test public void sticksToTheRememberedRouteBeforeSpendingOnTheOtherOne() {
+        // 🚨 The cost this is about: every candidate dialled both ways is a full timeout paid
+        // twice, which halves how many endpoints fit inside the dial budget. A dead endpoint is
+        // dead on both routes, so paying to find that out twice buys nothing.
+        boolean[] first = StealthPlan.dialModes(true, StealthPlan.CHAINED, false,
+                StealthPlan.DIRECT, 0);
+        check(first.length == 1 && first[0] == StealthPlan.CHAINED,
+                "the first candidates are tried on the remembered route alone");
+
+        boolean[] stillSticky = StealthPlan.dialModes(true, StealthPlan.CHAINED, false,
+                StealthPlan.DIRECT, StealthPlan.PREFERRED_ONLY_CANDIDATES - 1);
+        check(stillSticky.length == 1, "one or two failures do not mean the route changed");
+
+        boolean[] reconsidered = StealthPlan.dialModes(true, StealthPlan.CHAINED, false,
+                StealthPlan.DIRECT, StealthPlan.PREFERRED_ONLY_CANDIDATES);
+        check(reconsidered.length == 2,
+                "after enough dead endpoints the other route is worth trying again");
+        check(reconsidered[0] == StealthPlan.CHAINED, "and the remembered one still goes first");
+
+        boolean[] proven = StealthPlan.dialModes(true, StealthPlan.DIRECT, true,
+                StealthPlan.CHAINED, 99);
+        check(proven.length == 1 && proven[0] == StealthPlan.CHAINED,
+                "a route proved on this run beats both the memory and the failure count");
+    }
+
+    @Test public void doesNotThrowAwayALiveTunnelOnOneQuietProbe() {
+        check(StealthPlan.VERIFY_FAILURES_BEFORE_SWAP >= 3,
+                "a tunnel carrying real traffic is not given up on a single missed reply");
+        check(StealthPlan.VERIFY_RECHECK_MS < StealthPlan.VERIFY_INTERVAL_MS,
+                "but a suspect tunnel is re-checked sooner than a healthy one");
+        check(StealthPlan.VERIFY_RECHECK_MS >= 2_000L,
+                "and not so soon that it hammers an endpoint that is merely busy");
+    }
+
     @Test public void aProvedCarrierRouteIsNotReusedAfterTheCarrierGoesAway() {
         // The carrier dropping is exactly when the proof stops being true, and dialling through
         // something that is no longer running would fail every candidate for the wrong reason.

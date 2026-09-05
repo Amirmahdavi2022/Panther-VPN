@@ -219,9 +219,62 @@ public final class XrayConfigTest {
 
     @Test public void dialsDirectlyUnlessGivenACarrier() {
         String json = XrayConfig.build(parse(VLESS_REALITY));
-        check(!json.contains("dialerProxy"), "a direct config never names a dialer");
+        check(!json.contains("\"dialerProxy\":\"carrier\""), "a direct config never names the carrier");
         check(!json.contains("\"tag\":\"carrier\""), "a direct config has no carrier outbound");
         check(json.contains("\"tag\":\"proxy\""), "the endpoint outbound is still there");
+    }
+
+    @Test public void splitsTheHelloOnTheDirectRouteOnly() {
+        String direct = XrayConfig.build(parse(VLESS_REALITY));
+        check(direct.contains("\"tag\":\"fragment\""), "the direct route declares the fragment outbound");
+        check(direct.contains("\"dialerProxy\":\"fragment\""),
+                "the endpoint socket is opened by the fragment outbound");
+        check(direct.contains("\"packets\":\"tlshello\""), "it is the hello that gets split");
+        check(direct.contains("\"TcpNoDelay\":true"),
+                "without this the pieces can be coalesced back into one write");
+
+        String chained = XrayConfig.build(parse(VLESS_REALITY), "127.0.0.1:1819");
+        check(!chained.contains("\"tag\":\"fragment\""),
+                "the chained route is already inside a tunnel and is left alone");
+        check(chained.contains("\"dialerProxy\":\"carrier\""), "the chained route still uses the carrier");
+    }
+
+    @Test public void leavesAnUnsecuredEndpointUnfragmented() {
+        // Nothing to split: there is no TLS hello on a plain connection, so the outbound would be
+        // pure cost and one more thing that can go wrong.
+        String json = XrayConfig.build(parse("vless://11111111-2222-3333-4444-555555555555@1.2.3.4:80"
+                + "?type=ws&path=%2F#plain"));
+        check(!json.contains("\"tag\":\"fragment\""), "no fragment outbound without TLS");
+        check(!json.contains("dialerProxy"), "and nothing to dial through");
+    }
+
+    @Test public void keepsTheCoresOwnLookupsOutOfTheTunnelItIsStillBuilding() {
+        // 🚨 The regression this exists to stop: with no rules, the core's DNS falls to the first
+        // outbound, which is the endpoint we have not connected to yet. Every hostname endpoint
+        // then times out and is recorded as dead while being perfectly healthy.
+        String direct = XrayConfig.build(parse(VLESS_REALITY));
+        check(direct.contains("\"port\":\"53\",\"outboundTag\":\"direct\""),
+                "the core's own lookups go out on this network, not through the endpoint");
+        check(direct.contains("\"tag\":\"direct\""), "the direct outbound is declared");
+
+        String chained = XrayConfig.build(parse(VLESS_REALITY), "127.0.0.1:1819");
+        check(chained.contains("\"port\":\"53\",\"outboundTag\":\"carrier\""),
+                "chained, the lookups follow the same route the endpoint is dialled over");
+
+        // The rule that makes the one above safe. Without it, port 53 from the phone's own apps
+        // would match and leave the device unencrypted.
+        int appRule = direct.indexOf("\"inboundTag\":[\"socks-in\"],\"outboundTag\":\"proxy\"");
+        int dnsRule = direct.indexOf("\"port\":\"53\"");
+        check(appRule >= 0, "everything from the phone is routed into the tunnel explicitly");
+        check(appRule < dnsRule, "and it is matched before the port 53 rule, or app DNS would leak");
+    }
+
+    @Test public void resolvesOverTcpBecauseTheCarrierCannotCarryUdp() {
+        // The carrier's SOCKS proxy has no UDP ASSOCIATE, so a UDP resolver would make every
+        // hostname endpoint unresolvable on the one route that works from a filtered network.
+        String json = XrayConfig.build(parse(VLESS_REALITY), "127.0.0.1:1819");
+        check(json.contains("\"tcp://1.1.1.1\""), "the resolver is reached over TCP");
+        check(!json.contains("\"servers\":[\"1.1.1.1\""), "no bare UDP resolver survives");
     }
 
     @Test public void dialsThroughTheCarrierWhenGivenOne() {
@@ -259,7 +312,10 @@ public final class XrayConfigTest {
         for (String bad : new String[] { null, "", "   ", "127.0.0.1", "127.0.0.1:", ":1819",
                                          "127.0.0.1:port", "127.0.0.1:0", "127.0.0.1:99999" }) {
             String json = XrayConfig.build(parse(VLESS_REALITY), bad);
-            check(!json.contains("dialerProxy"), "an unusable carrier dials direct: " + bad);
+            check(!json.contains("\"dialerProxy\":\"carrier\""),
+                    "an unusable carrier dials direct: " + bad);
+            check(!json.contains("\"tag\":\"carrier\""),
+                    "and declares no carrier outbound: " + bad);
         }
     }
 
