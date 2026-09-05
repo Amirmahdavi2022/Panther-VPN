@@ -398,7 +398,13 @@ public final class AetherVpnService extends VpnService {
     private String resolveScannedPeer() {
         try {
             SharedPreferences preferences = getSharedPreferences("settings", MODE_PRIVATE);
-            if (!preferences.getBoolean("edgeScan", true)) return null;
+            // 🚨 Off by default since v2.9.2. The device log shows this sweep answering nothing,
+            // every single connect, while costing ~3.6s before the core is even started - and the
+            // core's own cached endpoint then verifies in about half a second and works. The
+            // address ranges it sweeps were never confirmed to serve WARP in the first place, so
+            // this was paying a real cost for an unproven benefit. The setting stays so it can be
+            // turned back on, but nothing should be waiting on it by default.
+            if (!preferences.getBoolean("edgeScan", false)) return null;
 
             String cached = preferences.getString("scannedPeer", "");
             long cachedAt = preferences.getLong("scannedPeerAt", 0L);
@@ -744,13 +750,16 @@ public final class AetherVpnService extends VpnService {
      * activity and the service share a process, so a change made in the sheet is visible here as
      * soon as it is written.
      */
+    /**
+     * Prowl has no country to honour.
+     *
+     * <p>It used to take one from the picker. That was the wrong shape for this engine: it exits
+     * wherever the server it managed to dial happens to sit, so a chosen country was a filter over
+     * a pool that changes under the user and often had nothing behind it at all. Automatic is now
+     * the only mode, and the live IP is what tells the user where they came out.
+     */
     private String chosenStealthRegion() {
-        try {
-            return StealthRegions.normalise(getSharedPreferences("aether", MODE_PRIVATE)
-                    .getString("stealthRegion", StealthRegions.AUTOMATIC));
-        } catch (Throwable unavailable) {
-            return StealthRegions.AUTOMATIC;
-        }
+        return StealthRegions.AUTOMATIC;
     }
 
     /**
@@ -838,20 +847,6 @@ public final class AetherVpnService extends VpnService {
                 lastStandbyAt = tick;
                 runStandbyPass(core, core.country());
                 if (stopping || generation.get() != session) return;
-            }
-
-            // A country chosen while the tunnel is up is handled here rather than by reconnecting.
-            // retarget proves the new endpoint on a staging port first and only takes the live one
-            // if it answers, so a country with nothing behind it costs the user nothing at all.
-            String chosen = chosenStealthRegion();
-            if (!chosen.equals(core.country())) {
-                if (core.retarget(chosen)) {
-                    dialledAt = System.currentTimeMillis();
-                    lastVerifiedAt = dialledAt;
-                    saveStealthPool(stealthPool);
-                    scheduleLocationLookup(request, session);
-                }
-                continue;
             }
 
             String failure = null;

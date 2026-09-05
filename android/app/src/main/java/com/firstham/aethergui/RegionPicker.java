@@ -44,8 +44,6 @@ public final class RegionPicker {
     private static final String KEY_VERDICT_PREFIX = "regionVerdict_";
     /** The Global engine's history, under the key it has always used. */
     public static final String GLOBAL_VERDICT_PREFIX = KEY_VERDICT_PREFIX;
-    /** The Stealth engine's own history. Kept apart from Global's; see {@link #show}. */
-    public static final String STEALTH_VERDICT_PREFIX = "stealthVerdict_";
 
     /** The tunnel came up through this country at least once. */
     public static final String CONNECTED = "connected";
@@ -91,34 +89,11 @@ public final class RegionPicker {
                 GlobalRegions.decode(preferences.getString("availableRegions", ""))), callback);
     }
 
-    /**
-     * The same sheet over a caller-supplied country list.
-     *
-     * <p>Global and Stealth answer "which countries can I offer?" in completely different ways.
-     * Global asks its own engine, which reports the regions it knows about. Stealth has no engine
-     * to ask: it can only offer a country it has measured real endpoints in. Both still deserve
-     * the same sheet, so the list comes in from outside rather than being decided here.
-     */
+    /** The same sheet over a caller-supplied country list. */
     public static void show(Context context, SharedPreferences preferences, String currentCode,
                             List<String> codes, OnPicked callback) {
-        show(context, preferences, currentCode, codes, R.string.region_picker_note_global,
-                KEY_VERDICT_PREFIX, callback);
-    }
-
-    /**
-     * The sheet, told which engine it is opening for.
-     *
-     * <p>Two things follow from the engine and cannot be shared. The note has to name it, because
-     * a sheet that says "applies to Global" while Stealth is armed is simply wrong. And the
-     * per-country history has to be kept apart: Global reaching Japan says nothing about whether
-     * Stealth has a Japanese endpoint that answers, and showing one engine's successes under the
-     * other turns the list back into the guess this history exists to replace.
-     */
-    public static void show(Context context, SharedPreferences preferences, String currentCode,
-                            List<String> codes, int noteRes, String verdictPrefix,
-                            OnPicked callback) {
-        final String prefix = verdictPrefix == null || verdictPrefix.isEmpty()
-                ? KEY_VERDICT_PREFIX : verdictPrefix;
+        final String prefix = KEY_VERDICT_PREFIX;
+        final int noteRes = R.string.region_picker_note_global;
         BottomSheetDialog sheet = new BottomSheetDialog(context);
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
