@@ -42,6 +42,10 @@ public final class RegionPicker {
 
     /** Where the per-country history is kept. */
     private static final String KEY_VERDICT_PREFIX = "regionVerdict_";
+    /** The Global engine's history, under the key it has always used. */
+    public static final String GLOBAL_VERDICT_PREFIX = KEY_VERDICT_PREFIX;
+    /** The Stealth engine's own history. Kept apart from Global's; see {@link #show}. */
+    public static final String STEALTH_VERDICT_PREFIX = "stealthVerdict_";
 
     /** The tunnel came up through this country at least once. */
     public static final String CONNECTED = "connected";
@@ -63,13 +67,22 @@ public final class RegionPicker {
 
     /** Files a successful connection against the country the tunnel actually came out in. */
     public static void remember(SharedPreferences preferences, String countryCode) {
+        remember(preferences, KEY_VERDICT_PREFIX, countryCode);
+    }
+
+    /** The same, filed under the engine that actually made the connection. */
+    public static void remember(SharedPreferences preferences, String prefix, String countryCode) {
         String code = GlobalRegions.normalise(countryCode);
         if (code.isEmpty()) return;
-        preferences.edit().putString(KEY_VERDICT_PREFIX + code, CONNECTED).apply();
+        preferences.edit().putString(prefix + code, CONNECTED).apply();
     }
 
     static String verdictOf(SharedPreferences preferences, String code) {
-        return preferences.getString(KEY_VERDICT_PREFIX + GlobalRegions.normalise(code), UNKNOWN);
+        return verdictOf(preferences, KEY_VERDICT_PREFIX, code);
+    }
+
+    static String verdictOf(SharedPreferences preferences, String prefix, String code) {
+        return preferences.getString(prefix + GlobalRegions.normalise(code), UNKNOWN);
     }
 
     public static void show(Context context, SharedPreferences preferences, String currentCode,
@@ -88,6 +101,24 @@ public final class RegionPicker {
      */
     public static void show(Context context, SharedPreferences preferences, String currentCode,
                             List<String> codes, OnPicked callback) {
+        show(context, preferences, currentCode, codes, R.string.region_picker_note_global,
+                KEY_VERDICT_PREFIX, callback);
+    }
+
+    /**
+     * The sheet, told which engine it is opening for.
+     *
+     * <p>Two things follow from the engine and cannot be shared. The note has to name it, because
+     * a sheet that says "applies to Global" while Stealth is armed is simply wrong. And the
+     * per-country history has to be kept apart: Global reaching Japan says nothing about whether
+     * Stealth has a Japanese endpoint that answers, and showing one engine's successes under the
+     * other turns the list back into the guess this history exists to replace.
+     */
+    public static void show(Context context, SharedPreferences preferences, String currentCode,
+                            List<String> codes, int noteRes, String verdictPrefix,
+                            OnPicked callback) {
+        final String prefix = verdictPrefix == null || verdictPrefix.isEmpty()
+                ? KEY_VERDICT_PREFIX : verdictPrefix;
         BottomSheetDialog sheet = new BottomSheetDialog(context);
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -96,7 +127,7 @@ public final class RegionPicker {
 
         root.addView(grabber(context));
         root.addView(title(context, context.getString(R.string.region_picker_title)));
-        root.addView(note(context, context.getString(R.string.region_picker_note)));
+        root.addView(note(context, context.getString(noteRes)));
 
         // Taking focus on the root first stops the search box claiming it the moment the sheet is
         // laid out.
@@ -124,7 +155,8 @@ public final class RegionPicker {
                 @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
                 @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
                 @Override public void afterTextChanged(Editable s) {
-                    render(context, preferences, list, codes, currentCode, s.toString(), callback, sheet);
+                    render(context, preferences, list, codes, currentCode, s.toString(), prefix,
+                            callback, sheet);
                 }
             });
             root.addView(search);
@@ -142,7 +174,7 @@ public final class RegionPicker {
         scroller.setLayoutParams(scrollParams);
         root.addView(scroller);
 
-        render(context, preferences, list, codes, currentCode, "", callback, sheet);
+        render(context, preferences, list, codes, currentCode, "", prefix, callback, sheet);
         sheet.setContentView(root);
 
         // Open at full height. Left to itself the sheet opens collapsed, which on a list this long
@@ -158,7 +190,7 @@ public final class RegionPicker {
 
     private static void render(Context context, SharedPreferences preferences, LinearLayout list,
                                List<String> codes, String currentCode, String query,
-                               OnPicked callback, BottomSheetDialog sheet) {
+                               String verdictPrefix, OnPicked callback, BottomSheetDialog sheet) {
         list.removeAllViews();
         String needle = query == null ? "" : query.trim().toLowerCase(Locale.US);
         String current = GlobalRegions.normalise(currentCode);
@@ -176,7 +208,7 @@ public final class RegionPicker {
                     && !code.toLowerCase(Locale.US).contains(needle)) {
                 continue;
             }
-            boolean seen = CONNECTED.equals(verdictOf(preferences, code));
+            boolean seen = CONNECTED.equals(verdictOf(preferences, verdictPrefix, code));
             String detail = context.getString(seen
                     ? R.string.region_verdict_connected
                     : R.string.region_verdict_untried);

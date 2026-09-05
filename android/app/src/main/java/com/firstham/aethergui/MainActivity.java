@@ -2,6 +2,8 @@ package com.firstham.aethergui;
 
 import android.animation.ValueAnimator;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
@@ -10,6 +12,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.net.VpnService;
@@ -27,8 +30,10 @@ import android.widget.ArrayAdapter;
 import android.widget.Toast;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.activity.OnBackPressedCallback;
@@ -68,12 +73,31 @@ public final class MainActivity extends AppCompatActivity {
 
     /** True while the chosen exit location routes through the OpenVPN relay engine. */
     private boolean relayMode;
+    /** When the current connect attempt began, so the screen can show how long it has been going. */
+    private long transitionStartedAt = 0L;
+    /** The last phase the service reported, kept so the ticker can re-render it with the clock. */
+    private String transitionMessage = "";
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
     private final Runnable updateProgressPoll = new Runnable() {
         @Override public void run() {
             if (binding == null) return;
             renderUpdateState();
             if ("downloading".equals(getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE).getString("status", ""))) updateHandler.postDelayed(this, 1000);
+        }
+    };
+
+    /**
+     * Re-renders the connecting line once a second.
+     *
+     * <p>Only the clock changes; the phase text comes from whatever the service last reported. The
+     * point is that the screen keeps moving while a slow engine works, so a long connect reads as
+     * work in progress rather than as an app that has stopped responding.
+     */
+    private final Runnable transitionTick = new Runnable() {
+        @Override public void run() {
+            if (binding == null || transitionStartedAt == 0L) return;
+            renderTransitionMessage();
+            updateHandler.postDelayed(this, 1000L);
         }
     };
 
@@ -174,7 +198,14 @@ public final class MainActivity extends AppCompatActivity {
             openTelegram();
             return true;
         });
-        binding.navigationView.setNavigationItemSelectedListener(item -> { selectPage(item); binding.root.closeDrawer(GravityCompat.START); return true; });
+        binding.navigationView.setNavigationItemSelectedListener(item -> {
+            binding.root.closeDrawer(GravityCompat.START);
+            // The log is a dialog rather than a page, so it must not become the checked item -
+            // the drawer would be left highlighting a screen that is not on screen.
+            if (item.getItemId() == R.id.nav_log) { showConnectionLog(); return false; }
+            selectPage(item);
+            return true;
+        });
         binding.navigationView.setCheckedItem(R.id.nav_connect);
         binding.bottomNav.setOnItemSelectedListener(item -> { if (!syncingNav) selectPage(item); return true; });
         binding.bottomNav.setSelectedItemId(R.id.nav_connect);
@@ -308,7 +339,14 @@ public final class MainActivity extends AppCompatActivity {
         String armed = engine();
         boolean choosable = "global".equals(armed) || "stealth".equals(armed);
         binding.exitLocationCard.setVisibility(choosable ? View.VISIBLE : View.GONE);
-        binding.exitLocationLabel.setText(R.string.region_card_label);
+        // 🚨 This label was hardcoded to "Global exit country" for both engines, so arming Stealth
+        // and picking a country left the screen crediting an engine that was not even running.
+        // And when the armed engine degrades onto the carrier the chosen country is not in effect
+        // at all, which is worth saying rather than leaving a flag on screen that means nothing.
+        boolean stealth = "stealth".equals(armed);
+        binding.exitLocationLabel.setText(degraded && "connected".equals(state)
+                ? R.string.region_card_label_idle
+                : stealth ? R.string.region_card_label_stealth : R.string.region_card_label_global);
         if (!choosable) return;
         String code = GlobalRegions.normalise(preferences.getString(regionKey(), ""));
         binding.exitLocationValue.setText(code.isEmpty()
@@ -355,7 +393,9 @@ public final class MainActivity extends AppCompatActivity {
             }
         };
         if (stealth) {
-            RegionPicker.show(this, preferences, current, StealthRegions.offered(), picked);
+            RegionPicker.show(this, preferences, current, StealthRegions.offered(),
+                    R.string.region_picker_note_stealth, RegionPicker.STEALTH_VERDICT_PREFIX,
+                    picked);
         } else {
             RegionPicker.show(this, preferences, current, picked);
         }
@@ -371,7 +411,14 @@ public final class MainActivity extends AppCompatActivity {
     /** Files a working connection against the country the tunnel actually came out in. */
     private void rememberVerdict() {
         if (region == null || region.isEmpty()) return;
-        RegionPicker.remember(preferences, region);
+        // Filed against the engine that made the connection, and only when that engine really is
+        // the one carrying it - a degraded run came out of the carrier, not the armed engine, so
+        // crediting the country to it would teach the picker something untrue.
+        if (degraded) return;
+        RegionPicker.remember(preferences,
+                "stealth".equals(engine())
+                        ? RegionPicker.STEALTH_VERDICT_PREFIX : RegionPicker.GLOBAL_VERDICT_PREFIX,
+                region);
     }
 
     private void openAppSelection() {
@@ -380,6 +427,74 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) { super.onActivityResult(requestCode, resultCode, data); if (requestCode == VPN_REQUEST) { if (resultCode == RESULT_OK) startSelectedEngine(); else Toast.makeText(this, R.string.vpn_permission_denied, Toast.LENGTH_LONG).show(); } else if (requestCode == APPS_REQUEST) { if (data != null && data.getBooleanExtra(AppSelectionActivity.EXTRA_RETURN_HOME, false)) showPage("connect"); else if (resultCode == RESULT_OK && data != null) { String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; preferences.edit().putString(key, data.getStringExtra(AppSelectionActivity.EXTRA_PACKAGES)).apply(); updateSelectedCount(); saveSettings(); } } }
+
+    /**
+     * Shows the connection log, with a way to copy it out.
+     *
+     * <p>The service has always kept this - it writes every phase, every engine decision and every
+     * failure into it, and persists it across restarts. There was simply no way to read it from
+     * the app, which made every question about why a connection behaved the way it did
+     * unanswerable from the one device that knows. Read straight from the service's own store
+     * rather than from broadcasts, so lines written before this screen was opened are there too.
+     */
+    private void showConnectionLog() {
+        String log = getSharedPreferences("service_state", MODE_PRIVATE).getString("logs", "");
+        boolean empty = log == null || log.trim().isEmpty();
+        final String contents = empty ? "" : log;
+
+        TextView view = new TextView(this);
+        view.setText(empty ? getString(R.string.log_dialog_empty) : contents);
+        view.setTextIsSelectable(true);
+        view.setTypeface(Typeface.MONOSPACE);
+        view.setTextSize(11f);
+        int padding = Math.round(16 * getResources().getDisplayMetrics().density);
+        view.setPadding(padding, padding, padding, padding);
+
+        ScrollView scroller = new ScrollView(this);
+        scroller.addView(view);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.log_dialog_title)
+                .setView(scroller)
+                .setPositiveButton(R.string.log_copy, (d, which) -> copyLog(contents))
+                .setNeutralButton(R.string.log_clear, (d, which) -> clearLog())
+                .setNegativeButton(R.string.log_close, null)
+                .create();
+        dialog.show();
+        // Newest lines last, so open at the bottom: the interesting part of a log is always the
+        // end, and scrolling a few hundred lines by hand to reach it is not a thing to ask.
+        scroller.post(() -> scroller.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void copyLog(String contents) {
+        if (contents.isEmpty()) return;
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) return;
+        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.log_share_title), contents));
+        Toast.makeText(this, R.string.log_copied, Toast.LENGTH_SHORT).show();
+    }
+
+    private void clearLog() {
+        startService(new Intent(this, AetherVpnService.class)
+                .setAction(AetherVpnService.ACTION_CLEAR_LOGS));
+    }
+
+    /**
+     * The line under the status pill while a connection is being made.
+     *
+     * <p>The clock only appears after a few seconds. On a fast connect it would flash up and be
+     * gone before it could be read, and a counter that appears on every single connect trains the
+     * user to expect waiting.
+     */
+    private void renderTransitionMessage() {
+        String text = transitionMessage == null || transitionMessage.isEmpty()
+                ? getString(R.string.status_connecting) : transitionMessage;
+        long seconds = transitionStartedAt == 0L
+                ? 0L : (System.currentTimeMillis() - transitionStartedAt) / 1000L;
+        binding.connectionMessage.setText(seconds >= 4
+                ? getString(R.string.status_elapsed, text, seconds) : text);
+        binding.connectionMessage.setVisibility(View.VISIBLE);
+    }
 
     private void renderState(String newState, String message) {
         state = newState == null ? "disconnected" : newState;
@@ -392,6 +507,11 @@ public final class MainActivity extends AppCompatActivity {
         binding.connectionStatus.setText(connected ? (degraded ? R.string.status_connected_carrier : R.string.status_connected) : transitioning ? ("disconnecting".equals(state) ? R.string.status_disconnecting : R.string.status_connecting) : ("error".equals(state) || "blocked".equals(state) ? R.string.status_error : R.string.status_disconnected));
         binding.statusDot.setBackgroundResource(connected ? R.drawable.status_dot_connected : transitioning ? R.drawable.status_dot_connecting : R.drawable.status_dot);
         binding.progress.setVisibility(View.GONE);
+        if (!transitioning) {
+            transitionStartedAt = 0L;
+            transitionMessage = "";
+            updateHandler.removeCallbacks(transitionTick);
+        }
         if (connected) {
             // 🚨 A degrade is a connected state carrying bad news: the armed engine did not come
             // up and the carrier is holding the tunnel instead. The test for it used to sit in
@@ -403,8 +523,22 @@ public final class MainActivity extends AppCompatActivity {
                     degraded && message != null && !message.isEmpty() ? View.VISIBLE : View.GONE);
             binding.connectionInfo.setVisibility(View.VISIBLE);
             renderLocation();
+            // The card's label depends on whether the armed engine is actually carrying this
+            // connection, which is only known now.
+            renderExitLocation();
         }
-        else if (transitioning) { binding.connectionMessage.setVisibility(View.GONE); binding.connectionInfo.setVisibility(View.VISIBLE); }
+        else if (transitioning) {
+            // 🚨 This branch used to hide the message outright. Every phase the service reports -
+            // raising the carrier, refreshing the endpoint list, testing endpoints - was thrown
+            // away, so a connect that legitimately takes a minute looked exactly like a frozen
+            // one. The engines are slow enough that saying nothing is the worst thing to say.
+            if (transitionStartedAt == 0L) transitionStartedAt = System.currentTimeMillis();
+            transitionMessage = message == null ? "" : message;
+            renderTransitionMessage();
+            updateHandler.removeCallbacks(transitionTick);
+            updateHandler.postDelayed(transitionTick, 1000L);
+            binding.connectionInfo.setVisibility(View.VISIBLE);
+        }
         else {
             boolean showMessage = "error".equals(state) || "blocked".equals(state);
             binding.connectionMessage.setText(message == null ? getString(R.string.status_error) : message);

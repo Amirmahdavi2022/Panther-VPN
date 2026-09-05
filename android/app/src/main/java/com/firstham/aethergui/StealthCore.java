@@ -66,6 +66,27 @@ public final class StealthCore {
     /** How many endpoints to try before giving up on this run. */
     static final int MAX_ATTEMPTS = 6;
 
+    /**
+     * How long the dial loop may keep trying before it gives up and lets the carrier hold the
+     * connection instead.
+     *
+     * <p>Checked between candidates rather than inside one, so an endpoint that is nearly through
+     * is never cut off half way. The number is a judgement about attention, not about networks: a
+     * user who has been staring at a connecting screen for this long is better served by a working
+     * Turbo tunnel and an honest line about it than by another endpoint that probably will not
+     * answer either.
+     */
+    static final long DIAL_BUDGET_MS = 55_000L;
+
+    /**
+     * The budget for a second pass over a freshly refreshed pool.
+     *
+     * <p>Shorter than the first on purpose. By the time this runs the user has already waited out
+     * a carrier, a full dial pass and a refresh; handing the loop another full budget would make
+     * the worst case longer than it was before any of this was bounded at all.
+     */
+    static final long RETRY_BUDGET_MS = 30_000L;
+
     private final Context host;
     private final EndpointPool pool;
     private final int socksPort;
@@ -132,11 +153,14 @@ public final class StealthCore {
      *
      * @return true once a candidate has started and been proved to carry traffic.
      */
-    public boolean start() {
+    public boolean start() { return start(DIAL_BUDGET_MS); }
+
+    /** The same, with an explicit time budget for the dial loop. */
+    public boolean start(long budgetMs) {
         stopped.set(false);
         attempted.clear();
         listener.onState("starting", host.getString(R.string.status_connecting));
-        return dialNextCandidate();
+        return dialNextCandidate(budgetMs);
     }
 
     /**
@@ -290,8 +314,21 @@ public final class StealthCore {
 
     // --- the dial loop --------------------------------------------------------------------------
 
-    private boolean dialNextCandidate() {
+    private boolean dialNextCandidate() { return dialNextCandidate(DIAL_BUDGET_MS); }
+
+    private boolean dialNextCandidate(long budgetMs) {
+        // 🔑 An attempt count on its own is not a time budget. Each attempt can cost a listener
+        // wait plus a real-traffic probe, and on a network that black-holes everything it can cost
+        // that twice - once direct, once through the carrier. Six of those in a row is minutes of
+        // the user watching a spinner. The clock decides when to stop, and the attempt count only
+        // caps how many are tried inside it.
+        long deadline = System.currentTimeMillis() + budgetMs;
         for (int attempt = 0; attempt < MAX_ATTEMPTS && !stopped.get(); attempt++) {
+            if (attempt > 0 && System.currentTimeMillis() > deadline) {
+                listener.onLog("Stealth stopped dialling after " + attempt
+                        + " endpoints; none of them held within the time budget");
+                break;
+            }
             ProxyConfig candidate = nextCandidate();
             if (candidate == null) {
                 listener.onLog("Stealth has no untried endpoint left in the pool");

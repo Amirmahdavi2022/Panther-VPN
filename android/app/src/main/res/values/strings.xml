@@ -22,6 +22,7 @@
     <string name="status_connected">Panther Active</string>
     <string name="status_connected_carrier">Turbo Active</string>
     <string name="status_connecting">Connecting…</string>
+    <string name="status_elapsed">%1$s · %2$ds</string>
     <string name="tap_to_secure">Tap to secure</string>
     <string name="status_ready_message"></string>
     <string name="status_protected">You are protected</string>
@@ -237,10 +238,27 @@
     <string name="relay_connecting">Connecting through %1$s…</string>
     <string name="relay_connected">Connected via %1$s</string>
 
-    <!-- Global exit country picker -->
+    <!-- Exit country picker. Global and Stealth both use it, so the copy names the engine that
+         is actually armed: a card that says Global while Stealth is selected is a card lying. -->
     <string name="region_card_label">Global exit country</string>
+    <string name="region_card_label_global">Global exit country</string>
+    <string name="region_card_label_stealth">Stealth exit country</string>
+    <string name="region_card_label_idle">Exit country · not in use right now</string>
     <string name="region_picker_title">Exit country</string>
-    <string name="region_picker_note">Applies to Global. Automatic is usually fastest — pick a country only when you need one.</string>
+    <string name="region_picker_note">Automatic is usually fastest — pick a country only when you need one.</string>
+    <string name="region_picker_note_global">Applies to Global. Automatic is usually fastest — pick a country only when you need one.</string>
+    <string name="region_picker_note_stealth">Applies to Stealth. Automatic is usually fastest — pick a country only when you need one.</string>
+
+    <!-- Connection log -->
+    <string name="nav_log">Connection log</string>
+    <string name="log_dialog_title">Connection log</string>
+    <string name="log_dialog_empty">Nothing logged yet. Connect once, then come back here.</string>
+    <string name="log_copy">Copy</string>
+    <string name="log_share">Share</string>
+    <string name="log_clear">Clear</string>
+    <string name="log_close">Close</string>
+    <string name="log_copied">Log copied to the clipboard.</string>
+    <string name="log_share_title">Panther connection log</string>
     <string name="region_picker_search">Search countries</string>
     <string name="region_picker_no_match">No country matches that.</string>
     <string name="region_automatic_detail">Let the engine choose the fastest route</string>

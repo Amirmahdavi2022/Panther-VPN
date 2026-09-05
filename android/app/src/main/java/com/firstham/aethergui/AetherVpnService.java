@@ -577,9 +577,21 @@ public final class AetherVpnService extends VpnService {
         if (decision.isStuck()) {
             throw new IllegalStateException(getString(R.string.service_stealth_no_endpoints));
         }
+        // 🔑 A refresh is eight files pulled through a tunnel that is itself two hops, then a test
+        // pass over two dozen endpoints. That is most of the time a Stealth connect takes, and it
+        // was being paid BEFORE the endpoints this device already scored were tried even once.
+        // So a stale-but-usable pool now gets dialled first and the refresh only happens if that
+        // fails. A pool with nothing dialable in it still refreshes up front - there is nothing
+        // else to try.
+        boolean refreshDeferred = false;
         if (decision.refresh) {
-            refreshStealthPool(pool, request, session, wantedCountry);
-            if (generation.get() != session || stopping) return false;
+            if (StealthPlan.ready(pool, System.currentTimeMillis()) >= StealthPlan.ENOUGH_SAVED) {
+                refreshDeferred = true;
+                sendLog("Stealth: dialling the saved endpoints first, refreshing only if none hold");
+            } else {
+                refreshStealthPool(pool, request, session, wantedCountry);
+                if (generation.get() != session || stopping) return false;
+            }
         }
         if (StealthPlan.ready(pool, System.currentTimeMillis()) == 0) {
             // A carrier is up, so this is the same situation as the engine failing to dial: hand
@@ -630,6 +642,18 @@ public final class AetherVpnService extends VpnService {
         stealthCore = core;
         core.prefer(wantedCountry);
         boolean up = core.start();
+        if (!up && refreshDeferred && !stopping && generation.get() == session) {
+            // The saved list did not hold, which is exactly the case the refresh exists for. It is
+            // paid now, once, on evidence - rather than up front on every connect.
+            core.stop();
+            refreshStealthPool(pool, request, session, wantedCountry);
+            if (generation.get() != session || stopping) { stealthCore = null; return false; }
+            if (StealthPlan.ready(pool, System.currentTimeMillis()) > 0) {
+                sendLog("Stealth: retrying with the refreshed pool");
+                core.prefer(wantedCountry);
+                up = core.start(StealthCore.RETRY_BUDGET_MS);
+            }
+        }
         // Saved either way. A run that failed still learned which endpoints are dead, and that is
         // worth as much next time as knowing which one worked.
         saveStealthPool(pool);
