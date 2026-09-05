@@ -189,7 +189,7 @@ public final class SocksProbeTest {
         try (FakeProxy proxy = new FakeProxy(Behaviour.ANSWERS)) {
             SocksProbe.carriesTraffic("127.0.0.1", proxy.port(), 3000);
             String seen = proxy.requestedHost.get();
-            check(SocksProbe.PROBE_HOST.equals(seen), "a name is sent, not an address: " + seen);
+            check(SocksProbe.PROBE_HOST().equals(seen), "a name is sent, not an address: " + seen);
         }
     }
 

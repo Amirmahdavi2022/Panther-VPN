@@ -24,12 +24,46 @@ import java.nio.charset.StandardCharsets;
 final class SocksProbe {
 
     /**
-     * A captive-portal check endpoint: it answers an empty 204 and nothing else, so the whole
+     * Captive-portal check endpoints: each answers a tiny reply and nothing else, so a whole
      * exchange is a few hundred bytes.
+     *
+     * <p>There is more than one on purpose. Every endpoint this probe judges is judged by whether
+     * a reply comes back from ONE host, so a network that interferes with that single host makes
+     * every endpoint in the world look dead. Cloudflare's is still first - it is the smallest and
+     * the most widely reachable - but the others exist so that verdict can be checked against a
+     * different operator before it is believed.
      */
-    static final String PROBE_HOST = "cp.cloudflare.com";
+    static final String[][] PROBE_TARGETS = {
+        { "cp.cloudflare.com", "/generate_204" },
+        { "www.gstatic.com", "/generate_204" },
+        { "detectportal.firefox.com", "/success.txt" },
+    };
     static final int PROBE_PORT = 80;
-    private static final String PROBE_PATH = "/generate_204";
+
+    /** Which target the probes are currently using. Set by {@link #chooseTarget}. */
+    private static volatile int target = 0;
+
+    static String PROBE_HOST() { return PROBE_TARGETS[target][0]; }
+
+    /**
+     * Picks a probe target that this proxy can actually reach, and reports whether any could.
+     *
+     * <p>Meant to be handed a proxy already known to work - the carrier tunnel. If none of the
+     * targets answer through a tunnel that is definitely up, then the probe itself is what is
+     * broken on this network, and every "endpoint did not answer" verdict it produces afterwards
+     * is worthless. That is worth knowing before condemning four hundred servers.
+     *
+     * @return the index chosen, or -1 if nothing answered.
+     */
+    static int chooseTarget(String proxyHost, int proxyPort, int timeoutMs) {
+        for (int index = 0; index < PROBE_TARGETS.length; index++) {
+            if (exchangeMillis(proxyHost, proxyPort, timeoutMs, index) >= 0) {
+                target = index;
+                return index;
+            }
+        }
+        return -1;
+    }
 
     private SocksProbe() { }
 
@@ -150,14 +184,20 @@ final class SocksProbe {
     }
 
     private static long exchangeMillis(String proxyHost, int proxyPort, int timeoutMs) {
+        return exchangeMillis(proxyHost, proxyPort, timeoutMs, target);
+    }
+
+    private static long exchangeMillis(String proxyHost, int proxyPort, int timeoutMs, int which) {
+        final String host = PROBE_TARGETS[which][0];
+        final String path = PROBE_TARGETS[which][1];
         long started = System.nanoTime();
         Socket socket = null;
         try {
-            socket = connect(proxyHost, proxyPort, PROBE_HOST, PROBE_PORT, timeoutMs);
+            socket = connect(proxyHost, proxyPort, host, PROBE_PORT, timeoutMs);
             socket.setSoTimeout(timeoutMs);
             OutputStream out = socket.getOutputStream();
-            out.write(("GET " + PROBE_PATH + " HTTP/1.1\r\n"
-                    + "Host: " + PROBE_HOST + "\r\n"
+            out.write(("GET " + path + " HTTP/1.1\r\n"
+                    + "Host: " + host + "\r\n"
                     + "User-Agent: Mozilla/5.0\r\n"
                     + "Connection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
             out.flush();
