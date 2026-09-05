@@ -576,6 +576,23 @@ public final class AetherVpnService extends VpnService {
             sendLog("No carrier tunnel; Stealth falls back to the endpoints this device saved");
         }
 
+        // 🔑 Every "that server did not answer" verdict rests on one probe host replying. If that
+        // host is unreachable on this network, all four hundred servers look dead and the log says
+        // so convincingly. So the probe is proved first, through the carrier - a tunnel we already
+        // know works - and only then trusted to judge anything.
+        if (carrier) {
+            String[] parts = value(request, "socks", "127.0.0.1:1819").split(":");
+            try {
+                int chosen = SocksProbe.chooseTarget(parts[0], Integer.parseInt(parts[1]), 8_000);
+                sendLog(chosen < 0
+                        ? "🚨 Prowl probe: NO check host answered through a working carrier - every "
+                          + "server will look dead regardless of whether it is"
+                        : "Prowl probe: using " + SocksProbe.PROBE_HOST());
+            } catch (Exception error) {
+                sendLog("Prowl probe: could not be proved (" + safeMessage(error) + ")");
+            }
+        }
+
         String wantedCountry = chosenStealthRegion();
         StealthPlan.Decision decision =
                 StealthPlan.decide(pool, savedAt, carrier, System.currentTimeMillis());
@@ -589,15 +606,19 @@ public final class AetherVpnService extends VpnService {
         // So a stale-but-usable pool now gets dialled first and the refresh only happens if that
         // fails. A pool with nothing dialable in it still refreshes up front - there is nothing
         // else to try.
-        boolean refreshDeferred = false;
-        if (decision.refresh) {
-            if (StealthPlan.ready(pool, System.currentTimeMillis()) >= StealthPlan.ENOUGH_SAVED) {
-                refreshDeferred = true;
-                sendLog("Stealth: dialling the saved endpoints first, refreshing only if none hold");
-            } else {
-                refreshStealthPool(pool, request, session, wantedCountry);
-                if (generation.get() != session || stopping) return false;
-            }
+        // 🚨 The refresh is the fallback for EVERY failed dial pass, not only for a pool that was
+        // already stale. Gating it on decision.refresh was the bug: a failed run re-saves the pool,
+        // the pool then looks freshly verified, and a device whose saved servers had all died could
+        // never reach new ones. It retried the same corpses on every connect with no way out.
+        boolean refreshDeferred = true;
+        if (decision.refresh
+                && StealthPlan.ready(pool, System.currentTimeMillis()) < StealthPlan.ENOUGH_SAVED) {
+            // Nothing worth dialling, so fetching first is the only move there is.
+            refreshDeferred = false;
+            refreshStealthPool(pool, request, session, wantedCountry);
+            if (generation.get() != session || stopping) return false;
+        } else if (decision.refresh) {
+            sendLog("Prowl: dialling the saved servers first, refreshing if none hold");
         }
         if (StealthPlan.ready(pool, System.currentTimeMillis()) == 0) {
             // A carrier is up, so this is the same situation as the engine failing to dial: hand
@@ -665,7 +686,7 @@ public final class AetherVpnService extends VpnService {
         // pool looking freshly-verified: freshness is the file's own timestamp, so re-saving after
         // a total failure is what let a device sit on a dead list indefinitely.
         saveStealthPool(pool);
-        if (!up) markStealthPoolStale();
+        markStealthPoolStale(!up);
         if (!up) {
             core.stop();
             stealthCore = null;
@@ -896,18 +917,19 @@ public final class AetherVpnService extends VpnService {
      * failed one included, because knowing which servers are dead is worth keeping. Backdating
      * separates those two facts: keep what was learned, but do not let it claim to be verified.
      */
-    private void markStealthPoolStale() {
-        try {
-            File file = stealthPoolFile();
-            if (file.isFile()) {
-                file.setLastModified(System.currentTimeMillis() - StealthPlan.POOL_MAX_AGE_MS - 1000L);
-            }
-        } catch (Exception ignored) {
-            // Best effort. Worst case the next connect dials before it fetches, which is survivable.
-        }
+    private void markStealthPoolStale(boolean exhausted) {
+        // 🚨 This used to backdate the pool file. File.setLastModified is unreliable on Android and
+        // fails silently on plenty of devices, so the flag lives somewhere that cannot refuse it.
+        getSharedPreferences("service_state", MODE_PRIVATE).edit()
+                .putBoolean("stealthPoolExhausted", exhausted).apply();
     }
 
     private long stealthPoolSavedAt() {
+        // A pool the last run could not dial anything out of is stale no matter what its file says.
+        if (getSharedPreferences("service_state", MODE_PRIVATE)
+                .getBoolean("stealthPoolExhausted", false)) {
+            return 0L;
+        }
         File file = stealthPoolFile();
         return file.isFile() ? file.lastModified() : 0L;
     }

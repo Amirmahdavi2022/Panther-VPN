@@ -279,7 +279,7 @@ public final class StealthCore {
             boolean listening = false;
             while (System.currentTimeMillis() < deadline && !stopped.get()) {
                 if (SocksProbe.reaches(XrayConfig.SOCKS_LISTEN, stagingPort,
-                        SocksProbe.PROBE_HOST, SocksProbe.PROBE_PORT, 800)) {
+                        SocksProbe.PROBE_HOST(), SocksProbe.PROBE_PORT, 800)) {
                     listening = true;
                     break;
                 }
@@ -454,7 +454,7 @@ public final class StealthCore {
         while (System.currentTimeMillis() < deadline && !stopped.get()) {
             if (!isProcessAlive()) return false;
             if (SocksProbe.reaches(XrayConfig.SOCKS_LISTEN, socksPort,
-                    SocksProbe.PROBE_HOST, SocksProbe.PROBE_PORT, 800)) {
+                    SocksProbe.PROBE_HOST(), SocksProbe.PROBE_PORT, 800)) {
                 return true;
             }
             try { Thread.sleep(150); } catch (InterruptedException interrupted) {
