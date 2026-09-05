@@ -231,6 +231,39 @@ public final class SocksProbeTest {
                 "an unreachable proxy reports a negative latency");
     }
 
+    /**
+     * 🚨 The regression this exists to stop, in full, because it looked exactly like a network
+     * problem and was not one: a large share of every public pool is served by Cloudflare Workers,
+     * and a Worker is not allowed to open a connection to a Cloudflare address. Judging an
+     * endpoint by whether it can reach cp.cloudflare.com therefore fails every Worker-backed
+     * endpoint there is, working or not, and the engine marks them dead one after another until
+     * the pool is gone.
+     *
+     * <p>{@link SocksProbe#chooseTarget} cannot catch it, either, because it picks through the
+     * carrier and the carrier reaches Cloudflare perfectly well.
+     */
+    @Test public void neverJudgesAnEndpointByWhetherItCanReachCloudflare() {
+        check(!SocksProbe.PROBE_TARGETS[0][0].contains("cloudflare"),
+                "the first probe host is not Cloudflare's, it is "
+                        + SocksProbe.PROBE_TARGETS[0][0]);
+        for (int i = 0; i < SocksProbe.PROBE_TARGETS.length - 1; i++) {
+            check(!SocksProbe.PROBE_TARGETS[i][0].contains("cloudflare"),
+                    "Cloudflare's host is only ever the last resort");
+        }
+    }
+
+    @Test public void keepsSeveralOperatorsToAsk() {
+        check(SocksProbe.PROBE_TARGETS.length >= 3, "there is more than one host to fall back on");
+        for (int i = 0; i < SocksProbe.PROBE_TARGETS.length; i++) {
+            check(SocksProbe.PROBE_TARGETS[i][0].contains("."), "every target is a real host name");
+            check(SocksProbe.PROBE_TARGETS[i][1].startsWith("/"), "every target has a path");
+            for (int j = 0; j < i; j++) {
+                check(!SocksProbe.PROBE_TARGETS[i][0].equals(SocksProbe.PROBE_TARGETS[j][0]),
+                        "no host is listed twice, which would waste the second opinion");
+            }
+        }
+    }
+
     /** CI runs this; it fails the build if any check above failed. */
     @Test public void everyCheckPasses() throws Exception {
         int before = failures;
@@ -249,6 +282,8 @@ public final class SocksProbeTest {
         refusesAProxyThatDemandsCredentials();
         drainsEveryBoundAddressShape();
         reportsNothingListeningAsUnreachable();
+        neverJudgesAnEndpointByWhetherItCanReachCloudflare();
+        keepsSeveralOperatorsToAsk();
         System.out.println("SocksProbe: " + checks + " checks, " + failures + " failures");
     }
 

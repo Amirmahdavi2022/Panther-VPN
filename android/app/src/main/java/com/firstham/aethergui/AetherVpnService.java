@@ -853,6 +853,7 @@ public final class AetherVpnService extends VpnService {
 
     private void monitorStealth(Intent request, long session) throws Exception {
         int swaps = 0;
+        int verifyFailures = 0;
         long dialledAt = System.currentTimeMillis();
         long lastVerifiedAt = dialledAt;
         long lastStandbyAt = 0;
@@ -877,8 +878,21 @@ public final class AetherVpnService extends VpnService {
             if (!core.isConnected()) {
                 failure = "the core stopped";
             } else if (StealthPlan.shouldVerify(lastVerifiedAt, System.currentTimeMillis())) {
-                if (core.verify()) lastVerifiedAt = System.currentTimeMillis();
-                else failure = "the tunnel stopped carrying traffic";
+                if (core.verify()) {
+                    lastVerifiedAt = System.currentTimeMillis();
+                    verifyFailures = 0;
+                } else if (++verifyFailures < StealthPlan.VERIFY_FAILURES_BEFORE_SWAP) {
+                    // Not proof of anything yet. Ask again shortly rather than throwing away a
+                    // tunnel that may well still be carrying the user's traffic - see the note on
+                    // VERIFY_FAILURES_BEFORE_SWAP for what one failed check is actually worth.
+                    lastVerifiedAt = System.currentTimeMillis()
+                            - StealthPlan.VERIFY_INTERVAL_MS + StealthPlan.VERIFY_RECHECK_MS;
+                    sendLog("Stealth check " + verifyFailures + " of "
+                            + StealthPlan.VERIFY_FAILURES_BEFORE_SWAP
+                            + " came back empty; asking again before moving");
+                } else {
+                    failure = "the tunnel stopped carrying traffic";
+                }
             }
             if (failure == null) continue;
             if (stopping || generation.get() != session) return;
@@ -897,6 +911,7 @@ public final class AetherVpnService extends VpnService {
             dialledAt = System.currentTimeMillis();
             lastVerifiedAt = dialledAt;
             lastStandbyAt = 0;
+            verifyFailures = 0;
             saveStealthPool(stealthPool);
             updateState("connected", getString("manual".equals(value(request, "connectionMode", "vpn"))
                     ? R.string.service_proxy_ready : R.string.service_protected));

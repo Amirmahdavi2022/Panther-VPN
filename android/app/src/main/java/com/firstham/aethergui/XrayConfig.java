@@ -45,6 +45,26 @@ final class XrayConfig {
     /** The outbound tag the carrier proxy is published under when the engine is chained. */
     static final String CARRIER_TAG = "carrier";
 
+    /** The outbound that opens sockets on this network with no proxy in front of them. */
+    static final String DIRECT_TAG = "direct";
+
+    /**
+     * The outbound that splits the TLS client hello across several writes before it leaves.
+     *
+     * <p>🔑 Why this exists: filtering here does not read a whole connection, it reads the first
+     * packet. A client hello that arrives in one piece hands the inspector the server name in a
+     * single well-formed record; the same hello delivered in several small writes, milliseconds
+     * apart, has to be reassembled before it can be matched, and the equipment doing the matching
+     * mostly does not bother. It changes nothing about the connection itself - same protocol, same
+     * certificate, same server - so an endpoint that would have worked still works, and one that
+     * was being cut at the hello now has a chance.
+     *
+     * <p>Used only on the direct route. The chained route already leaves this network inside the
+     * carrier's own tunnel, where there is no hello to read, and adding a second layer there would
+     * be changing the one path that is known to work.
+     */
+    static final String FRAGMENT_TAG = "fragment";
+
     private XrayConfig() { }
 
     /**
@@ -138,18 +158,46 @@ final class XrayConfig {
         // never resolve. Giving the core its own resolver removes the dependency on the platform
         // entirely, and has the side benefit that the lookup for the server we are about to dial
         // does not go to whatever resolver the local network handed us.
-        json.append("\"dns\":{\"servers\":[\"1.1.1.1\",\"1.0.0.1\",\"8.8.8.8\"],")
+        //
+        // 🚨 Over TCP, not UDP, and that is not a detail. These queries have to go somewhere that
+        // is reachable BEFORE the tunnel exists, which rules out sending them through the endpoint
+        // we are still trying to dial - see the routing rules below - and the routes that are
+        // available at that moment are a plain socket or the carrier's SOCKS proxy. A SOCKS proxy
+        // carries UDP only if it implements UDP ASSOCIATE, which is exactly what the carrier does
+        // not do, so a UDP resolver would leave every hostname endpoint unresolvable on the one
+        // route this engine relies on.
+        json.append("\"dns\":{\"servers\":[\"tcp://1.1.1.1\",\"tcp://8.8.8.8\"],")
             .append("\"queryStrategy\":\"UseIP\",\"disableCache\":false},");
 
         String[] hop = carrierHop(carrier);
+        boolean chained = hop != null;
+        boolean fragmented = !chained && isSecured(endpoint);
         json.append("\"outbounds\":[");
-        appendProxyOutbound(json, endpoint, hop != null);
-        if (hop != null) appendCarrierOutbound(json, hop[0], Integer.parseInt(hop[1]));
-        json.append(",{\"tag\":\"block\",\"protocol\":\"blackhole\"}],");
+        appendProxyOutbound(json, endpoint, chained, fragmented);
+        if (fragmented) appendFragmentOutbound(json);
+        if (chained) appendCarrierOutbound(json, hop[0], Integer.parseInt(hop[1]));
+        json.append(",{\"tag\":").append(quote(DIRECT_TAG)).append(",\"protocol\":\"freedom\"}")
+            .append(",{\"tag\":\"block\",\"protocol\":\"blackhole\"}],");
 
         // AsIs keeps the sniffed name as the name: no lookup happens on this device, so a poisoned
         // resolver on the local network cannot redirect anything.
-        json.append("\"routing\":{\"domainStrategy\":\"AsIs\",\"rules\":[]}}");
+        //
+        // 🚨 The two rules are the fix for a deadlock that cost every hostname endpoint eight
+        // seconds and then failed it. With no rules at all, the core's own DNS queries fall to the
+        // first outbound, which is the proxy - so resolving the server we are about to dial
+        // required a tunnel through that same server to already be up. The queries timed out, the
+        // endpoint was recorded as dead, and the endpoint was fine.
+        //
+        // Order matters and the first rule is what makes the second one safe. Everything arriving
+        // from the phone goes through the tunnel, full stop, including the apps' own DNS on port
+        // 53: without that rule first, the port-53 rule below would push app lookups out onto this
+        // network in the clear, which is precisely the leak the tunnel exists to prevent. Only the
+        // core's internal resolver reaches the second rule, because it is the only traffic here
+        // that does not come from an inbound.
+        json.append("\"routing\":{\"domainStrategy\":\"AsIs\",\"rules\":[")
+            .append("{\"type\":\"field\",\"inboundTag\":[\"socks-in\"],\"outboundTag\":\"proxy\"},")
+            .append("{\"type\":\"field\",\"port\":\"53\",\"outboundTag\":")
+            .append(quote(chained ? CARRIER_TAG : DIRECT_TAG)).append("}]}}");
         return json.toString();
     }
 
@@ -196,7 +244,25 @@ final class XrayConfig {
         return new String[] { host, String.valueOf(port) };
     }
 
-    private static void appendProxyOutbound(StringBuilder json, ProxyConfig endpoint, boolean chained) {
+    /**
+     * The freedom outbound that does the splitting. See {@link #FRAGMENT_TAG}.
+     *
+     * <p>The numbers are the ones the clients that work on this kind of network have settled on:
+     * split the hello into 50-100 byte pieces with 10-20ms between them. Small enough that the
+     * server name never lands whole in one packet, spaced enough that the pieces are not simply
+     * coalesced back together on the way out.
+     */
+    private static void appendFragmentOutbound(StringBuilder json) {
+        json.append(",{\"tag\":").append(quote(FRAGMENT_TAG))
+            .append(",\"protocol\":\"freedom\",\"settings\":{\"fragment\":{")
+            .append("\"packets\":\"tlshello\",\"length\":\"50-100\",\"interval\":\"10-20\"}}")
+            // Without this the pieces can be buffered and sent as one, which would undo the whole
+            // thing quietly - the config would look right and behave exactly as it did before.
+            .append(",\"streamSettings\":{\"sockopt\":{\"TcpNoDelay\":true}}}");
+    }
+
+    private static void appendProxyOutbound(StringBuilder json, ProxyConfig endpoint, boolean chained,
+                                            boolean fragmented) {
         json.append("{\"tag\":\"proxy\",\"protocol\":").append(quote(protocolName(endpoint)))
             .append(",\"settings\":{");
         switch (endpoint.protocol) {
@@ -205,7 +271,7 @@ final class XrayConfig {
             default:        appendShadowsocks(json, endpoint); break;
         }
         json.append("}");
-        appendStreamSettings(json, endpoint, chained);
+        appendStreamSettings(json, endpoint, chained, fragmented);
         json.append("}");
     }
 
@@ -250,7 +316,7 @@ final class XrayConfig {
     }
 
     private static void appendStreamSettings(StringBuilder json, ProxyConfig endpoint,
-                                             boolean chained) {
+                                             boolean chained, boolean fragmented) {
         String network = network(endpoint);
         String security = security(endpoint);
         json.append(",\"streamSettings\":{\"network\":").append(quote(network))
@@ -259,6 +325,7 @@ final class XrayConfig {
             // platform, for the same reason.
             .append(",\"sockopt\":{\"domainStrategy\":\"UseIP\"");
         if (chained) json.append(",\"dialerProxy\":").append(quote(CARRIER_TAG));
+        else if (fragmented) json.append(",\"dialerProxy\":").append(quote(FRAGMENT_TAG));
         json.append("}");
 
         if ("reality".equals(security)) appendReality(json, endpoint);
