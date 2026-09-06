@@ -41,8 +41,8 @@ android {
         // matching element" - the split set and the packaged set disagree. Pin the packaged ABIs
         // to the three we actually ship so both agree.
         ndk { abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64' }
-        versionCode 27
-        versionName '2.9.6'
+        versionCode 28
+        versionName '2.9.7'
 
         // The version chip in the drawer and on the About page used to read a hand-written
         // string, which stopped being true after 2.0.0 and stayed wrong for sixteen releases.
