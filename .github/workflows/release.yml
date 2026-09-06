@@ -189,12 +189,18 @@ jobs:
           cp "$out/app-x86_64-release.apk"      "release/Panther-VPN-v${version}-x86_64.apk"
           ( cd release && sha256sum ./*.apk | sed 's#\./##' > SHA256SUMS.txt )
 
+      # Only for a build that produces no release. On a tag the APKs are published as release
+      # assets, which live in separate storage that costs nothing - so uploading them here as well
+      # stored a second 191MB copy of files that were already downloadable. Forty-one of those
+      # copies had accumulated, 6.7GB against a 0.5GB allowance, every one a duplicate.
+      # A manual branch build has nowhere else to put its output, so it still gets an artifact.
       - uses: actions/upload-artifact@v4
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch'
         with:
           name: Panther-VPN-Android
           path: release/*
           if-no-files-found: error
+          retention-days: 3
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
