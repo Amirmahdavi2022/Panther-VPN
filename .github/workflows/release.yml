@@ -15,7 +15,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Linux, not Windows. GitHub bills a Windows runner at twice the Linux rate, and nothing this
+    # build does needs Windows - the fetch script has had a bash twin since the Codemagic work.
+    # On a private repository that multiplier was the largest single cost in the project.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,170 +28,166 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
       - name: Install Android NDK
-        shell: pwsh
         run: |
-          $sdkManager = Get-ChildItem -Path @(
-            (Join-Path $env:ANDROID_HOME 'cmdline-tools'),
-            (Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools')
-          ) -Filter 'sdkmanager.bat' -File -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $sdkManager) { throw 'Android sdkmanager.bat was not found on the hosted runner.' }
-          & $sdkManager 'ndk;27.2.12479018'
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -z "$sdk_root" ]; then echo "No Android SDK on this runner." >&2; exit 1; fi
+          sdkmanager="$(find "$sdk_root/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)"
+          if [ -z "$sdkmanager" ]; then echo "sdkmanager was not found under $sdk_root." >&2; exit 1; fi
+          "$sdkmanager" 'ndk;27.2.12479018'
 
-
-      - name: Check the notices match the core we actually pin
-        shell: pwsh
+      - name: Make the Gradle wrapper executable
         run: |
+          # gradlew is stored in git with mode 100644. That was invisible while this job ran on
+          # Windows and called gradlew.bat; on Linux it is a permission-denied failure minutes in.
+          chmod +x android/gradlew
+
+      - name: Check the notices match the cores we actually pin
+        run: |
+          set -euo pipefail
           # NOTICE.md is a licence document, so naming a different core version than the build
           # actually downloads is a compliance problem rather than a typo. It drifted once already.
-          $line = (Get-Content scripts/fetch-android-assets.ps1) | Where-Object { $_ -match '^\s*\$aetherVersion\s*=' } | Select-Object -First 1
-          if (-not $line) { throw 'Could not find the $aetherVersion line in the fetch script.' }
-          $found = [regex]::Matches($line, '"(v[\d]+\.[\d]+\.[\d]+)"')
-          if ($found.Count -eq 0) { throw "No pinned version in: $line" }
-          $pin = $found[$found.Count - 1].Groups[1].Value
-          if ((Get-Content NOTICE.md -Raw) -notmatch [regex]::Escape($pin)) {
-            throw "NOTICE.md does not mention the pinned Aether core $pin."
+          script=scripts/fetch-android-assets.sh
+          check_pin() {
+            line="$(grep -m1 "^$1=" "$script" || true)"
+            if [ -z "$line" ]; then echo "Could not find $1 in $script." >&2; exit 1; fi
+            pin="$(printf '%s' "$line" | grep -oE 'v[0-9]+(\.[0-9]+)+' | tail -1)"
+            if [ -z "$pin" ]; then echo "No pinned version in: $line" >&2; exit 1; fi
+            if ! grep -qF "$pin" NOTICE.md; then
+              echo "NOTICE.md does not mention the pinned $2 $pin." >&2; exit 1
+            fi
+            echo "NOTICE.md and the build agree on the $2 $pin."
           }
-          Write-Host "NOTICE.md and the build agree on Aether $pin."
-
-          # Same rule for the Stealth core. Aether's pin drifted from NOTICE.md once already, and
-          # anything pinned in one file and described in another will drift eventually.
-          $sline = (Get-Content scripts/fetch-android-assets.ps1) | Where-Object { $_ -match '^\s*\$stealthCoreVersion\s*=' } | Select-Object -First 1
-          if (-not $sline) { throw 'Could not find the $stealthCoreVersion line in the fetch script.' }
-          $sfound = [regex]::Matches($sline, '"(v[\d.]+)"')
-          if ($sfound.Count -eq 0) { throw "No pinned version in: $sline" }
-          $spin = $sfound[$sfound.Count - 1].Groups[1].Value
-          if ((Get-Content NOTICE.md -Raw) -notmatch [regex]::Escape($spin)) {
-            throw "NOTICE.md does not mention the pinned Stealth core $spin."
-          }
-          Write-Host "NOTICE.md and the build agree on the Stealth core $spin."
+          check_pin AETHER_VERSION "Aether core"
+          check_pin STEALTH_CORE_VERSION "Stealth core"
 
       - name: Fetch verified Android native assets
-        shell: pwsh
         run: |
+          set -o pipefail
           # Tee into build.log so that when this step is the one that fails, the failure publisher
           # below still has something to publish. Raw Actions logs are not always downloadable,
           # and a failure nobody can read costs a whole round trip to diagnose.
-          Write-Host "go: $(if (Get-Command go -ErrorAction SilentlyContinue) { (go version) } else { 'NOT INSTALLED' })"
-          npm run fetch:android 2>&1 | Tee-Object -FilePath "$env:GITHUB_WORKSPACE/build.log"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          echo "go: $(command -v go >/dev/null && go version || echo 'NOT INSTALLED')"
+          npm run fetch:android 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
       - name: Verify every native core landed in jniLibs
-        shell: pwsh
         run: |
+          set -euo pipefail
           # A green build once shipped with a core missing from it. Fail loudly instead.
-          $missing = @()
-          foreach ($abi in @('arm64-v8a','armeabi-v7a','x86_64')) {
-            foreach ($lib in @('libaether.so','libhev-socks5-tunnel.so','libxray.so')) {
-              $p = "android/app/src/main/jniLibs/$abi/$lib"
-              if (-not (Test-Path $p)) { $missing += $p } else { Write-Host "$p $((Get-Item $p).Length) bytes" }
-            }
-          }
-          if ($missing.Count) { throw "Native cores missing: $($missing -join ', ')" }
-          $aar = 'android/app/libs/ca.psiphon.aar'
-          if (-not (Test-Path $aar)) { throw "The Global engine library is missing: $aar" }
-          Write-Host "$aar $((Get-Item $aar).Length) bytes"
+          missing=""
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            for lib in libaether.so libhev-socks5-tunnel.so libxray.so; do
+              p="android/app/src/main/jniLibs/$abi/$lib"
+              if [ -f "$p" ]; then echo "$p $(stat -c%s "$p") bytes"; else missing="$missing $p"; fi
+            done
+          done
+          if [ -n "$missing" ]; then echo "Native cores missing:$missing" >&2; exit 1; fi
+          aar=android/app/libs/ca.psiphon.aar
+          if [ ! -f "$aar" ]; then echo "The Global engine library is missing: $aar" >&2; exit 1; fi
+          echo "$aar $(stat -c%s "$aar") bytes"
 
       - name: Let :app shrink the VPN engine, not vpnLib itself
-        shell: pwsh
         run: |
+          set -euo pipefail
           # vpnLib ships `minifyEnabled true`, so it runs its OWN R8 pass and publishes an
           # obfuscated library. Consumers still COMPILE against the un-obfuscated classes, so any
           # engine class the library's proguard file forgets to keep compiles fine and then throws
           # NoClassDefFoundError on device. That is exactly what crashed the app on launch.
           # Shrinking once, in :app, where proguard-rules.pro keeps de.blinkt.** wholesale, removes
           # the entire class of bug. Fail loudly rather than silently building the broken shape.
-          $f = 'android/vpnLib/build.gradle'
-          if (-not (Test-Path $f)) { throw "$f is missing - was the submodule checked out?" }
-          $before = Get-Content $f -Raw
-          if ($before -notmatch 'minifyEnabled\s+true') { throw "Expected 'minifyEnabled true' in $f and did not find it. Refusing to build a shape nobody has checked." }
-          $after = $before -replace 'minifyEnabled\s+true', 'minifyEnabled false'
-          Set-Content -Path $f -Value $after -NoNewline
-          if ((Get-Content $f -Raw) -match 'minifyEnabled\s+true') { throw "Patch did not apply to $f." }
-          Write-Host "vpnLib self-minification disabled."
+          f=android/vpnLib/build.gradle
+          if [ ! -f "$f" ]; then echo "$f is missing - was the submodule checked out?" >&2; exit 1; fi
+          if ! grep -qE 'minifyEnabled[[:space:]]+true' "$f"; then
+            echo "Expected 'minifyEnabled true' in $f and did not find it. Refusing to build a shape nobody has checked." >&2
+            exit 1
+          fi
+          sed -i -E 's/minifyEnabled[[:space:]]+true/minifyEnabled false/' "$f"
+          if grep -qE 'minifyEnabled[[:space:]]+true' "$f"; then echo "Patch did not apply to $f." >&2; exit 1; fi
+          echo "vpnLib self-minification disabled."
 
       - name: Run unit tests
-        shell: pwsh
         run: |
-          Set-Location android
-          ./gradlew.bat --no-daemon --stacktrace testDebugUnitTest 2>&1 |
-            Tee-Object -Append -FilePath "$env:GITHUB_WORKSPACE/build.log"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          set -o pipefail
+          cd android
+          ./gradlew --no-daemon --stacktrace testDebugUnitTest 2>&1 | tee -a "$GITHUB_WORKSPACE/build.log"
 
       - name: Prepare Android signing key
         if: github.event_name != 'pull_request'
-        shell: pwsh
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          New-Item -ItemType Directory -Force android/.android-signing | Out-Null
-          [IO.File]::WriteAllBytes("android/.android-signing/firstham-aethergui.jks", [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
+          set -euo pipefail
+          mkdir -p android/.android-signing
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/.android-signing/firstham-aethergui.jks
+          if [ ! -s android/.android-signing/firstham-aethergui.jks ]; then
+            echo "The decoded keystore is empty; check the ANDROID_KEYSTORE_BASE64 secret." >&2; exit 1
+          fi
 
       - name: Build signed Android APKs
         if: github.event_name != 'pull_request'
-        shell: pwsh
         env:
           ANDROID_KEYSTORE_PATH: .android-signing/firstham-aethergui.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          Set-Location android
-          ./gradlew.bat --stacktrace :app:assembleRelease :app:lintRelease 2>&1 |
-            Tee-Object -Append -FilePath "$env:GITHUB_WORKSPACE/build.log"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          set -o pipefail
+          cd android
+          ./gradlew --stacktrace :app:assembleRelease :app:lintRelease 2>&1 | tee -a "$GITHUB_WORKSPACE/build.log"
 
       - name: Validate Android pull request build
         if: github.event_name == 'pull_request'
-        shell: pwsh
         run: |
-          Set-Location android
-          ./gradlew.bat assembleDebug lintDebug
+          set -o pipefail
+          cd android
+          ./gradlew assembleDebug lintDebug 2>&1 | tee -a "$GITHUB_WORKSPACE/build.log"
 
       - name: Publish the failure log
         if: failure()
-        shell: pwsh
         run: |
           # Issues are disabled on this repository and raw CI logs are not always downloadable,
           # so the only channel guaranteed to work is the repository itself. Push the tail of the
           # Gradle output to a dedicated branch that is never merged.
-          $logPath = Join-Path $env:GITHUB_WORKSPACE "build.log"
-          if (-not (Test-Path $logPath)) {
-            Set-Content -Path $logPath -Value "No build.log; the run failed before Gradle started."
-          }
-          $short = $env:GITHUB_SHA.Substring(0, 7)
-          New-Item -ItemType Directory -Force ci-logs | Out-Null
-          Get-Content $logPath -Tail 400 | Set-Content -Path "ci-logs/$short.log" -Encoding utf8
+          log="$GITHUB_WORKSPACE/build.log"
+          if [ ! -f "$log" ]; then
+            echo "No build.log; the run failed before Gradle started." > "$log"
+          fi
+          short="${GITHUB_SHA:0:7}"
+          mkdir -p ci-logs
+          tail -n 400 "$log" > "ci-logs/$short.log"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan ci-failures 2>$null
+          git checkout --orphan ci-failures || true
           git reset
           git add -f "ci-logs/$short.log"
           git commit -q -m "Build failure log for $short"
           git push -f origin ci-failures
-          Write-Host "Failure log pushed to the ci-failures branch as ci-logs/$short.log"
+          echo "Failure log pushed to the ci-failures branch as ci-logs/$short.log"
 
       - name: Stage release files
         # A pull request never gets as far as signed release APKs - the two steps that produce
         # them are already gated the same way - so without this guard the first pull request
         # opened on this repository failed here on a file that was never meant to exist yet.
         if: github.event_name != 'pull_request'
-        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force release | Out-Null
+          set -euo pipefail
+          mkdir -p release
           # The tag is the release's identity, so name the files after it. package.json was the
           # old source and it drifted: v2.1.3 and v2.2.0 both shipped files called v2.1.0, which
           # is exactly how someone installs yesterday's APK by accident.
-          $version = if ($env:GITHUB_REF_NAME -match '^v(.+)$') { $Matches[1] } else { (Get-Content package.json | ConvertFrom-Json).version }
-          Copy-Item android/app/build/outputs/apk/release/app-universal-release.apk   "release/Panther-VPN-v${version}-Universal.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-arm64-v8a-release.apk   "release/Panther-VPN-v${version}-ARM64.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "release/Panther-VPN-v${version}-ARMv7.apk"
-          Copy-Item android/app/build/outputs/apk/release/app-x86_64-release.apk      "release/Panther-VPN-v${version}-x86_64.apk"
-          Get-ChildItem release -File | ForEach-Object {
-            $hash = Get-FileHash $_.FullName -Algorithm SHA256
-            "$($hash.Hash.ToLower())  $($_.Name)" | Add-Content release/SHA256SUMS.txt
-          }
+          case "$GITHUB_REF_NAME" in
+            v*) version="${GITHUB_REF_NAME#v}" ;;
+            *)  version="$(node -p "require('./package.json').version")" ;;
+          esac
+          out=android/app/build/outputs/apk/release
+          cp "$out/app-universal-release.apk"   "release/Panther-VPN-v${version}-Universal.apk"
+          cp "$out/app-arm64-v8a-release.apk"   "release/Panther-VPN-v${version}-ARM64.apk"
+          cp "$out/app-armeabi-v7a-release.apk" "release/Panther-VPN-v${version}-ARMv7.apk"
+          cp "$out/app-x86_64-release.apk"      "release/Panther-VPN-v${version}-x86_64.apk"
+          ( cd release && sha256sum ./*.apk | sed 's#\./##' > SHA256SUMS.txt )
 
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'

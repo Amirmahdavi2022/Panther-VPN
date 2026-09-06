@@ -1214,10 +1214,16 @@ public final class AetherVpnService extends VpnService {
      * <p>Cloudflare goes first because the core exits through Cloudflare's own network, so it is
      * the one service that will never rate-limit or refuse this traffic. The others are there for
      * the case where Cloudflare itself is unreachable.
+     *
+     * <p>{@code /cdn-cgi/trace} is ahead of {@code speed.cloudflare.com/meta} because /meta answers
+     * 403 through a public endpoint - seen on every engine in a real device log, on Turbo, Global
+     * and Prowl alike. The chain recovered each time, so nothing was broken, but it cost a wasted
+     * request and a misleading failure line on every single connect. Trace answers where /meta
+     * refuses, and carries the same country field.
      */
     private static final String[][] LOCATION_PROVIDERS = {
-            {"speed.cloudflare.com", "/meta"},
             {"www.cloudflare.com", "/cdn-cgi/trace"},
+            {"speed.cloudflare.com", "/meta"},
             {"ipwho.is", "/"},
             {"ipapi.co", "/json/"},
     };

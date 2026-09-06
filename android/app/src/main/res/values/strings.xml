@@ -247,16 +247,7 @@
     <string name="region_picker_note">Automatic is usually fastest — pick a country only when you need one.</string>
     <string name="region_picker_note_global">Applies to Global. Automatic is usually fastest — pick a country only when you need one.</string>
 
-    <!-- Connection log -->
-    <string name="nav_log">Connection log</string>
-    <string name="log_dialog_title">Connection log</string>
-    <string name="log_dialog_empty">Nothing logged yet. Connect once, then come back here.</string>
-    <string name="log_copy">Copy</string>
     <string name="log_share">Share</string>
-    <string name="log_clear">Clear</string>
-    <string name="log_close">Close</string>
-    <string name="log_copied">Log copied to the clipboard.</string>
-    <string name="log_share_title">Panther connection log</string>
     <string name="region_picker_search">Search countries</string>
     <string name="region_picker_no_match">No country matches that.</string>
     <string name="region_automatic_detail">Let the engine choose the fastest route</string>

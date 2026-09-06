@@ -59,6 +59,8 @@ public final class GlobalCore {
     private final AtomicInteger socksPort = new AtomicInteger(-1);
     private final AtomicBoolean connected = new AtomicBoolean();
     private final AtomicBoolean stopped = new AtomicBoolean();
+    /** Counts the UDP refusals swallowed by onDiagnosticMessage; see GlobalNoise. */
+    private final AtomicInteger udpRefusals = new AtomicInteger();
     private final CountDownLatch ready = new CountDownLatch(1);
 
     private volatile PsiphonTunnel tunnel;
@@ -233,7 +235,19 @@ public final class GlobalCore {
 
         @Override public void onUpstreamProxyError(String message) { listener.onLog(message); }
 
-        @Override public void onDiagnosticMessage(String message) { listener.onLog(message); }
+        @Override public void onDiagnosticMessage(String message) {
+            // One refusal per UDP datagram would otherwise bury everything else in the log.
+            // Counted and reported in batches rather than dropped - see GlobalNoise.
+            if (GlobalNoise.isRepeatedUdpRefusal(message)) {
+                int total = udpRefusals.incrementAndGet();
+                if (total == 1 || total % 50 == 0) {
+                    String line = GlobalNoise.summary(total);
+                    if (line != null) listener.onLog(line);
+                }
+                return;
+            }
+            listener.onLog(message);
+        }
 
         @Override public void onClientRegion(String region) { /* where the user is, not the exit */ }
 
