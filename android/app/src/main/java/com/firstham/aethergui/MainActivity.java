@@ -2,8 +2,6 @@ package com.firstham.aethergui;
 
 import android.animation.ValueAnimator;
 import android.content.BroadcastReceiver;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
@@ -12,7 +10,6 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.net.VpnService;
@@ -30,10 +27,8 @@ import android.widget.ArrayAdapter;
 import android.widget.Toast;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.activity.OnBackPressedCallback;
@@ -183,7 +178,6 @@ public final class MainActivity extends AppCompatActivity {
             binding.root.closeDrawer(GravityCompat.START);
             // The log is a dialog rather than a page, so it must not become the checked item -
             // the drawer would be left highlighting a screen that is not on screen.
-            if (item.getItemId() == R.id.nav_log) { showConnectionLog(); return false; }
             selectPage(item);
             return true;
         });
@@ -388,57 +382,6 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) { super.onActivityResult(requestCode, resultCode, data); if (requestCode == VPN_REQUEST) { if (resultCode == RESULT_OK) startSelectedEngine(); else Toast.makeText(this, R.string.vpn_permission_denied, Toast.LENGTH_LONG).show(); } else if (requestCode == APPS_REQUEST) { if (data != null && data.getBooleanExtra(AppSelectionActivity.EXTRA_RETURN_HOME, false)) showPage("connect"); else if (resultCode == RESULT_OK && data != null) { String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; preferences.edit().putString(key, data.getStringExtra(AppSelectionActivity.EXTRA_PACKAGES)).apply(); updateSelectedCount(); saveSettings(); } } }
-
-    /**
-     * Shows the connection log, with a way to copy it out.
-     *
-     * <p>The service has always kept this - it writes every phase, every engine decision and every
-     * failure into it, and persists it across restarts. There was simply no way to read it from
-     * the app, which made every question about why a connection behaved the way it did
-     * unanswerable from the one device that knows. Read straight from the service's own store
-     * rather than from broadcasts, so lines written before this screen was opened are there too.
-     */
-    private void showConnectionLog() {
-        String log = getSharedPreferences("service_state", MODE_PRIVATE).getString("logs", "");
-        boolean empty = log == null || log.trim().isEmpty();
-        final String contents = empty ? "" : log;
-
-        TextView view = new TextView(this);
-        view.setText(empty ? getString(R.string.log_dialog_empty) : contents);
-        view.setTextIsSelectable(true);
-        view.setTypeface(Typeface.MONOSPACE);
-        view.setTextSize(11f);
-        int padding = Math.round(16 * getResources().getDisplayMetrics().density);
-        view.setPadding(padding, padding, padding, padding);
-
-        ScrollView scroller = new ScrollView(this);
-        scroller.addView(view);
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(R.string.log_dialog_title)
-                .setView(scroller)
-                .setPositiveButton(R.string.log_copy, (d, which) -> copyLog(contents))
-                .setNeutralButton(R.string.log_clear, (d, which) -> clearLog())
-                .setNegativeButton(R.string.log_close, null)
-                .create();
-        dialog.show();
-        // Newest lines last, so open at the bottom: the interesting part of a log is always the
-        // end, and scrolling a few hundred lines by hand to reach it is not a thing to ask.
-        scroller.post(() -> scroller.fullScroll(View.FOCUS_DOWN));
-    }
-
-    private void copyLog(String contents) {
-        if (contents.isEmpty()) return;
-        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (clipboard == null) return;
-        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.log_share_title), contents));
-        Toast.makeText(this, R.string.log_copied, Toast.LENGTH_SHORT).show();
-    }
-
-    private void clearLog() {
-        startService(new Intent(this, AetherVpnService.class)
-                .setAction(AetherVpnService.ACTION_CLEAR_LOGS));
-    }
 
     private void renderState(String newState, String message) {
         state = newState == null ? "disconnected" : newState;

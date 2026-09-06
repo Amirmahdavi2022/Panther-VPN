@@ -4,8 +4,7 @@
   "version": "2.9.6",
   "type": "module",
   "scripts": {
-    "fetch:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-android-assets.ps1",
-    "build:android": "cd android && gradlew.bat assembleRelease",
-    "fetch:android:posix": "bash scripts/fetch-android-assets.sh"
+    "fetch:android": "bash scripts/fetch-android-assets.sh",
+    "build:android": "cd android && ./gradlew assembleRelease"
   }
 }
