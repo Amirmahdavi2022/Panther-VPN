@@ -2,7 +2,9 @@ name: Android release
 
 on:
   push:
-    branches: [main]
+    # Tags only. A push to main is the commit the pull request just built, and this workflow
+    # publishes nothing unless it is running on a tag, so building it again cost a full run per
+    # merge and produced nothing. Use workflow_dispatch to build a branch on purpose.
     tags: ["v*"]
   pull_request:
     branches: [main]

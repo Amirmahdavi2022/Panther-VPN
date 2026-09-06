@@ -63,7 +63,6 @@ public final class AetherVpnService extends VpnService {
     private static final int NOTIFICATION_ID = 1819;
     private static final int SOCKS_TIMEOUT_MS = 120_000;
     private static final int SMART_PROTOCOL_TIMEOUT_MS = 35_000;
-    private static final int MAX_RECONNECT_ATTEMPTS = 5;
     // The Global engine sweeps for a working route on a cold start, which is slower
     // than the other core's endpoint scan.
     private static final long GLOBAL_TIMEOUT_MS = 150_000L;
@@ -284,7 +283,12 @@ public final class AetherVpnService extends VpnService {
                 updateState("connected", getString(R.string.service_proxy_ready));
                 updateNotification(getString(R.string.service_proxy_connected));
             } else {
-                establishVpn(request);
+                // Decided from the engine that ended up carrying the tunnel, not the one that was
+                // armed. A Global run that degraded to the carrier is on an engine that forwards
+                // UDP perfectly well, and should keep the ordinary DNS path.
+                boolean mappedDns = TunnelConfig.usesMappedDns(global ? "global" : "");
+                if (mappedDns) sendLog("Global cannot forward UDP, so DNS is answered inside the tunnel");
+                establishVpn(request, mappedDns);
                 connectedAt = System.currentTimeMillis();
                 updateState("connected", degradedToCarrier && degradedNotice != null
                         ? degradedNotice : getString(R.string.service_protected));
@@ -316,7 +320,7 @@ public final class AetherVpnService extends VpnService {
         }
     }
 
-    private void establishVpn(Intent request) throws Exception {
+    private void establishVpn(Intent request, boolean mappedDns) throws Exception {
         Builder builder = new Builder()
                 .setSession(getString(R.string.app_name))
                 .setMtu(request.getIntExtra("mtu", 1500))
@@ -328,14 +332,26 @@ public final class AetherVpnService extends VpnService {
         if ("bypass-local".equals(routing)) addPublicRoutes(builder);
         else builder.addRoute("0.0.0.0", 0).addRoute("::", 0);
 
-        if (request.getBooleanExtra("dnsLeak", true)) {
+        if (mappedDns) {
+            // The default routing mode leaves private ranges to the local network, and the range
+            // the bridge draws its answers from is one of them. Without this route every name
+            // would resolve and nothing would connect - the quietest possible way to break.
+            builder.addRoute(TunnelConfig.MAPPED_NETWORK, TunnelConfig.MAPPED_PREFIX);
+        }
+
+        if (mappedDns) {
+            // Queries have to reach the bridge's own listener to be answered inside the tunnel.
+            // Pointing at a public resolver instead would send them straight back out over UDP,
+            // which is the thing this engine cannot do.
+            builder.addDnsServer(TunnelConfig.MAPPED_DNS_ADDRESS);
+        } else if (request.getBooleanExtra("dnsLeak", true)) {
             builder.addDnsServer("1.1.1.1").addDnsServer("1.0.0.1");
         }
         applySplitApps(builder, request);
         vpnInterface = builder.establish();
         if (vpnInterface == null) throw new IllegalStateException("Android could not create the VPN interface");
 
-        File config = writeTunConfig(request);
+        File config = writeTunConfig(request, mappedDns);
         try {
             TProxyService.TProxyStartService(config.getAbsolutePath(), vpnInterface.getFd());
             bridgeStarted = true;
@@ -990,6 +1006,10 @@ public final class AetherVpnService extends VpnService {
 
     private void monitorAether(Intent request, long session) throws Exception {
         int attempts = 0;
+        // Starts when the first recovery does, not when the connection did, and is reset by a core
+        // that genuinely came back. Time spent waiting for the phone to have a network at all is
+        // not charged against it - that is the user's train going into a tunnel, not a failure.
+        long recoveryStartedAt = 0;
         while (!stopping && generation.get() == session) {
             Process process = aetherProcess;
             if (process == null) return;
@@ -1002,25 +1022,40 @@ public final class AetherVpnService extends VpnService {
             }
             waitForUnderlyingNetwork(session);
             if (stopping || generation.get() != session) return;
-            if (System.currentTimeMillis() - processStartedAt >= 60_000L) attempts = 0;
+            if (ReconnectPolicy.recovered(System.currentTimeMillis() - processStartedAt)) {
+                attempts = 0;
+                recoveryStartedAt = 0;
+            }
+            if (recoveryStartedAt == 0) recoveryStartedAt = System.currentTimeMillis();
             attempts++;
-            if (attempts > MAX_RECONNECT_ATTEMPTS) {
-                throw new IllegalStateException(getString(R.string.service_reconnect_failed, MAX_RECONNECT_ATTEMPTS));
+            long elapsed = System.currentTimeMillis() - recoveryStartedAt;
+            if (ReconnectPolicy.exhausted(attempts, elapsed)) {
+                throw new IllegalStateException(getString(R.string.service_reconnect_failed, ReconnectPolicy.MAX_ATTEMPTS));
             }
             currentEndpoint = "";
             currentLocationDetail = "";
             // The edge we were using just died on us. Retrying the same address is the one thing
             // guaranteed not to help, so drop it and let the next start sweep for another one.
             forgetScannedPeer();
-            updateState("reconnecting", getString(R.string.service_reconnecting));
-            Thread.sleep(Math.min(20_000L, 1_500L << (attempts - 1)));
-            if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
+            // Says which attempt this is. A silent "reconnecting" for minutes on end is
+            // indistinguishable from a frozen app, which is how this used to read.
+            updateState("reconnecting", getString(R.string.service_reconnecting_attempt,
+                    attempts, ReconnectPolicy.MAX_ATTEMPTS));
+            Thread.sleep(ReconnectPolicy.backoffMs(attempts));
+            if (stopping || generation.get() != session) return;
+            long timeout = ReconnectPolicy.remainingTimeoutMs(System.currentTimeMillis() - recoveryStartedAt);
+            if (timeout <= 0) {
+                throw new IllegalStateException(getString(R.string.service_reconnect_failed, ReconnectPolicy.MAX_ATTEMPTS));
+            }
+            if (!startAetherWithMasqueFallback(request, timeout)) {
                 sendLog(aetherExitMessage("Turbo reconnect attempt did not become ready"));
                 Process retry = aetherProcess;
                 if (retry != null && retry.isAlive()) retry.destroy();
                 continue;
             }
             recoveryRestartPending.set(false);
+            attempts = 0;
+            recoveryStartedAt = 0;
             updateState("connected", getString(R.string.service_restored));
             updateNotification(getString(R.string.service_restored));
             scheduleLocationLookup(request, session);
@@ -1311,23 +1346,12 @@ public final class AetherVpnService extends VpnService {
         return "MASQUE";
     }
 
-    private File writeTunConfig(Intent request) throws Exception {
+    private File writeTunConfig(Intent request, boolean mappedDns) throws Exception {
         HostPort socks = HostPort.parse(value(request, "socks", "127.0.0.1:1819"));
         File config = new File(getCacheDir(), "hev.yml");
         try (FileWriter writer = new FileWriter(config, false)) {
-            writer.write("misc:\n");
-            writer.write("  task-stack-size: 32768\n");
-            writer.write("  connect-timeout: 15000\n");
-            writer.write("  log-level: warn\n");
-            writer.write("tunnel:\n");
-            writer.write("  mtu: " + request.getIntExtra("mtu", 1500) + "\n");
-            writer.write("  ipv4: 198.18.0.1\n");
-            writer.write("  ipv6: 'fc00::1'\n");
-            writer.write("  icmp: 'reply'\n");
-            writer.write("socks5:\n");
-            writer.write("  address: '" + yamlEscape(socks.host) + "'\n");
-            writer.write("  port: " + socks.port + "\n");
-            writer.write("  udp: 'udp'\n");
+            writer.write(TunnelConfig.render(socks.host, socks.port,
+                    request.getIntExtra("mtu", 1500), mappedDns));
         }
         return config;
     }
@@ -1641,8 +1665,6 @@ public final class AetherVpnService extends VpnService {
         String message = error.getMessage();
         return message == null || message.trim().isEmpty() ? error.getClass().getSimpleName() : message;
     }
-
-    private static String yamlEscape(String value) { return value.replace("'", "''"); }
 
     private static String reliableEndpoint(Intent request) {
         String peer = request.getStringExtra("peer");
