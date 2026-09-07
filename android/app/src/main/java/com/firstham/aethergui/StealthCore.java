@@ -8,8 +8,11 @@ import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -70,6 +73,15 @@ public final class StealthCore {
 
     /** How many endpoints to try before giving up on this run. */
     static final int MAX_ATTEMPTS = 6;
+
+    /**
+     * How many fan-out rounds one connect may run.
+     *
+     * <p>A round carries up to sixteen endpoints on every route at once, so four of them reach
+     * sixty-four endpoints — an order of magnitude past what the old one-at-a-time loop managed
+     * inside the same clock, and more than the saved pool holds.
+     */
+    static final int MAX_ROUNDS = 4;
 
     /**
      * How long the dial loop may keep trying before it gives up and lets the carrier hold the
@@ -353,24 +365,167 @@ public final class StealthCore {
         // the user watching a spinner. The clock decides when to stop, and the attempt count only
         // caps how many are tried inside it.
         long deadline = System.currentTimeMillis() + budgetMs;
-        for (int attempt = 0; attempt < MAX_ATTEMPTS && !stopped.get(); attempt++) {
-            if (attempt > 0 && System.currentTimeMillis() > deadline) {
-                listener.onLog("Stealth stopped dialling after " + attempt
+        int tested = 0;
+        for (int round = 0; round < MAX_ROUNDS && !stopped.get(); round++) {
+            if (round > 0 && System.currentTimeMillis() > deadline) {
+                listener.onLog("Stealth stopped dialling after " + tested
                         + " endpoints; none of them held within the time budget");
                 break;
             }
-            ProxyConfig candidate = nextCandidate();
-            if (candidate == null) {
+            List<ProxyConfig> candidates = nextCandidates(StealthBatch.MAX_CANDIDATES);
+            if (candidates.isEmpty()) {
                 listener.onLog("Stealth has no untried endpoint left in the pool");
                 break;
             }
-            attempted.add(candidate.key());
-            if (dial(candidate)) return true;
+            tested += candidates.size();
+            if (dialRound(candidates)) return true;
         }
         if (!stopped.get()) {
             listener.onState("error", host.getString(R.string.service_engine_stopped));
         }
         return false;
+    }
+
+    /**
+     * Tries a whole round at once and starts the winner.
+     *
+     * <p>🔑 One core process holds every attempt in the round, each on its own local port, and the
+     * ports are probed in parallel. Measured against the real binary: forty attempts are all
+     * listening 0.05s after the process starts, and probing them together costs about what a
+     * single endpoint cost under the old serial loop. That is the entire reason this exists — the
+     * old loop spent a whole connect budget learning about six endpoints out of four hundred.
+     *
+     * <p>The round only decides WHICH endpoint and which route. Establishing the connection is
+     * still {@link #dialOnce}, unchanged, on the real SOCKS port — so the path that carries the
+     * user's traffic is the same one it has always been.
+     */
+    private boolean dialRound(List<ProxyConfig> candidates) {
+        int[] modes = StealthPlan.modes(carrier != null, spoof.available(), preferredRoute);
+        List<XrayConfig.Attempt> round = StealthBatch.plan(candidates, modes);
+        if (round.isEmpty()) return false;
+
+        boolean needsSpoof = false;
+        for (XrayConfig.Attempt attempt : round) {
+            if (attempt.mode == StealthPlan.MODE_SPOOF) needsSpoof = true;
+        }
+        // Failing to start the shaping proxy is not evidence about any endpoint, so the round is
+        // rebuilt without that route rather than run with attempts that were never going to dial.
+        if (needsSpoof && !spoof.start()) {
+            listener.onLog("Stealth could not start the local shaping proxy; leaving that route out");
+            List<Integer> without = new ArrayList<>();
+            for (int mode : modes) if (mode != StealthPlan.MODE_SPOOF) without.add(mode);
+            int[] left = new int[without.size()];
+            for (int i = 0; i < left.length; i++) left[i] = without.get(i);
+            round = StealthBatch.plan(candidates, left);
+            needsSpoof = false;
+            if (round.isEmpty()) return false;
+        }
+
+        boolean hopsBefore = hopsAlive(round);
+        stopProcess();
+        try {
+            String config = XrayConfig.buildFanout(round, StealthBatch.BASE_PORT, "warning",
+                    carrier, needsSpoof ? spoof.address() : null);
+            startProcess(writeText(config, "stealth-round.json"));
+        } catch (Throwable error) {
+            listener.onLog("Stealth could not start the round: " + error.getMessage());
+            stopProcess();
+            return false;
+        }
+
+        long[] latencies;
+        try {
+            if (!waitForListener(StealthBatch.portFor(round.size() - 1))) {
+                listener.onLog("Stealth round never opened its listeners");
+                return false;
+            }
+            latencies = probeRound(round.size());
+        } finally {
+            stopProcess();
+        }
+
+        Set<Integer> answered = new HashSet<>();
+        for (int i = 0; i < latencies.length; i++) if (latencies[i] >= 0) answered.add(i);
+        listener.onLog("Stealth round: " + candidates.size() + " endpoints on " + round.size()
+                + " ports, " + answered.size() + " came back");
+
+        int winner = StealthBatch.best(latencies);
+        if (winner >= 0) {
+            XrayConfig.Attempt won = round.get(winner);
+            // Everything the round learned is thrown away except this one pair, deliberately: the
+            // round proves reachability on a scratch port, and only a real start on the real port
+            // proves the tunnel.
+            if (dialOnce(won.endpoint, won.mode, System.currentTimeMillis())) return true;
+        }
+
+        // 🚨 Only now, and only if the round was worth believing. See StealthBatch.
+        if (StealthBatch.shouldRecordFailures(hopsBefore, hopsAlive(round))) {
+            long now = System.currentTimeMillis();
+            for (String key : StealthBatch.failedEverywhere(round, answered)) {
+                pool.recordFailure(key, now);
+            }
+        } else {
+            listener.onLog("Stealth round lost its hop partway through; not blaming the endpoints");
+        }
+        return false;
+    }
+
+    /**
+     * Whether the hops this round depends on are answering.
+     *
+     * <p>Checked before and after, because a hop that dies partway through turns a round into a
+     * measurement of the hop. A round that only dials directly depends on nothing, so it is always
+     * intact.
+     */
+    private boolean hopsAlive(List<XrayConfig.Attempt> round) {
+        boolean usesCarrier = false;
+        for (XrayConfig.Attempt attempt : round) {
+            if (attempt.mode == StealthPlan.MODE_CHAINED) usesCarrier = true;
+        }
+        if (!usesCarrier) return true;
+        String[] hop = XrayConfig.carrierHop(carrier);
+        return hop != null && SocksProbe.opens(hop[0], Integer.parseInt(hop[1]), 1_500);
+    }
+
+    /** Probes every port in the round at once. Negative means that attempt did not answer. */
+    private long[] probeRound(int count) {
+        final long[] out = new long[count];
+        Arrays.fill(out, -1L);
+        List<Thread> threads = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            final int index = i;
+            Thread worker = new Thread(new Runnable() {
+                @Override public void run() {
+                    if (stopped.get()) return;
+                    out[index] = SocksProbe.latencyMillis(XrayConfig.SOCKS_LISTEN,
+                            StealthBatch.portFor(index), CANDIDATE_TIMEOUT_MS);
+                }
+            }, "stealth-probe-" + i);
+            worker.setDaemon(true);
+            threads.add(worker);
+            worker.start();
+        }
+        for (Thread worker : threads) {
+            try {
+                worker.join(CANDIDATE_TIMEOUT_MS + 2_000L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return out;
+    }
+
+    /** The next {@code n} untried endpoints, best-scoring first. */
+    private List<ProxyConfig> nextCandidates(int n) {
+        List<ProxyConfig> out = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            ProxyConfig candidate = nextCandidate();
+            if (candidate == null) break;
+            attempted.add(candidate.key());
+            out.add(candidate);
+        }
+        return out;
     }
 
     /**
@@ -508,11 +663,13 @@ public final class StealthCore {
     }
 
     /** Waits for something to accept on the port, so the probe is not raced against startup. */
-    private boolean waitForListener() {
+    private boolean waitForListener() { return waitForListener(socksPort); }
+
+    private boolean waitForListener(int port) {
         long deadline = System.currentTimeMillis() + LISTENER_TIMEOUT_MS;
         while (System.currentTimeMillis() < deadline && !stopped.get()) {
             if (!isProcessAlive()) return false;
-            if (SocksProbe.reaches(XrayConfig.SOCKS_LISTEN, socksPort,
+            if (SocksProbe.reaches(XrayConfig.SOCKS_LISTEN, port,
                     SocksProbe.PROBE_HOST(), SocksProbe.PROBE_PORT, 800)) {
                 return true;
             }
@@ -599,6 +756,15 @@ public final class StealthCore {
 
     private File writeConfig(ProxyConfig candidate, String hop) throws Exception {
         return writeConfig(candidate, hop, socksPort, "stealth.json");
+    }
+
+    /** Writes a config that was built elsewhere - the round builds its own. */
+    private File writeText(String json, String name) throws Exception {
+        File config = new File(directory(), name);
+        try (FileOutputStream out = new FileOutputStream(config)) {
+            out.write(json.getBytes(StandardCharsets.UTF_8));
+        }
+        return config;
     }
 
     private File writeConfig(ProxyConfig candidate, String hop, int port, String name)

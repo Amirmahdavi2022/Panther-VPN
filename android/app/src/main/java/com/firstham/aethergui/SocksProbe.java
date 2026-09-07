@@ -153,6 +153,22 @@ final class SocksProbe {
      * Whether the proxy's handshake completes. Says nothing about the tunnel behind it - see the
      * warning on {@link #connect}. Useful only for checking that something is listening.
      */
+    /**
+     * Whether a SOCKS hop is accepting connections at all.
+     *
+     * <p>Deliberately weaker than {@link #reaches}: this asks only whether the hop is still there,
+     * which is the question worth asking about a carrier that may have died under a round in
+     * flight. Sending real traffic through it would measure the tunnel beyond it as well.
+     */
+    static boolean opens(String host, int port, int timeoutMs) {
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(host, port), timeoutMs);
+            return socket.isConnected();
+        } catch (Exception unreachable) {
+            return false;
+        }
+    }
+
     static boolean reaches(String proxyHost, int proxyPort, String host, int port, int timeoutMs) {
         Socket socket = null;
         try {

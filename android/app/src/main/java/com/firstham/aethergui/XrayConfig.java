@@ -65,6 +65,16 @@ final class XrayConfig {
      */
     static final String FRAGMENT_TAG = "fragment";
 
+    /**
+     * The outbound that points at the local handshake-shaping proxy.
+     *
+     * <p>Same mechanism as {@link #CARRIER_TAG} — an ordinary SOCKS5 hop named by
+     * {@code sockopt.dialerProxy}. The difference is only where it leads: the carrier moves the
+     * connection's origin off this network, while this one leaves from here and reshapes the
+     * handshake on the way out.
+     */
+    static final String SPOOF_TAG = "spoof";
+
     private XrayConfig() { }
 
     /**
@@ -173,7 +183,8 @@ final class XrayConfig {
         boolean chained = hop != null;
         boolean fragmented = !chained && isSecured(endpoint);
         json.append("\"outbounds\":[");
-        appendProxyOutbound(json, endpoint, chained, fragmented);
+        appendProxyOutbound(json, endpoint, "proxy",
+                chained ? CARRIER_TAG : fragmented ? FRAGMENT_TAG : null);
         if (fragmented) appendFragmentOutbound(json);
         if (chained) appendCarrierOutbound(json, hop[0], Integer.parseInt(hop[1]));
         json.append(",{\"tag\":").append(quote(DIRECT_TAG)).append(",\"protocol\":\"freedom\"}")
@@ -202,6 +213,154 @@ final class XrayConfig {
     }
 
     /**
+     * One endpoint tried one way — the unit the fan-out config is built from.
+     *
+     * <p>The mode travels with the endpoint rather than being applied to the whole config,
+     * because the point of the fan-out is that the same server can be tried three ways at once.
+     */
+    static final class Attempt {
+        final ProxyConfig endpoint;
+        final int mode;
+
+        Attempt(ProxyConfig endpoint, int mode) {
+            if (endpoint == null) throw new IllegalArgumentException("No endpoint");
+            this.endpoint = endpoint;
+            this.mode = mode;
+        }
+
+        @Override public String toString() { return endpoint + "/" + mode; }
+    }
+
+    /** The inbound tag for attempt {@code index}. Paired with {@link #outTag}. */
+    static String inTag(int index) { return "in-" + index; }
+
+    /** The outbound tag for attempt {@code index}. Paired with {@link #inTag}. */
+    static String outTag(int index) { return "out-" + index; }
+
+    /**
+     * A config that tries many attempts at once, each on its own local port.
+     *
+     * <p>🔑 This exists because the engine was testing one endpoint at a time, and the cost was
+     * not the network — it was the process. Every attempt stopped the core, started a fresh one,
+     * waited for its listener, probed it and killed it: about six seconds of wall clock to learn
+     * one bit about one server. A pool of four hundred cannot be searched six seconds at a time,
+     * and in practice a whole connect budget bought evidence about six of them.
+     *
+     * <p>The core itself was never the limit. Xray will hold as many inbounds and outbounds as it
+     * is given, and a routing rule per pair keeps them from mixing: traffic arriving on port
+     * {@code basePort + i} leaves through attempt {@code i} and nowhere else. So one process
+     * start buys N simultaneous probes instead of one, and the probes run in parallel because
+     * they are separate sockets, not separate processes.
+     *
+     * <p>The route is a property of each attempt, not of the config, so the same server can sit
+     * on three ports at once — direct, shaped and carried — and the first port to answer says
+     * both which server works and which way it works. That was previously three sequential
+     * six-second attempts.
+     *
+     * <p>Nothing here dials on its own. An outbound is inert until something connects to its
+     * inbound, so a config of eighty attempts costs eighty listening sockets and no traffic.
+     *
+     * @param attempts what to try, in the order their ports are assigned
+     * @param basePort the first local port; attempt {@code i} listens on {@code basePort + i}
+     * @param carrier  {@code host:port} of the carrier's SOCKS proxy, or null if none is up
+     * @param spoof    {@code host:port} of the local shaping proxy, or null if it is not running
+     */
+    static String buildFanout(java.util.List<Attempt> attempts, int basePort, String logLevel,
+                              String carrier, String spoof) {
+        if (attempts == null || attempts.isEmpty()) {
+            throw new IllegalArgumentException("No attempts to fan out");
+        }
+        if (basePort <= 0 || basePort + attempts.size() - 1 > 65535) {
+            throw new IllegalArgumentException("Port range does not fit: " + basePort
+                    + " + " + attempts.size());
+        }
+        String[] carrierHop = carrierHop(carrier);
+        String[] spoofHop = carrierHop(spoof);
+
+        // Worked out before anything is written, so an attempt whose hop is missing is refused
+        // here rather than silently emitted as a direct dial. A spoof attempt quietly demoted to
+        // direct would be recorded as "shaping did not help" on evidence that never involved it.
+        String[] hops = new String[attempts.size()];
+        boolean needCarrier = false, needSpoof = false, needFragment = false;
+        for (int i = 0; i < attempts.size(); i++) {
+            Attempt attempt = attempts.get(i);
+            if (!supports(attempt.endpoint)) {
+                throw new IllegalArgumentException("The Stealth engine cannot dial "
+                        + attempt.endpoint);
+            }
+            switch (attempt.mode) {
+                case StealthPlan.MODE_CHAINED:
+                    if (carrierHop == null) {
+                        throw new IllegalArgumentException("Chained attempt with no carrier");
+                    }
+                    hops[i] = CARRIER_TAG;
+                    needCarrier = true;
+                    break;
+                case StealthPlan.MODE_SPOOF:
+                    if (spoofHop == null) {
+                        throw new IllegalArgumentException("Spoof attempt with no shaping proxy");
+                    }
+                    hops[i] = SPOOF_TAG;
+                    needSpoof = true;
+                    break;
+                default:
+                    // Same rule as the single-endpoint config: fragment the hello on the direct
+                    // route only, and only when there is a TLS hello to fragment.
+                    if (isSecured(attempt.endpoint)) {
+                        hops[i] = FRAGMENT_TAG;
+                        needFragment = true;
+                    }
+                    break;
+            }
+        }
+
+        StringBuilder json = new StringBuilder(1024 + 512 * attempts.size());
+        json.append("{\"log\":{\"loglevel\":").append(quote(level(logLevel))).append("},");
+
+        json.append("\"inbounds\":[");
+        for (int i = 0; i < attempts.size(); i++) {
+            if (i > 0) json.append(",");
+            json.append("{\"tag\":").append(quote(inTag(i))).append(",\"listen\":")
+                .append(quote(SOCKS_LISTEN)).append(",\"port\":").append(basePort + i)
+                .append(",\"protocol\":\"socks\",\"settings\":{\"auth\":\"noauth\",\"udp\":true,")
+                .append("\"address\":\"127.0.0.1\"},")
+                .append("\"sniffing\":{\"enabled\":true,\"destOverride\":[\"http\",\"tls\",\"quic\"],")
+                .append("\"routeOnly\":false}}");
+        }
+        json.append("],");
+
+        // Same reasoning as the single-endpoint config: the binary has no /etc/resolv.conf, and
+        // these queries have to be answerable before any tunnel exists, so they go over TCP to a
+        // route that is up already.
+        json.append("\"dns\":{\"servers\":[\"tcp://1.1.1.1\",\"tcp://8.8.8.8\"],")
+            .append("\"queryStrategy\":\"UseIP\",\"disableCache\":false},");
+
+        json.append("\"outbounds\":[");
+        for (int i = 0; i < attempts.size(); i++) {
+            if (i > 0) json.append(",");
+            appendProxyOutbound(json, attempts.get(i).endpoint, outTag(i), hops[i]);
+        }
+        if (needFragment) appendFragmentOutbound(json);
+        if (needCarrier) appendCarrierOutbound(json, carrierHop[0], Integer.parseInt(carrierHop[1]));
+        if (needSpoof) {
+            appendSocksOutbound(json, SPOOF_TAG, spoofHop[0], Integer.parseInt(spoofHop[1]));
+        }
+        json.append(",{\"tag\":").append(quote(DIRECT_TAG)).append(",\"protocol\":\"freedom\"}")
+            .append(",{\"tag\":\"block\",\"protocol\":\"blackhole\"}],");
+
+        json.append("\"routing\":{\"domainStrategy\":\"AsIs\",\"rules\":[");
+        for (int i = 0; i < attempts.size(); i++) {
+            json.append("{\"type\":\"field\",\"inboundTag\":[").append(quote(inTag(i)))
+                .append("],\"outboundTag\":").append(quote(outTag(i))).append("},");
+        }
+        // Every inbound is claimed above, so only the core's own resolver reaches this rule -
+        // exactly as in the single-endpoint config, and for the same reason.
+        json.append("{\"type\":\"field\",\"port\":\"53\",\"outboundTag\":")
+            .append(quote(needCarrier ? CARRIER_TAG : DIRECT_TAG)).append("}]}}");
+        return json.toString();
+    }
+
+    /**
      * The hop that makes this engine survive a network where its own endpoints are blocked.
      *
      * <p>🔑 Reaching a public endpoint from the outside is one problem; reaching it from a network
@@ -216,7 +375,12 @@ final class XrayConfig {
      * opened by another outbound.
      */
     private static void appendCarrierOutbound(StringBuilder json, String host, int port) {
-        json.append(",{\"tag\":").append(quote(CARRIER_TAG))
+        appendSocksOutbound(json, CARRIER_TAG, host, port);
+    }
+
+    /** Any named SOCKS5 hop. Both the carrier and the shaping proxy are exactly this. */
+    private static void appendSocksOutbound(StringBuilder json, String tag, String host, int port) {
+        json.append(",{\"tag\":").append(quote(tag))
             .append(",\"protocol\":\"socks\",\"settings\":{\"servers\":[{\"address\":")
             .append(quote(host)).append(",\"port\":").append(port).append("}]}}");
     }
@@ -261,9 +425,10 @@ final class XrayConfig {
             .append(",\"streamSettings\":{\"sockopt\":{\"TcpNoDelay\":true}}}");
     }
 
-    private static void appendProxyOutbound(StringBuilder json, ProxyConfig endpoint, boolean chained,
-                                            boolean fragmented) {
-        json.append("{\"tag\":\"proxy\",\"protocol\":").append(quote(protocolName(endpoint)))
+    private static void appendProxyOutbound(StringBuilder json, ProxyConfig endpoint, String tag,
+                                            String hopTag) {
+        json.append("{\"tag\":").append(quote(tag)).append(",\"protocol\":")
+            .append(quote(protocolName(endpoint)))
             .append(",\"settings\":{");
         switch (endpoint.protocol) {
             case "vless":   appendVless(json, endpoint); break;
@@ -271,7 +436,7 @@ final class XrayConfig {
             default:        appendShadowsocks(json, endpoint); break;
         }
         json.append("}");
-        appendStreamSettings(json, endpoint, chained, fragmented);
+        appendStreamSettings(json, endpoint, hopTag);
         json.append("}");
     }
 
@@ -316,7 +481,7 @@ final class XrayConfig {
     }
 
     private static void appendStreamSettings(StringBuilder json, ProxyConfig endpoint,
-                                             boolean chained, boolean fragmented) {
+                                             String hopTag) {
         String network = network(endpoint);
         String security = security(endpoint);
         json.append(",\"streamSettings\":{\"network\":").append(quote(network))
@@ -324,8 +489,7 @@ final class XrayConfig {
             // Resolve the server address through the core's own DNS above rather than through the
             // platform, for the same reason.
             .append(",\"sockopt\":{\"domainStrategy\":\"UseIP\"");
-        if (chained) json.append(",\"dialerProxy\":").append(quote(CARRIER_TAG));
-        else if (fragmented) json.append(",\"dialerProxy\":").append(quote(FRAGMENT_TAG));
+        if (hopTag != null) json.append(",\"dialerProxy\":").append(quote(hopTag));
         json.append("}");
 
         if ("reality".equals(security)) appendReality(json, endpoint);
