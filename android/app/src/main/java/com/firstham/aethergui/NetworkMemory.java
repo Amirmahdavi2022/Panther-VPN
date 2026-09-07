@@ -9,12 +9,18 @@ import java.util.Map;
 /**
  * Remembers which way out worked, per network rather than per device.
  *
- * <p>Stealth can reach its endpoints two ways: straight out, or through the carrier tunnel. Which
- * one works is a property of the network the phone is on, not of the phone — a SIM that needs the
- * carrier hop this morning is sitting next to a wifi connection that does not. Until now that
- * answer was kept as a single flag for the whole app, so every move between mobile data and wifi
- * started by trying the way that had worked somewhere else, failing, and trying again. The user
- * pays for that in seconds, every time, on the connect they were already waiting through.
+ * <p>Stealth can reach its endpoints three ways: straight out, straight out with the handshake
+ * shaped, or through the carrier tunnel. Which one works is a property of the network the phone is
+ * on, not of the phone — a SIM that needs the carrier hop this morning is sitting next to a wifi
+ * connection that does not. Until now that answer was kept as a single flag for the whole app, so
+ * every move between mobile data and wifi started by trying the way that had worked somewhere
+ * else, failing, and trying again. The user pays for that in seconds, every time, on the connect
+ * they were already waiting through.
+ *
+ * <p>🚨 It is a route, not a boolean. It was stored as "chained or not" when there were two ways
+ * out, and the spoof route was added without widening it — so a spoof win was written down as
+ * "direct" and the next connect went out plain, on a network that had just demonstrated it needed
+ * the handshake shaped. A route that cannot be recorded is a route that never gets used twice.
  *
  * <p>Keeping it per network makes the cost of learning something you pay once per network instead
  * of once per switch.
@@ -40,7 +46,7 @@ final class NetworkMemory {
     static final String UNKNOWN = "unknown";
 
     /** Insertion-ordered, so the oldest entry is the first one out. */
-    private final Map<String, Boolean> chainedByNetwork = new LinkedHashMap<>();
+    private final Map<String, Integer> routeByNetwork = new LinkedHashMap<>();
 
     /**
      * A stable name for the network in use.
@@ -63,42 +69,63 @@ final class NetworkMemory {
         return trimmed.isEmpty() ? UNKNOWN : "cell:" + trimmed;
     }
 
-    /** Whether this network is known to need the carrier hop, or null when it has never been seen. */
-    Boolean chainedOn(String key) {
-        return key == null ? null : chainedByNetwork.get(key);
+    /** The route this network is known to allow, or null when it has never been seen. */
+    Integer routeOn(String key) {
+        return key == null ? null : routeByNetwork.get(key);
     }
 
     /**
      * What to try first on this network. Falls back to the answer given, which is the caller's own
      * previous global setting, so an upgrade does not throw away what the device already knew.
      */
-    boolean preferChainedOn(String key, boolean fallback) {
-        Boolean known = chainedOn(key);
+    int preferredRouteOn(String key, int fallback) {
+        Integer known = routeOn(key);
         return known == null ? fallback : known;
     }
 
-    /** Records what worked. Re-inserting moves the network to the newest end of the list. */
-    void remember(String key, boolean chained) {
+    /**
+     * Records what worked. Re-inserting moves the network to the newest end of the list.
+     *
+     * <p>An unrecognised mode is ignored rather than stored. A file written by a later version
+     * naming a route this build cannot dial would otherwise be read back as an instruction to try
+     * something that does not exist here.
+     */
+    void remember(String key, int route) {
         if (key == null || key.isEmpty()) return;
-        chainedByNetwork.remove(key);
-        chainedByNetwork.put(key, chained);
-        while (chainedByNetwork.size() > KEEP) {
-            String oldest = chainedByNetwork.keySet().iterator().next();
-            chainedByNetwork.remove(oldest);
+        if (!known(route)) return;
+        routeByNetwork.remove(key);
+        routeByNetwork.put(key, route);
+        while (routeByNetwork.size() > KEEP) {
+            String oldest = routeByNetwork.keySet().iterator().next();
+            routeByNetwork.remove(oldest);
         }
     }
 
-    int size() { return chainedByNetwork.size(); }
+    /** Whether this build can dial the route named. */
+    static boolean known(int route) {
+        return route == StealthPlan.MODE_DIRECT
+                || route == StealthPlan.MODE_CHAINED
+                || route == StealthPlan.MODE_SPOOF;
+    }
+
+    /** Forgets every network, so the next connect discovers its route from cold. */
+    void forget() { routeByNetwork.clear(); }
+
+    int size() { return routeByNetwork.size(); }
 
     /** The networks held, oldest first. */
-    List<String> networks() { return new ArrayList<>(chainedByNetwork.keySet()); }
+    List<String> networks() { return new ArrayList<>(routeByNetwork.keySet()); }
 
-    /** One network per line: {@code key<tab>0|1}. */
+    /**
+     * One network per line: {@code key<tab>route}.
+     *
+     * <p>The mode numbers are chosen so a file written before the spoof route existed still reads
+     * correctly: it held 0 for direct and 1 for chained, which are those modes' own values.
+     */
     String serialise() {
         StringBuilder out = new StringBuilder();
-        for (Map.Entry<String, Boolean> entry : chainedByNetwork.entrySet()) {
-            out.append(entry.getKey()).append('\t')
-               .append(entry.getValue() ? '1' : '0').append('\n');
+        for (Map.Entry<String, Integer> entry : routeByNetwork.entrySet()) {
+            out.append(entry.getKey()).append('\t').append(entry.getValue()).append('\n');
         }
         return out.toString();
     }
@@ -117,8 +144,13 @@ final class NetworkMemory {
             if (tab <= 0 || tab == row.length() - 1) continue;
             String key = row.substring(0, tab);
             String value = row.substring(tab + 1).trim();
-            if (!"0".equals(value) && !"1".equals(value)) continue;
-            memory.remember(key, "1".equals(value));
+            int route;
+            try {
+                route = Integer.parseInt(value);
+            } catch (NumberFormatException malformed) {
+                continue;
+            }
+            memory.remember(key, route);
         }
         return memory;
     }

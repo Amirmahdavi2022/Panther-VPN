@@ -659,11 +659,13 @@ public final class AetherVpnService extends VpnService {
         NetworkMemory networks =
                 NetworkMemory.deserialise(stateStore.getString("stealthNetworks", ""));
         // What worked on THIS network, falling back to the app's old single flag so an upgrade
-        // does not throw away what the device already knew.
-        boolean preferChained =
-                networks.preferChainedOn(networkKey, stateStore.getBoolean("stealthChained", false));
+        // does not throw away what the device already knew. The old flag only ever distinguished
+        // the carrier route from the direct one, which are those two modes' own values.
+        int preferredRoute = networks.preferredRouteOn(networkKey, stateStore.getInt("stealthRoute",
+                stateStore.getBoolean("stealthChained", false)
+                        ? StealthPlan.MODE_CHAINED : StealthPlan.MODE_DIRECT));
         StealthCore core = new StealthCore(this, pool, XrayConfig.SOCKS_PORT, carrierAddress,
-                preferChained, new StealthCore.Listener() {
+                preferredRoute, new StealthCore.Listener() {
             @Override public void onState(String state, String message) {
                 // The engine reports its own progress while it is still working through
                 // candidates. Only surface that before we are connected; afterwards the monitor
@@ -708,17 +710,17 @@ public final class AetherVpnService extends VpnService {
             stealthCore = null;
             return false;
         }
-        networks.remember(networkKey, core.isChained());
+        networks.remember(networkKey, core.routeMode());
         stateStore.edit()
-                .putBoolean("stealthChained", core.isChained())
+                .putInt("stealthRoute", core.routeMode())
                 .putString("stealthNetworks", networks.serialise())
                 .apply();
-        sendLog("Stealth remembered " + (core.isChained() ? "the carrier route" : "the direct route")
-                + " for this network");
+        sendLog("Stealth remembered the " + StealthPlan.modeName(core.routeMode())
+                + " route for this network");
         request.putExtra("socks", XrayConfig.SOCKS_LISTEN + ":" + core.socksPort());
         sendLog("Stealth engine ready; routing the tunnel through "
                 + XrayConfig.SOCKS_LISTEN + ":" + core.socksPort()
-                + (core.isChained() ? " (dialling out through the carrier)" : " (dialling out directly)"));
+                + " (dialling out on the " + StealthPlan.modeName(core.routeMode()) + " route)");
         return true;
     }
 

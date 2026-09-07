@@ -264,6 +264,12 @@ final class StealthPlan {
      * byte is faster for it. Once a run has learned which way works, that way is remembered and
      * tried first next time, so the cost of finding out is paid once rather than on every connect.
      *
+     * <p>⚠️ Superseded, and kept only for its tests. This is the two-route form from before the
+     * spoof route existed; the engine calls {@link #modes(boolean, boolean, int)} instead, which
+     * names a route rather than answering "chained or not". Do not wire anything new to this — a
+     * boolean cannot say "spoof", which is exactly how the spoof route came to be recorded as
+     * "direct" and thrown away on the next connect.
+     *
      * @param carrierAvailable whether a carrier tunnel is up to dial through
      * @param preferChained    what worked last time on this device
      */

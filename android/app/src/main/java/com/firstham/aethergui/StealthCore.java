@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -98,8 +99,8 @@ public final class StealthCore {
     /** A {@code host:port} SOCKS proxy to dial endpoints through, or null to only dial direct. */
     private final String carrier;
 
-    /** Which way worked last time on this device, tried first so the cost of learning is paid once. */
-    private final boolean preferChained;
+    /** Which way worked last time on this network, tried first so the cost of learning is paid once. */
+    private final int preferredRoute;
 
     /** The local shaping proxy used by the spoof route. Started only for that mode. */
     private final SpoofProxy spoof;
@@ -107,8 +108,16 @@ public final class StealthCore {
     /** Whether this run has established which way reaches an endpoint from this network. */
     private final AtomicBoolean modeProven = new AtomicBoolean();
 
-    /** The way that worked, once {@link #modeProven} is set. */
-    private final AtomicBoolean chained = new AtomicBoolean();
+    /**
+     * The way that worked, once {@link #modeProven} is set.
+     *
+     * <p>🚨 This was a boolean, and a spoof win recorded as {@code false} — "not chained", which
+     * is true but useless, because the only thing false could mean downstream was MODE_DIRECT. So
+     * proving the spoof route immediately threw it away: the rest of the run, the offline prover
+     * and the route written to disk all fell back to dialling plain direct on a network that had
+     * just shown plain direct was not enough.
+     */
+    private final AtomicInteger provenRoute = new AtomicInteger(StealthPlan.MODE_DIRECT);
 
     private final AtomicReference<ProxyConfig> current = new AtomicReference<>();
     private final AtomicReference<Process> process = new AtomicReference<>();
@@ -125,16 +134,17 @@ public final class StealthCore {
     private final AtomicReference<String> country = new AtomicReference<>(StealthRegions.AUTOMATIC);
 
     public StealthCore(Context host, EndpointPool pool, Listener listener) {
-        this(host, pool, XrayConfig.SOCKS_PORT, null, false, listener);
+        this(host, pool, XrayConfig.SOCKS_PORT, null, StealthPlan.MODE_DIRECT, listener);
     }
 
     public StealthCore(Context host, EndpointPool pool, int socksPort, String carrier,
-                       boolean preferChained, Listener listener) {
+                       int preferredRoute, Listener listener) {
         this.host = host;
         this.pool = pool;
         this.socksPort = socksPort;
         this.carrier = XrayConfig.carrierHop(carrier) == null ? null : carrier.trim();
-        this.preferChained = preferChained;
+        this.preferredRoute = NetworkMemory.known(preferredRoute)
+                ? preferredRoute : StealthPlan.MODE_DIRECT;
         this.spoof = new SpoofProxy(host);
         this.listener = listener;
     }
@@ -152,7 +162,13 @@ public final class StealthCore {
     public ProxyConfig current() { return current.get(); }
 
     /** Whether the live endpoint is being dialled through the carrier rather than directly. */
-    public boolean isChained() { return modeProven.get() && chained.get(); }
+    public boolean isChained() { return routeMode() == StealthPlan.MODE_CHAINED; }
+
+    /**
+     * The route the live endpoint was reached by, or the one that will be tried first when nothing
+     * has been proved yet. This is what belongs on disk — see {@link #provenRoute}.
+     */
+    public int routeMode() { return modeProven.get() ? provenRoute.get() : preferredRoute; }
 
     public boolean isConnected() { return connected.get() && !stopped.get(); }
 
@@ -276,7 +292,7 @@ public final class StealthCore {
      */
     private boolean provesOffline(ProxyConfig candidate) {
         int stagingPort = socksPort + 1;
-        String hop = isChained() ? carrier : null;
+        String hop = hopFor(routeMode());
         Process staged = null;
         try {
             staged = launch(writeConfig(candidate, hop, stagingPort, "stealth-staging.json"));
@@ -400,10 +416,9 @@ public final class StealthCore {
      */
     private boolean dial(ProxyConfig candidate) {
         long began = System.currentTimeMillis();
-        int preferred = preferChained ? StealthPlan.MODE_CHAINED : StealthPlan.MODE_DIRECT;
-        int provenMode = chained.get() ? StealthPlan.MODE_CHAINED : StealthPlan.MODE_DIRECT;
+        int preferred = preferredRoute;
         int[] modes = StealthPlan.modes(carrier != null, spoof.available(), preferred,
-                modeProven.get(), provenMode, failedOnPreferred);
+                modeProven.get(), provenRoute.get(), failedOnPreferred);
         for (int mode : modes) {
             if (stopped.get()) return false;
             if (dialOnce(candidate, mode, began)) return true;
@@ -460,10 +475,7 @@ public final class StealthCore {
         connected.set(true);
         if (!modeProven.get()) {
             modeProven.set(true);
-            // The remembered route is stored as a boolean, and spoof records as "not chained"
-            // because that is what it is: the connection still leaves from this network. Storing
-            // it as chained would send the next run out through a carrier it does not need.
-            chained.set(mode == StealthPlan.MODE_CHAINED);
+            provenRoute.set(mode);
             listener.onLog("Stealth reaches its endpoints " + routeWords(mode).trim()
                     + " on this network");
         }
