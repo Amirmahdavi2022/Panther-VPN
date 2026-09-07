@@ -76,3 +76,16 @@ out of: `speed.cloudflare.com`, `www.cloudflare.com/cdn-cgi/trace`, `ipwho.is` a
 `ipapi.co`. Every request goes through the tunnel's own SOCKS proxy, so none of them
 ever sees the device's real address. No account or API key is used and nothing is
 stored.
+
+## byedpi
+
+The local shaping proxy used by the Prowl engine's spoof route. Fetched at build time from
+https://github.com/hufrea/byedpi, pinned to tag **v0.17.3** (commit
+`7efde1b1296eaaa187b70e951894dde17527489c`) and compiled from source by
+`scripts/fetch-android-assets.sh`. No byedpi binary or source file is committed to this repository.
+
+byedpi is licensed under the MIT License, Copyright (c) hufrea.
+
+The build applies `-D_DEFAULT_SOURCE`, matching byedpi's own Makefile, and omits `win_service.c`,
+which is the Windows service entry point.
+

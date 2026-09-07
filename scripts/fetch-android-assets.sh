@@ -7,6 +7,8 @@
 set -euo pipefail
 
 AETHER_VERSION="${AETHER_CORE_VERSION:-v1.9.0}"
+BYEDPI_VERSION="v0.17.3"
+BYEDPI_COMMIT="7efde1b1296eaaa187b70e951894dde17527489c"
 HEV_VERSION="2.16.0"
 HEV_COMMIT="0a05221275a51a884d93328c55fc2fbc9e9b6974"
 # The Global engine ships as an official prebuilt Android library. The publisher does not sign
@@ -188,4 +190,60 @@ for abi in "${abis[@]}"; do
   if [ ! -f "$library" ]; then echo "HEV JNI library is missing for $abi." >&2; exit 1; fi
   cp -f "$library" "$destination/$abi/libhev-socks5-tunnel.so"
   echo "Built HEV JNI bridge for $abi"
+done
+
+# --- the local shaping proxy used by the spoof dial route -------------------------------------
+#
+# Built from source, pinned by tag AND by the commit that tag resolves to. A tag can be moved, so
+# pinning the version alone would let the source change under a number that looks unchanged - and
+# this is a binary that shapes the user's traffic, which is the last thing to take on trust.
+#
+# It is a program, not a library, and ships as libbyedpi.so because the installer's native library
+# directory is the only place an app targeting API 29+ may execute a file it shipped.
+
+byedpi_source="$temp/byedpi"
+git clone --quiet --branch "$BYEDPI_VERSION" --depth 1 \
+  https://github.com/hufrea/byedpi.git "$byedpi_source"
+byedpi_head="$(git -C "$byedpi_source" rev-parse HEAD)"
+if [ "$byedpi_head" != "$BYEDPI_COMMIT" ]; then
+  echo "Unexpected byedpi commit $byedpi_head; expected $BYEDPI_COMMIT." >&2; exit 1
+fi
+
+toolchain="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin"
+if [ ! -d "$toolchain" ]; then
+  toolchain="$ndk_root/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+fi
+if [ ! -d "$toolchain" ]; then
+  echo "No usable NDK toolchain under $ndk_root." >&2; exit 1
+fi
+
+byedpi_sources=""
+for f in "$byedpi_source"/*.c; do
+  case "$(basename "$f")" in
+    win_service.c) continue ;;   # the Windows service entry point; there is no such thing here
+  esac
+  byedpi_sources="$byedpi_sources $f"
+done
+
+for abi in "${abis[@]}"; do
+  case "$abi" in
+    arm64-v8a)   triple="aarch64-linux-android" ;;
+    armeabi-v7a) triple="armv7a-linux-androideabi" ;;
+    x86_64)      triple="x86_64-linux-android" ;;
+    *) echo "No toolchain triple for $abi." >&2; exit 1 ;;
+  esac
+  # -D_DEFAULT_SOURCE comes from byedpi's own Makefile and is not optional: without it c99 hides
+  # the POSIX declarations this source needs and the build fails in a way that reads like a broken
+  # checkout rather than a missing flag.
+  # shellcheck disable=SC2086
+  "$toolchain/${triple}24-clang" \
+    -D_DEFAULT_SOURCE -std=c99 -O2 -w \
+    -I"$byedpi_source" \
+    -o "$destination/$abi/libbyedpi.so" \
+    $byedpi_sources
+  size="$(stat -c%s "$destination/$abi/libbyedpi.so" 2>/dev/null || stat -f%z "$destination/$abi/libbyedpi.so")"
+  if [ "$size" -lt 20000 ]; then
+    echo "byedpi for $abi is only $size bytes; something did not link." >&2; exit 1
+  fi
+  echo "Built the shaping proxy for $abi ($size bytes)"
 done
