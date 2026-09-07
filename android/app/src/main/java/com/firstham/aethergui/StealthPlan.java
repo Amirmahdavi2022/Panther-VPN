@@ -1,5 +1,6 @@
 package com.firstham.aethergui;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -214,6 +215,40 @@ final class StealthPlan {
     /** Dial the endpoint through the carrier tunnel, so the connection starts somewhere else. */
     static final boolean CHAINED = true;
 
+    // Three ways to reach an endpoint, not two. The boolean pair above is kept because the route
+    // this network allows is persisted as one, and rewriting stored state to add a mode would
+    // discard what every existing install has already learned.
+
+    /** Straight out from this network. One hop, nothing between. */
+    static final int MODE_DIRECT = 0;
+
+    /** Out through the carrier tunnel. Two hops, and needs the carrier to be up. */
+    static final int MODE_CHAINED = 1;
+
+    /**
+     * Straight out from this network, but with the opening packets shaped by a local proxy first.
+     *
+     * <p>It sits between the other two on purpose. Like the direct route it leaves from here and
+     * needs nothing else running remotely, so it keeps the property the carrier route costs us:
+     * the engine reaching its own endpoints without depending on another engine. What it adds is a
+     * local hop that tears up the first packets, which is what a filter reading the handshake
+     * cannot follow.
+     *
+     * <p>It is not a better direct route, and it is not a cheaper carrier. It is the only mode
+     * that can be both independent and get through a network where plain direct dialling dies, and
+     * that combination is the whole reason it exists.
+     */
+    static final int MODE_SPOOF = 2;
+
+    /** Name for a mode, for logs and for the route remembered on disk. */
+    static String modeName(int mode) {
+        switch (mode) {
+            case MODE_CHAINED: return "carrier";
+            case MODE_SPOOF: return "spoof";
+            default: return "direct";
+        }
+    }
+
     /**
      * The ways to reach one endpoint, in the order worth trying them.
      *
@@ -283,5 +318,83 @@ final class StealthPlan {
             return new boolean[] { preferChained };
         }
         return dialModes(carrierAvailable, preferChained);
+    }
+
+    /**
+     * The ways to reach one endpoint, in the order worth trying them, across all three modes.
+     *
+     * <p>Cost order when nothing is known: direct, then spoof, then carrier. Direct is one hop and
+     * no extra process. Spoof is one hop plus a local process, so it is cheap and — unlike the
+     * carrier — does not need another engine to be up. The carrier is last because it is two hops
+     * and depends on something else already working.
+     *
+     * <p>The remembered route still goes first. What this network allowed an hour ago is the best
+     * guess available, and paying a full timeout to rediscover it on every connect is the cost
+     * this ordering exists to avoid.
+     *
+     * <p>A mode whose machinery is not available is left out entirely rather than tried and
+     * failed. A failure has to mean something about the endpoint or the network; a failure that
+     * only means "the binary is missing" would be recorded as evidence and would slowly poison
+     * the pool.
+     *
+     * @param carrierAvailable whether a carrier tunnel is up to dial through
+     * @param spoofAvailable   whether the local shaping proxy can be started
+     * @param preferred        the mode this device remembers working on this network
+     */
+    static int[] modes(boolean carrierAvailable, boolean spoofAvailable, int preferred) {
+        List<Integer> order = new ArrayList<>();
+        if (usable(preferred, carrierAvailable, spoofAvailable)) order.add(preferred);
+        for (int mode : new int[] { MODE_DIRECT, MODE_SPOOF, MODE_CHAINED }) {
+            if (!order.contains(mode) && usable(mode, carrierAvailable, spoofAvailable)) {
+                order.add(mode);
+            }
+        }
+        // Direct is always possible - there is nothing to be unavailable - so this cannot be empty
+        // in practice. Returning it explicitly rather than an empty array keeps a caller that
+        // somehow gets here from silently dialling nothing.
+        if (order.isEmpty()) return new int[] { MODE_DIRECT };
+        int[] out = new int[order.size()];
+        for (int i = 0; i < out.length; i++) out[i] = order.get(i);
+        return out;
+    }
+
+    /**
+     * The modes left once one has been proved to work this run.
+     *
+     * <p>Same reasoning as the two-mode version: proving costs a full timeout per endpoint, and
+     * paying it once per run is the point of knowing.
+     */
+    static int[] modes(boolean carrierAvailable, boolean spoofAvailable, int preferred,
+                       boolean proven, int provenMode) {
+        if (proven && usable(provenMode, carrierAvailable, spoofAvailable)) {
+            return new int[] { provenMode };
+        }
+        return modes(carrierAvailable, spoofAvailable, preferred);
+    }
+
+    /**
+     * The modes to try for a candidate, given how many have already failed on the preferred one.
+     *
+     * <p>Holding to the remembered route for the first few candidates matters more with three
+     * modes than with two: trying every mode on every candidate would triple the cost of a dead
+     * endpoint, and a dead endpoint is the common case in a public pool.
+     */
+    static int[] modes(boolean carrierAvailable, boolean spoofAvailable, int preferred,
+                       boolean proven, int provenMode, int failedOnPreferred) {
+        if (proven && usable(provenMode, carrierAvailable, spoofAvailable)) {
+            return new int[] { provenMode };
+        }
+        if (failedOnPreferred < PREFERRED_ONLY_CANDIDATES
+                && usable(preferred, carrierAvailable, spoofAvailable)) {
+            return new int[] { preferred };
+        }
+        return modes(carrierAvailable, spoofAvailable, preferred);
+    }
+
+    /** Whether a mode's machinery is present. Direct needs nothing, so it always is. */
+    static boolean usable(int mode, boolean carrierAvailable, boolean spoofAvailable) {
+        if (mode == MODE_CHAINED) return carrierAvailable;
+        if (mode == MODE_SPOOF) return spoofAvailable;
+        return mode == MODE_DIRECT;
     }
 }

@@ -334,7 +334,91 @@ public final class StealthPlanTest {
      * The exit code lives here and not in runAllChecks, because a System.exit inside a unit
      * test kills the test JVM and turns a clear failure report into an opaque crash.
      */
+    /**
+     * The three-mode planner.
+     *
+     * <p>Two properties matter more than the rest and are checked hardest. A mode whose machinery
+     * is missing must never appear - a dial that fails because a binary is absent would be
+     * recorded as evidence about the endpoint and would poison the pool. And the route this
+     * network is remembered as allowing must stay first, because the carrier route is the one
+     * that actually works on the user's network today and reordering it behind an unproven mode
+     * would make every connect slower to fix a problem he does not have.
+     */
+    private static void runSpoofModeChecks() {
+        // Nothing else available: only direct.
+        int[] m = StealthPlan.modes(false, false, StealthPlan.MODE_DIRECT);
+        check(m.length == 1 && m[0] == StealthPlan.MODE_DIRECT, "with nothing available, only direct");
+
+        // Spoof available, no carrier.
+        m = StealthPlan.modes(false, true, StealthPlan.MODE_DIRECT);
+        check(m.length == 2, "direct and spoof when there is no carrier");
+        check(m[0] == StealthPlan.MODE_DIRECT && m[1] == StealthPlan.MODE_SPOOF,
+                "direct is cheapest so it goes first");
+        for (int mode : m) check(mode != StealthPlan.MODE_CHAINED, "no carrier mode without a carrier");
+
+        // Everything available, nothing remembered.
+        m = StealthPlan.modes(true, true, StealthPlan.MODE_DIRECT);
+        check(m.length == 3, "all three when everything is up");
+        check(m[0] == StealthPlan.MODE_DIRECT, "direct first from cold");
+        check(m[1] == StealthPlan.MODE_SPOOF, "spoof before the carrier: one hop, no dependency");
+        check(m[2] == StealthPlan.MODE_CHAINED, "the carrier is last, it costs two hops");
+
+        // The remembered route wins, whichever it is. This is the one that protects his network.
+        m = StealthPlan.modes(true, true, StealthPlan.MODE_CHAINED);
+        check(m[0] == StealthPlan.MODE_CHAINED, "a remembered carrier route is still tried first");
+        m = StealthPlan.modes(true, true, StealthPlan.MODE_SPOOF);
+        check(m[0] == StealthPlan.MODE_SPOOF, "a remembered spoof route is tried first");
+        check(m.length == 3, "remembering does not drop the others");
+
+        // No duplicates, ever - a repeated mode is a wasted timeout.
+        for (int preferred : new int[] { StealthPlan.MODE_DIRECT, StealthPlan.MODE_SPOOF,
+                                         StealthPlan.MODE_CHAINED }) {
+            int[] got = StealthPlan.modes(true, true, preferred);
+            for (int i = 0; i < got.length; i++) {
+                for (int j = i + 1; j < got.length; j++) {
+                    check(got[i] != got[j], "no repeated mode for preferred " + preferred);
+                }
+            }
+        }
+
+        // A remembered mode whose machinery has gone is skipped, not tried and failed.
+        m = StealthPlan.modes(false, false, StealthPlan.MODE_CHAINED);
+        check(m.length == 1 && m[0] == StealthPlan.MODE_DIRECT,
+                "a remembered carrier route is dropped when the carrier is down");
+        m = StealthPlan.modes(true, false, StealthPlan.MODE_SPOOF);
+        for (int mode : m) check(mode != StealthPlan.MODE_SPOOF,
+                "spoof never appears when its proxy cannot start");
+
+        // Once proved, that mode alone.
+        m = StealthPlan.modes(true, true, StealthPlan.MODE_DIRECT, true, StealthPlan.MODE_SPOOF);
+        check(m.length == 1 && m[0] == StealthPlan.MODE_SPOOF, "a proved mode is used alone");
+        m = StealthPlan.modes(true, false, StealthPlan.MODE_DIRECT, true, StealthPlan.MODE_SPOOF);
+        check(m.length > 1, "a proved mode that is no longer available falls back to the full order");
+
+        // Holding to the preferred route for the first few candidates.
+        m = StealthPlan.modes(true, true, StealthPlan.MODE_CHAINED, false, StealthPlan.MODE_DIRECT, 0);
+        check(m.length == 1 && m[0] == StealthPlan.MODE_CHAINED,
+                "early candidates use the remembered route alone");
+        m = StealthPlan.modes(true, true, StealthPlan.MODE_CHAINED, false, StealthPlan.MODE_DIRECT,
+                StealthPlan.PREFERRED_ONLY_CANDIDATES);
+        check(m.length == 3, "after enough failures every mode is tried again");
+
+        check(StealthPlan.usable(StealthPlan.MODE_DIRECT, false, false), "direct needs nothing");
+        check(!StealthPlan.usable(StealthPlan.MODE_CHAINED, false, true), "carrier needs a carrier");
+        check(!StealthPlan.usable(StealthPlan.MODE_SPOOF, true, false), "spoof needs its proxy");
+        check(StealthPlan.modeName(StealthPlan.MODE_SPOOF).equals("spoof"), "spoof is named in logs");
+        check(!StealthPlan.modeName(StealthPlan.MODE_CHAINED)
+                .equals(StealthPlan.modeName(StealthPlan.MODE_SPOOF)), "the modes read differently");
+    }
+
+    @Test
+    public void spoofModeTakesItsPlaceInTheOrder() {
+        runSpoofModeChecks();
+        assertTrue("three-mode dial order", failures == 0);
+    }
+
     public static void main(String[] args) {
+        runSpoofModeChecks();
         new StealthPlanTest().runAllChecks();
         if (failures > 0) System.exit(1);
     }

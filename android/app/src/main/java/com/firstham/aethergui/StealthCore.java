@@ -101,6 +101,9 @@ public final class StealthCore {
     /** Which way worked last time on this device, tried first so the cost of learning is paid once. */
     private final boolean preferChained;
 
+    /** The local shaping proxy used by the spoof route. Started only for that mode. */
+    private final SpoofProxy spoof;
+
     /** Whether this run has established which way reaches an endpoint from this network. */
     private final AtomicBoolean modeProven = new AtomicBoolean();
 
@@ -132,6 +135,7 @@ public final class StealthCore {
         this.socksPort = socksPort;
         this.carrier = XrayConfig.carrierHop(carrier) == null ? null : carrier.trim();
         this.preferChained = preferChained;
+        this.spoof = new SpoofProxy(host);
         this.listener = listener;
     }
 
@@ -317,6 +321,9 @@ public final class StealthCore {
         connected.set(false);
         current.set(null);
         stopProcess();
+        // Leaving the shaping proxy listening after a stop would hold a loopback port that the
+        // next run expects to bind, and the failure would look like the proxy refusing to start.
+        spoof.stop();
     }
 
     // --- the dial loop --------------------------------------------------------------------------
@@ -393,12 +400,14 @@ public final class StealthCore {
      */
     private boolean dial(ProxyConfig candidate) {
         long began = System.currentTimeMillis();
-        boolean[] modes = StealthPlan.dialModes(carrier != null, preferChained,
-                modeProven.get(), chained.get(), failedOnPreferred);
-        for (boolean viaCarrier : modes) {
+        int preferred = preferChained ? StealthPlan.MODE_CHAINED : StealthPlan.MODE_DIRECT;
+        int provenMode = chained.get() ? StealthPlan.MODE_CHAINED : StealthPlan.MODE_DIRECT;
+        int[] modes = StealthPlan.modes(carrier != null, spoof.available(), preferred,
+                modeProven.get(), provenMode, failedOnPreferred);
+        for (int mode : modes) {
             if (stopped.get()) return false;
-            if (dialOnce(candidate, viaCarrier, began)) return true;
-            if (viaCarrier == preferChained) failedOnPreferred++;
+            if (dialOnce(candidate, mode, began)) return true;
+            if (mode == preferred) failedOnPreferred++;
         }
         pool.recordFailure(candidate.key(), System.currentTimeMillis());
         return false;
@@ -408,11 +417,19 @@ public final class StealthCore {
     private volatile int failedOnPreferred;
 
     /** One endpoint, one way of reaching it. Leaves nothing running when it returns false. */
-    private boolean dialOnce(ProxyConfig candidate, boolean viaCarrier, long began) {
-        String route = viaCarrier ? " through the carrier" : " directly";
+    private boolean dialOnce(ProxyConfig candidate, int mode, long began) {
+        String route = routeWords(mode);
         stopProcess();
+        // The spoof proxy is the hop for this mode, so it has to be listening before the engine
+        // is told to dial through it. Failing to start it is not evidence about the endpoint, so
+        // this returns without recording anything against the candidate.
+        if (mode == StealthPlan.MODE_SPOOF && !spoof.start()) {
+            listener.onLog("Stealth could not start the local shaping proxy; skipping that route");
+            return false;
+        }
+        if (mode != StealthPlan.MODE_SPOOF) spoof.stop();
         try {
-            File config = writeConfig(candidate, viaCarrier ? carrier : null);
+            File config = writeConfig(candidate, hopFor(mode));
             startProcess(config);
         } catch (Throwable error) {
             listener.onLog("Stealth could not start on " + candidate + route + ": "
@@ -443,16 +460,39 @@ public final class StealthCore {
         connected.set(true);
         if (!modeProven.get()) {
             modeProven.set(true);
-            chained.set(viaCarrier);
-            listener.onLog(viaCarrier
-                    ? "Stealth reaches its endpoints through the carrier on this network"
-                    : "Stealth reaches its endpoints directly on this network");
+            // The remembered route is stored as a boolean, and spoof records as "not chained"
+            // because that is what it is: the connection still leaves from this network. Storing
+            // it as chained would send the next run out through a carrier it does not need.
+            chained.set(mode == StealthPlan.MODE_CHAINED);
+            listener.onLog("Stealth reaches its endpoints " + routeWords(mode).trim()
+                    + " on this network");
         }
         listener.onLog("Stealth is up on " + candidate + route + " in "
                 + (System.currentTimeMillis() - began) + "ms, proved in " + latency + "ms");
         listener.onEndpoint(candidate);
         listener.onState("connected", host.getString(R.string.service_connected));
         return true;
+    }
+
+    /** How a route reads in a log line. */
+    private static String routeWords(int mode) {
+        switch (mode) {
+            case StealthPlan.MODE_CHAINED: return " through the carrier";
+            case StealthPlan.MODE_SPOOF: return " directly, with the handshake shaped";
+            default: return " directly";
+        }
+    }
+
+    /**
+     * The SOCKS hop this mode dials through, or null to dial straight out.
+     *
+     * <p>Both hops are ordinary SOCKS5 proxies as far as the engine is concerned, which is why a
+     * third mode needed no change to the config builder at all - only a different address.
+     */
+    private String hopFor(int mode) {
+        if (mode == StealthPlan.MODE_CHAINED) return carrier;
+        if (mode == StealthPlan.MODE_SPOOF) return SpoofProxy.address();
+        return null;
     }
 
     /** Waits for something to accept on the port, so the probe is not raced against startup. */
