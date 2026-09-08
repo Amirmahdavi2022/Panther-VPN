@@ -181,13 +181,11 @@ public final class MainActivity extends AppCompatActivity {
         });
         binding.navigationView.setNavigationItemSelectedListener(item -> {
             binding.root.closeDrawer(GravityCompat.START);
-            // The log is a dialog rather than a page, so it must not become the checked item -
-            // the drawer would be left highlighting a screen that is not on screen.
-            if (item.getItemId() == R.id.nav_log) { showConnectionLog(); return false; }
             selectPage(item);
             return true;
         });
         binding.navigationView.setCheckedItem(R.id.nav_connect);
+        setupLogShortcut();
         binding.bottomNav.setOnItemSelectedListener(item -> { if (!syncingNav) selectPage(item); return true; });
         binding.bottomNav.setSelectedItemId(R.id.nav_connect);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -391,14 +389,34 @@ public final class MainActivity extends AppCompatActivity {
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) { super.onActivityResult(requestCode, resultCode, data); if (requestCode == VPN_REQUEST) { if (resultCode == RESULT_OK) startSelectedEngine(); else Toast.makeText(this, R.string.vpn_permission_denied, Toast.LENGTH_LONG).show(); } else if (requestCode == APPS_REQUEST) { if (data != null && data.getBooleanExtra(AppSelectionActivity.EXTRA_RETURN_HOME, false)) showPage("connect"); else if (resultCode == RESULT_OK && data != null) { String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; preferences.edit().putString(key, data.getStringExtra(AppSelectionActivity.EXTRA_PACKAGES)).apply(); updateSelectedCount(); saveSettings(); } } }
 
     /**
+     * Keeps the connection log reachable without giving it a row in the drawer.
+     *
+     * <p>The log is a diagnostic, not a feature. It is opened once every few weeks, when something
+     * has gone wrong and the only device that knows why is the user's, so a permanent menu entry
+     * for it is clutter on a five-item drawer. It was deleted outright once before and had to be
+     * put back a fortnight later, because the next question arrived and the one device that knew
+     * the answer had no way to say it. Hence a shortcut rather than another deletion: long-press
+     * the version badge at the top of the drawer.
+     */
+    private void setupLogShortcut() {
+        View header = binding.navigationView.getHeaderCount() > 0
+                ? binding.navigationView.getHeaderView(0) : null;
+        if (header == null) return;
+        View badge = header.findViewById(R.id.drawer_version);
+        if (badge == null) return;
+        badge.setOnLongClickListener(v -> {
+            binding.root.closeDrawer(GravityCompat.START);
+            showConnectionLog();
+            return true;
+        });
+    }
+
+    /**
      * Shows the connection log, with a way to copy it out.
      *
      * <p>The service has always kept this - it writes every phase, every engine decision and every
-     * failure into it, and persists it across restarts. It was removed once, on the grounds that
-     * it had answered the question it was built for. That was wrong: the next question arrived a
-     * fortnight later and the one device that knew the answer had no way to say it. Read straight
-     * from the service's own store rather than from broadcasts, so lines written before this
-     * screen was opened are there too.
+     * failure into it, and persists it across restarts. Read straight from the service's own store
+     * rather than from broadcasts, so lines written before this was opened are there too.
      */
     private void showConnectionLog() {
         String log = getSharedPreferences("service_state", MODE_PRIVATE).getString("logs", "");

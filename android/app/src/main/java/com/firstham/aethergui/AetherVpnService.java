@@ -380,6 +380,9 @@ public final class AetherVpnService extends VpnService {
         String protocol = value(request, "protocol", ConnectionDefaults.PROTOCOL);
         String transport = value(request, "transport", "h3");
         if ("masque".equals(protocol)) env.put("AETHER_MASQUE_HTTP2", "h2".equals(transport) ? "1" : "0");
+        // Core options that exist in the pinned build and were never being set, so the core fell
+        // back to defaults that do not suit a phone. See CoreTuning for what each one costs.
+        env.putAll(CoreTuning.environment(protocol, transport));
         env.put("TMPDIR", getCacheDir().getAbsolutePath());
         String peer = request.getStringExtra("peer");
         if (peer == null || peer.trim().isEmpty()) peer = resolveScannedPeer();

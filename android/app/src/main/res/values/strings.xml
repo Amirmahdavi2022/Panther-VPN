@@ -254,7 +254,6 @@
     <string name="region_verdict_connected">Connected last time</string>
     <string name="region_verdict_untried">Not tried yet</string>
     <!-- Connection log -->
-    <string name="nav_log">Connection log</string>
     <string name="log_dialog_title">Connection log</string>
     <string name="log_dialog_empty">Nothing logged yet. Connect once, then come back here.</string>
     <string name="log_copy">Copy</string>

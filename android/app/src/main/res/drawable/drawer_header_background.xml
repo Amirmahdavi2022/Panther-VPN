@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    A near-black wash rather than the blue it used to be. The palette allows one accent colour and
+    reserves it for connection state, so a blue header was spending that meaning on decoration.
+-->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <gradient android:angle="315" android:startColor="#141F3B" android:endColor="@color/surface" />
+    <gradient android:angle="270" android:startColor="#15151B" android:centerColor="#0E0E12" android:endColor="@color/surface" />
 </shape>

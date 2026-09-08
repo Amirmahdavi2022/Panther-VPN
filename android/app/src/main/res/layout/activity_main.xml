@@ -354,7 +354,11 @@
         android:fitsSystemWindows="true"
         app:headerLayout="@layout/drawer_header"
         app:itemBackground="@drawable/navigation_item_background"
-        app:itemIconTint="@color/muted"
-        app:itemTextColor="@color/text"
+        app:itemHorizontalPadding="24dp"
+        app:itemIconPadding="16dp"
+        app:itemIconSize="21dp"
+        app:itemIconTint="@color/drawer_item_icon"
+        app:itemTextColor="@color/drawer_item_text"
+        app:itemVerticalPadding="6dp"
         app:menu="@menu/drawer_menu" />
 </androidx.drawerlayout.widget.DrawerLayout>
