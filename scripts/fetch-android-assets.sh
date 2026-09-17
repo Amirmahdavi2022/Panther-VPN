@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Same job as fetch-android-assets.ps1, for builders that aren't Windows.
+# Fetches and verifies every native component the Android build ships.
 #
-# The PowerShell script is still the reference for what gets pinned; if you change a version
-# there, change it here too. The release build fails loudly when NOTICE.md and the pinned
-# Aether version drift apart, so a half-updated pin gets caught rather than shipped.
+# The release build fails loudly when NOTICE.md and a pinned core version drift apart, so a
+# half-updated pin gets caught rather than shipped.
 set -euo pipefail
 
-AETHER_VERSION="${AETHER_CORE_VERSION:-v1.9.0}"
+AETHER_VERSION="${AETHER_CORE_VERSION:-v2.0.0}"
 BYEDPI_VERSION="v0.17.3"
 BYEDPI_COMMIT="7efde1b1296eaaa187b70e951894dde17527489c"
 HEV_VERSION="2.16.0"
@@ -20,6 +19,10 @@ GLOBAL_CORE_SHA256="6e5a1402013e755b2e5e10a2715b18462fc06b6a8c1d610ffcd21f2fa80d
 # three from one pinned commit beats mixing two provenances for one engine.
 STEALTH_CORE_VERSION="v26.3.27"
 STEALTH_CORE_COMMIT="d2758a023cd7f4174a5a5fa4ff66e487d4342ba0"
+# The optional fast TUN bridge ships as the publisher's prebuilt JNI libraries. Only the JNI
+# library is copied: it links the engine statically and needs nothing else at runtime.
+FAST_BRIDGE_VERSION="v1.0.0"
+FAST_BRIDGE_SHA256="02eb23f6597411b9abcec2146014e9de54323cd1f77ea1baa3c22c6da5ea47d7"
 NDK_VERSION="27.2.12479018"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -80,6 +83,23 @@ for i in "${!abis[@]}"; do
   if [ -z "$core" ]; then echo "Aether executable was not found in $archive." >&2; exit 1; fi
   cp -f "$core" "$destination/$abi/libaether.so"
   echo "Prepared verified Aether core for $abi"
+done
+
+# --- Fast TUN bridge ------------------------------------------------------------------------
+bridge_zip="$temp/fast-bridge.zip"
+echo "Downloading the fast TUN bridge $FAST_BRIDGE_VERSION"
+curl -fsSL -o "$bridge_zip" \
+  "https://github.com/Noisemux/zeptun/releases/download/$FAST_BRIDGE_VERSION/zeptun-android-jniLibs.zip"
+actual="$(sha256 "$bridge_zip")"
+if [ "$actual" != "$FAST_BRIDGE_SHA256" ]; then
+  echo "Fast bridge archive hash mismatch. Expected $FAST_BRIDGE_SHA256, got $actual." >&2; exit 1
+fi
+unzip -oq "$bridge_zip" -d "$temp/fast-bridge"
+for abi in "${abis[@]}"; do
+  library="$temp/fast-bridge/jniLibs/$abi/libzeptun-jni.so"
+  if [ ! -f "$library" ]; then echo "Fast bridge library is missing for $abi." >&2; exit 1; fi
+  cp -f "$library" "$destination/$abi/libzeptun-jni.so"
+  echo "Prepared verified fast bridge for $abi"
 done
 
 # --- Global engine library ------------------------------------------------------------------

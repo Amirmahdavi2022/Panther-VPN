@@ -8,6 +8,7 @@ import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -31,6 +32,7 @@ import android.widget.Toast;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
@@ -229,6 +231,9 @@ public final class MainActivity extends AppCompatActivity {
         binding.modeGroup.addOnButtonCheckedListener((group, checkedId, checked) -> { if (!checked) return; preferences.edit().putString("mode", checkedId == R.id.proxy_mode_button ? "manual" : checkedId == R.id.smart_mode_button ? "smart" : "vpn").apply(); updateModeUi(); });
         binding.splitSwitch.setOnCheckedChangeListener((button, checked) -> { binding.splitContainer.setVisibility(checked ? View.VISIBLE : View.GONE); saveSettings(); });
         binding.routingGroup.setOnCheckedChangeListener((group, checkedId) -> { saveSettings(); updateSelectedCount(); });
+        // Written on its own rather than through saveSettings(): the switch is also set while the
+        // screen is still loading, and a full save at that moment would store half-loaded fields.
+        binding.fastBridgeSwitch.setOnCheckedChangeListener((button, checked) -> preferences.edit().putBoolean("fastBridge", checked).apply());
         renderEngine();
         binding.engineTurbo.setOnClickListener(v -> selectEngine("turbo"));
         binding.engineGlobal.setOnClickListener(v -> selectEngine("global"));
@@ -260,7 +265,7 @@ public final class MainActivity extends AppCompatActivity {
         binding.socksInput.setText(preferences.getString("socks", getString(R.string.default_socks_address)));
         renderExitLocation();
         binding.peerInput.setText(preferences.getString("peer", "")); binding.mtuInput.setText(preferences.getString("mtu", getString(R.string.default_mtu)));
-        binding.dnsSwitch.setChecked(preferences.getBoolean("dnsLeak", true)); binding.killswitchSwitch.setChecked(preferences.getBoolean("killSwitch", false)); binding.reconnectSwitch.setChecked(preferences.getBoolean("quickReconnect", true));
+        binding.dnsSwitch.setChecked(preferences.getBoolean("dnsLeak", true)); binding.killswitchSwitch.setChecked(preferences.getBoolean("killSwitch", false)); binding.reconnectSwitch.setChecked(preferences.getBoolean("quickReconnect", true)); binding.fastBridgeSwitch.setChecked(preferences.getBoolean("fastBridge", false));
         boolean split = preferences.getInt("routing", 0) >= 2; binding.splitSwitch.setChecked(split); binding.splitContainer.setVisibility(split ? View.VISIBLE : View.GONE); binding.routingGroup.check(preferences.getInt("routing", 2) == 3 ? R.id.exclude_apps_radio : R.id.include_apps_radio); updateModeUi(); updateSelectedCount();
     }
 
@@ -575,20 +580,23 @@ public final class MainActivity extends AppCompatActivity {
         String armed = engine();
         // An unrecognised stored value would otherwise leave the row with nothing lit at all.
         if (!"global".equals(armed) && !"stealth".equals(armed)) armed = "turbo";
-        paintEngine(binding.engineTurbo, binding.engineTurboTitle, "turbo".equals(armed),
+        paintEngine(binding.engineTurbo, binding.engineTurboTitle, binding.engineTurboIcon, "turbo".equals(armed),
                 R.drawable.engine_card_selected, R.color.blue_600);
-        paintEngine(binding.engineGlobal, binding.engineGlobalTitle, "global".equals(armed),
+        paintEngine(binding.engineGlobal, binding.engineGlobalTitle, binding.engineGlobalIcon, "global".equals(armed),
                 R.drawable.engine_card_selected, R.color.blue_600);
         // Stealth carries its own colour, because it is a different kind of connection from the
         // other two and should not be read as a variation on either.
-        paintEngine(binding.engineStealth, binding.engineStealthTitle, "stealth".equals(armed),
+        paintEngine(binding.engineStealth, binding.engineStealthTitle, binding.engineStealthIcon, "stealth".equals(armed),
                 R.drawable.engine_card_selected_violet, R.color.stealth_violet);
         renderExitLocation();
     }
 
-    private void paintEngine(View card, TextView title, boolean armed, int armedBackground, int armedColour) {
+    private void paintEngine(View card, TextView title, ImageView icon, boolean armed, int armedBackground, int armedColour) {
         card.setBackgroundResource(armed ? armedBackground : R.drawable.engine_card);
         title.setTextColor(ContextCompat.getColor(this, armed ? armedColour : R.color.text));
+        // The icon follows the title: lit in the engine's colour when armed, quiet otherwise.
+        icon.setImageTintList(ColorStateList.valueOf(
+                ContextCompat.getColor(this, armed ? armedColour : R.color.nav_inactive)));
     }
 
     private void selectEngine(String choice) {
@@ -643,7 +651,7 @@ public final class MainActivity extends AppCompatActivity {
     private void saveSettings() {
         int routing = binding.splitSwitch.isChecked() ? (binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? 3 : 2) : 0;
         String include = preferences.getString("splitIncludeApps", ""); String exclude = preferences.getString("splitExcludeApps", "");
-        preferences.edit().putInt("protocol", selectedIndex(binding.protocolInput)).putInt("scan", selectedIndex(binding.scanInput)).putInt("transport", selectedIndex(binding.transportInput)).putInt("ip", selectedIndex(binding.ipInput)).putInt("obfuscation", selectedIndex(binding.obfuscationInput)).putInt("log", selectedIndex(binding.logInput)).putInt("theme", selectedIndex(binding.themeInput)).putInt("routing", routing).putString("splitApps", routing == 3 ? exclude : include).putString("socks", text(binding.socksInput)).putString("peer", text(binding.peerInput)).putString("mtu", text(binding.mtuInput)).putBoolean("dnsLeak", binding.dnsSwitch.isChecked()).putBoolean("killSwitch", binding.killswitchSwitch.isChecked()).putBoolean("quickReconnect", binding.reconnectSwitch.isChecked()).apply();
+        preferences.edit().putInt("protocol", selectedIndex(binding.protocolInput)).putInt("scan", selectedIndex(binding.scanInput)).putInt("transport", selectedIndex(binding.transportInput)).putInt("ip", selectedIndex(binding.ipInput)).putInt("obfuscation", selectedIndex(binding.obfuscationInput)).putInt("log", selectedIndex(binding.logInput)).putInt("theme", selectedIndex(binding.themeInput)).putInt("routing", routing).putString("splitApps", routing == 3 ? exclude : include).putString("socks", text(binding.socksInput)).putString("peer", text(binding.peerInput)).putString("mtu", text(binding.mtuInput)).putBoolean("dnsLeak", binding.dnsSwitch.isChecked()).putBoolean("killSwitch", binding.killswitchSwitch.isChecked()).putBoolean("quickReconnect", binding.reconnectSwitch.isChecked()).putBoolean("fastBridge", binding.fastBridgeSwitch.isChecked()).apply();
     }
 
     private Set<String> selectedPackages() { Set<String> result = new LinkedHashSet<>(); String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; AppSelectionActivity.parsePackages(preferences.getString(key, ""), result); return result; }

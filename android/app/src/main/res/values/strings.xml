@@ -99,6 +99,8 @@
     <string name="kill_switch_summary">Keep VPN routes blocked if Panther unexpectedly stops</string>
     <string name="quick_reconnect">Auto Reconnect</string>
     <string name="quick_reconnect_summary">Recover automatically after a temporary connection failure</string>
+    <string name="fast_bridge">Fast Tunnel (Beta)</string>
+    <string name="fast_bridge_summary">A newer, lighter packet engine. Applies on the next connect. If an app misbehaves, turn it off.</string>
     <string name="reset_defaults">Reset defaults</string>
 
     <string name="split_tunneling">Split Tunneling</string>

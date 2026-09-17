@@ -94,6 +94,8 @@ public final class AetherVpnService extends VpnService {
     private volatile Process aetherProcess;
     private volatile ParcelFileDescriptor vpnInterface;
     private volatile boolean bridgeStarted;
+    /** Which bridge {@link #bridgeStarted} refers to; only meaningful while it is true. */
+    private volatile boolean fastBridge;
     private volatile boolean stopping = true;
     private volatile boolean active;
     private volatile boolean killSwitch;
@@ -351,13 +353,47 @@ public final class AetherVpnService extends VpnService {
         vpnInterface = builder.establish();
         if (vpnInterface == null) throw new IllegalStateException("Android could not create the VPN interface");
 
+        if (FastBridgeConfig.isFast(value(request, "bridge", FastBridgeConfig.BRIDGE_CLASSIC))
+                && startFastBridge(request, mappedDns)) {
+            return;
+        }
+
         File config = writeTunConfig(request, mappedDns);
         try {
             TProxyService.TProxyStartService(config.getAbsolutePath(), vpnInterface.getFd());
+            fastBridge = false;
             bridgeStarted = true;
             sendLog("HEV Android TUN bridge started");
         } catch (UnsatisfiedLinkError error) {
             throw new IllegalStateException("The HEV Android JNI bridge could not be loaded", error);
+        }
+    }
+
+    /**
+     * Starts the optional fast bridge. Any failure - the library not loading on this device, or
+     * the engine refusing to start - is reported and answered with {@code false}, so the caller
+     * carries on with the classic bridge and the user still gets a connection.
+     */
+    private boolean startFastBridge(Intent request, boolean mappedDns) {
+        try {
+            HostPort socks = HostPort.parse(value(request, "socks", "127.0.0.1:1819"));
+            int fd = vpnInterface.getFd();
+            String config = FastBridgeConfig.render(socks.host, socks.port,
+                    request.getIntExtra("mtu", 1500), mappedDns, fd);
+            int rc = dev.zeptun.Zeptun.nativeStart(this, fd, config);
+            if (rc != 0) {
+                sendLog("Fast tunnel did not start (" + FastBridgeConfig.describe(rc)
+                        + "); using the classic bridge");
+                return false;
+            }
+            fastBridge = true;
+            bridgeStarted = true;
+            sendLog("Fast tunnel bridge started");
+            return true;
+        } catch (Throwable error) {
+            Log.w(TAG, "Fast bridge unavailable", error);
+            sendLog("Fast tunnel is not available on this device; using the classic bridge");
+            return false;
         }
     }
 
@@ -1431,7 +1467,17 @@ public final class AetherVpnService extends VpnService {
         if (!active) return;
         long tx = 0;
         long rx = 0;
-        if (bridgeStarted) {
+        if (bridgeStarted && fastBridge) {
+            try {
+                // Upload is what the engine read from the interface, download what it wrote -
+                // the same meaning the classic bridge gives its tx and rx. Checked by moving
+                // known amounts each way through a real interface.
+                tx = Math.max(0L, dev.zeptun.Zeptun.nativeCounter(FastBridgeConfig.COUNTER_UPLOAD_BYTES));
+                rx = Math.max(0L, dev.zeptun.Zeptun.nativeCounter(FastBridgeConfig.COUNTER_DOWNLOAD_BYTES));
+            } catch (Throwable error) {
+                Log.w(TAG, "Could not read fast bridge stats", error);
+            }
+        } else if (bridgeStarted) {
             try {
                 long[] stats = TProxyService.TProxyGetStats();
                 if (stats != null && stats.length >= 4) { tx = stats[1]; rx = stats[3]; }
@@ -1512,9 +1558,15 @@ public final class AetherVpnService extends VpnService {
     private void stopRuntime() {
         synchronized (runtimeLock) {
             if (bridgeStarted) {
-                try { TProxyService.TProxyStopService(); }
-                catch (Throwable error) { Log.w(TAG, "Could not stop HEV", error); }
+                if (fastBridge) {
+                    try { dev.zeptun.Zeptun.nativeStop(); }
+                    catch (Throwable error) { Log.w(TAG, "Could not stop the fast bridge", error); }
+                } else {
+                    try { TProxyService.TProxyStopService(); }
+                    catch (Throwable error) { Log.w(TAG, "Could not stop HEV", error); }
+                }
                 bridgeStarted = false;
+                fastBridge = false;
             }
             try { if (vpnInterface != null) vpnInterface.close(); }
             catch (Exception ignored) { }

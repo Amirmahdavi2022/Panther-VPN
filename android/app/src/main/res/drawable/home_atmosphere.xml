@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- A faint cool light from the top of the screen fading to true black, so OLED panels still
+     switch most of the page off. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <gradient
         android:angle="270"
-        android:startColor="#14141A"
+        android:startColor="#161A24"
         android:centerColor="@color/background"
         android:endColor="@color/background"
-        android:centerY="0.42" />
+        android:centerY="0.45" />
 </shape>

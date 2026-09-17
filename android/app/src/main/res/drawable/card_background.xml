@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/card" />
-    <stroke android:width="1dp" android:color="@color/card_border" />
-    <corners android:radius="18dp" />
-</shape>
+<!-- Polished glass: a surface that is a touch lighter at the top than at the bottom, and a hairline
+     that is brighter along the top edge, as if lit from above. Kept subtle on purpose - the card
+     should read as a surface, not as a gradient. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#1A1A20" android:endColor="#0E0E12" />
+            <stroke android:width="1dp" android:color="@color/card_border" />
+            <corners android:radius="18dp" />
+        </shape>
+    </item>
+    <item android:bottom="1dp" android:left="1dp" android:right="1dp" android:top="1dp">
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#14FFFFFF" android:centerColor="#00FFFFFF" android:endColor="#00FFFFFF" android:centerY="0.18" />
+            <corners android:radius="17dp" />
+        </shape>
+    </item>
+</layer-list>

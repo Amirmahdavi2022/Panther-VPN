@@ -36,3 +36,7 @@
 -keep class go.** { *; }
 -keep class psi.** { *; }
 -keep class ca.psiphon.** { *; }
+
+# The fast TUN bridge registers its natives by name on dev.zeptun.Zeptun in JNI_OnLoad, and the
+# lookup happens by that exact string. A renamed class makes the library refuse to load.
+-keep class dev.zeptun.Zeptun { *; }

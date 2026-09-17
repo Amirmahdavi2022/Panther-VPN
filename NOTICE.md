@@ -1,6 +1,6 @@
 # Third-party notices
 
-Panther is an independent Android client maintained by amirmahdavi2023.
+Panther is an independent Android client.
 
 ## Fork notice
 
@@ -19,8 +19,8 @@ This application bundles the Aether core from https://github.com/CluvexStudio/Ae
 licensed under GNU AGPL v3.0.
 
 The Android cores for ARMv7, ARM64 and x86_64 are downloaded from the official
-**v1.9.0** release during the build and verified against the publisher-provided
-SHA-256 files. The pinned version lives in `scripts/fetch-android-assets.ps1`, and
+**v2.0.0** release during the build and verified against the publisher-provided
+SHA-256 files. The pinned version lives in `scripts/fetch-android-assets.sh`, and
 the release workflow fails the build if that pin and the version named here ever
 disagree.
 
@@ -35,7 +35,7 @@ which is compatible with the AGPL-3.0 this project is under.
 
 It ships as the official prebuilt `ca.psiphon.aar` from release **v2.0.40**. That
 asset is not signed by the publisher, so the build pins it by SHA-256 in
-`scripts/fetch-android-assets.ps1` and refuses to build if the hash does not match.
+`scripts/fetch-android-assets.sh` and refuses to build if the hash does not match.
 
 Psiphon and its marks belong to Psiphon Inc. Panther is an independent client and
 is not affiliated with, endorsed by or supported by them. Do not report Panther
@@ -48,7 +48,7 @@ licensed under the Mozilla Public License 2.0, which is compatible with the
 AGPL-3.0 this project is under.
 
 It is built from source at tag **v26.3.27**, commit
-`d2758a023cd7f4174a5a5fa4ff66e487d4342ba0`, which `scripts/fetch-android-assets.ps1`
+`d2758a023cd7f4174a5a5fa4ff66e487d4342ba0`, which `scripts/fetch-android-assets.sh`
 verifies after cloning and refuses to build past if it does not match. The source
 is used unmodified; only the build flags are ours. It ships as a standalone
 executable, not as a library, and Panther adds no code to it.
@@ -62,6 +62,16 @@ Do not report Panther issues to that project.
 Android VPN routing uses HEV Socks5 Tunnel v2.16.0 from
 https://github.com/heiher/hev-socks5-tunnel under the MIT license. The full text is
 in `third-party/hev-socks5-tunnel-LICENSE.txt`.
+
+## Zeptun (fast TUN bridge)
+
+The optional "Fast Tunnel" bridge is Zeptun from https://github.com/Noisemux/zeptun,
+licensed under the MIT License, Copyright (c) 2026 Noisemux. The full text is in
+`third-party/zeptun-LICENSE.txt`.
+
+Panther ships `libzeptun-jni.so` from the official **v1.0.0** release
+(`zeptun-android-jniLibs.zip`), which `scripts/fetch-android-assets.sh` pins by SHA-256 and
+refuses to build past if the hash does not match. It is used unmodified.
 
 ## ics-openvpn
 

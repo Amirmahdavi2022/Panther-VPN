@@ -33,7 +33,9 @@ final class VpnConnectionController {
                 .putExtra("splitApps", preferences.getString("splitApps", ""))
                 .putExtra("dnsLeak", preferences.getBoolean("dnsLeak", true))
                 .putExtra("killSwitch", preferences.getBoolean("killSwitch", false))
-                .putExtra("quickReconnect", preferences.getBoolean("quickReconnect", true));
+                .putExtra("quickReconnect", preferences.getBoolean("quickReconnect", true))
+                .putExtra("bridge", preferences.getBoolean("fastBridge", false)
+                        ? FastBridgeConfig.BRIDGE_FAST : FastBridgeConfig.BRIDGE_CLASSIC);
     }
 
     static void connect(Context context, SharedPreferences preferences) {

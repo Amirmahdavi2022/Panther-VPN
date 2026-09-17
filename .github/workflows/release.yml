@@ -62,6 +62,7 @@ jobs:
           }
           check_pin AETHER_VERSION "Aether core"
           check_pin STEALTH_CORE_VERSION "Stealth core"
+          check_pin FAST_BRIDGE_VERSION "fast TUN bridge"
 
       - name: Fetch verified Android native assets
         run: |
@@ -78,7 +79,7 @@ jobs:
           # A green build once shipped with a core missing from it. Fail loudly instead.
           missing=""
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            for lib in libaether.so libhev-socks5-tunnel.so libxray.so libbyedpi.so; do
+            for lib in libaether.so libhev-socks5-tunnel.so libxray.so libbyedpi.so libzeptun-jni.so; do
               p="android/app/src/main/jniLibs/$abi/$lib"
               if [ -f "$p" ]; then echo "$p $(stat -c%s "$p") bytes"; else missing="$missing $p"; fi
             done
