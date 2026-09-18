@@ -183,6 +183,12 @@ public final class MainActivity extends AppCompatActivity {
             openTelegram();
             return true;
         });
+        // An item with an action view draws its own view and swallows its own taps, so the
+        // listener above never fires for it. Wiring the view itself is not belt and braces: it
+        // is the only thing that makes the chip do anything at all.
+        android.view.MenuItem support = binding.toolbar.getMenu().findItem(R.id.action_telegram);
+        View supportChip = support == null ? null : support.getActionView();
+        if (supportChip != null) supportChip.setOnClickListener(v -> openTelegram());
         binding.navigationView.setNavigationItemSelectedListener(item -> {
             binding.root.closeDrawer(GravityCompat.START);
             selectPage(item);
@@ -240,6 +246,7 @@ public final class MainActivity extends AppCompatActivity {
         binding.engineTurbo.setOnClickListener(v -> selectEngine("turbo"));
         binding.engineGlobal.setOnClickListener(v -> selectEngine("global"));
         binding.engineStealth.setOnClickListener(v -> selectEngine("stealth"));
+        binding.engineLantern.setOnClickListener(v -> selectEngine("lantern"));
         binding.locationCard.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); refreshLocation(); });
         binding.chooseAppsButton.setOnClickListener(v -> openAppSelection());
         binding.advancedToggle.setOnClickListener(v -> { boolean show = binding.advancedContainer.getVisibility() != View.VISIBLE; binding.advancedContainer.setVisibility(show ? View.VISIBLE : View.GONE); binding.advancedToggle.setText(show ? R.string.hide_advanced : R.string.show_advanced); });
@@ -617,7 +624,7 @@ public final class MainActivity extends AppCompatActivity {
     private void renderEngine() {
         String armed = engine();
         // An unrecognised stored value would otherwise leave the row with nothing lit at all.
-        if (!"global".equals(armed) && !"stealth".equals(armed)) armed = "turbo";
+        if (!"global".equals(armed) && !"stealth".equals(armed) && !"lantern".equals(armed)) armed = "turbo";
         paintEngine(binding.engineTurbo, binding.engineTurboTitle, binding.engineTurboIcon, "turbo".equals(armed),
                 R.drawable.engine_card_selected, R.color.blue_600);
         paintEngine(binding.engineGlobal, binding.engineGlobalTitle, binding.engineGlobalIcon, "global".equals(armed),
@@ -626,6 +633,8 @@ public final class MainActivity extends AppCompatActivity {
         // other two and should not be read as a variation on either.
         paintEngine(binding.engineStealth, binding.engineStealthTitle, binding.engineStealthIcon, "stealth".equals(armed),
                 R.drawable.engine_card_selected_violet, R.color.stealth_violet);
+        paintEngine(binding.engineLantern, binding.engineLanternTitle, binding.engineLanternIcon, "lantern".equals(armed),
+                R.drawable.engine_card_selected_amber, R.color.lantern_amber);
         renderExitLocation();
     }
 

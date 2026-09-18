@@ -62,7 +62,10 @@ final class TunnelConfig {
      * forwards UDP correctly is left exactly as it is.
      */
     static boolean usesMappedDns(String engine) {
-        return "global".equals(engine);
+        // Beacon joins Global for the same reason, read out of its own source rather than guessed:
+        // its SOCKS5 server implements CONNECT and nothing else, so a UDP ASSOCIATE gets refused
+        // exactly as it does on Global and every lookup would go into a hole.
+        return "global".equals(engine) || "lantern".equals(engine);
     }
 
     /**

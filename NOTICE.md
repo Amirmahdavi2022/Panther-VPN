@@ -87,6 +87,23 @@ out of: `speed.cloudflare.com`, `www.cloudflare.com/cdn-cgi/trace`, `ipwho.is` a
 ever sees the device's real address. No account or API key is used and nothing is
 stored.
 
+## Beacon engine
+
+The Beacon engine is the flashlight library from
+https://github.com/getlantern/flashlight, published by Brave New Software under the
+GNU General Public License v3.0, which is compatible with the AGPL-3.0 this project
+is under.
+
+It is pinned at **v7.6.241** and built from source by
+`scripts/fetch-android-assets.sh`, which writes a small `main()` around the library
+and compiles it as a standalone executable. No upstream source file is committed to
+this repository. The library itself is used unmodified; only the entry point and the
+build flags are ours.
+
+Lantern, flashlight and their marks belong to Brave New Software. Panther is an
+independent client and is not affiliated with, endorsed by or supported by them. Do
+not report Panther issues to that project.
+
 ## byedpi
 
 The local shaping proxy used by the Prowl engine's spoof route. Fetched at build time from

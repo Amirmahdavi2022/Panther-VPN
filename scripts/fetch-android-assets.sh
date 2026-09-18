@@ -23,6 +23,12 @@ STEALTH_CORE_COMMIT="d2758a023cd7f4174a5a5fa4ff66e487d4342ba0"
 # library is copied: it links the engine statically and needs nothing else at runtime.
 FAST_BRIDGE_VERSION="v1.0.0"
 FAST_BRIDGE_SHA256="02eb23f6597411b9abcec2146014e9de54323cd1f77ea1baa3c22c6da5ea47d7"
+# The Beacon engine is built here from source for the same reason the Stealth core is: its
+# publisher ships a library, not a program, and that library cannot live in the same APK as the
+# Global engine - both are gomobile builds and both carry libgojni.so. Building the engine as its
+# own executable sidesteps that entirely. Building it per release also keeps its bootstrap config
+# fresh, which matters: a stale one is what makes it stop working.
+LANTERN_VERSION="v7.6.241"
 NDK_VERSION="27.2.12479018"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -266,4 +272,167 @@ for abi in "${abis[@]}"; do
     echo "byedpi for $abi is only $size bytes; something did not link." >&2; exit 1
   fi
   echo "Built the shaping proxy for $abi ($size bytes)"
+done
+
+# --- the Beacon engine --------------------------------------------------------------------
+#
+# A small main() around the upstream library, written here rather than vendored, so there is no
+# third-party source in this repository and the pin above is the only thing that decides what is
+# built.
+
+lantern_src="$temp/lanterncore"
+mkdir -p "$lantern_src"
+cat > "$lantern_src/main.go" <<'LANTERN_MAIN'
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/getlantern/flashlight/v7"
+	"github.com/getlantern/flashlight/v7/client"
+	"github.com/getlantern/flashlight/v7/common"
+	"github.com/getlantern/flashlight/v7/stats"
+)
+
+// The free-tier credentials the upstream Android SDK ships. They are what authenticates to the
+// engine's own API; without them no configuration is fetched and nothing connects.
+const (
+	deviceID = "a34113"
+	userID   = int64(381696446)
+	token    = "K1qttSsZruN"
+)
+
+func main() {
+	socksAddr := flag.String("socks", "127.0.0.1:1821", "address for the local SOCKS5 listener")
+	httpAddr := flag.String("http", "127.0.0.1:0", "address for the local HTTP listener")
+	configDir := flag.String("configdir", "", "directory the engine keeps its fetched config in")
+	appName := flag.String("appname", "lantern", "application name reported upstream")
+	appVersion := flag.String("appversion", "7.6.241", "application version reported upstream")
+	proxyAll := flag.Bool("proxyall", true, "send every connection through the engine")
+	flag.Parse()
+
+	if *configDir == "" {
+		fmt.Fprintln(os.Stderr, "configdir is required")
+		os.Exit(2)
+	}
+	if err := os.MkdirAll(*configDir, 0o700); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot use configdir %v: %v\n", *configDir, err)
+		os.Exit(2)
+	}
+
+	userConfig := common.NewUserConfigData(*appName, deviceID, userID, token, map[string]string{}, "")
+
+	// 🚨 Must not be nil. The library only installs one of its own when VPN mode is on, and the
+	// SOCKS5 handler calls it on every single connection - so a nil here is a crash on the first
+	// request, which would read as the engine not working rather than as a missing argument.
+	// Addresses pass through untouched: the tunnel in front already decided where traffic goes.
+	reverseDNS := func(addr string) (string, error) { return addr, nil }
+
+	runner, err := flashlight.New(
+		*appName,
+		*appVersion,
+		time.Now().Format("2006-01-02"),
+		*configDir,
+		false,                        // VPN mode would try to bind 127.0.0.1:53
+		func() bool { return false }, // disconnected
+		func() bool { return *proxyAll },
+		func() bool { return false }, // allowPrivateHosts
+		func() bool { return true },  // autoReport
+		map[string]interface{}{},
+		userConfig,
+		stats.NewTracker(),
+		func() bool { return false }, // isPro
+		func() string { return "" },  // lang, desktop only
+		reverseDNS,
+		func(category, action, label string) {},
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "the engine did not start: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("lantern core starting, config dir %v\n", *configDir)
+
+	go runner.Run(*httpAddr, *socksAddr, nil, func(err error) {
+		fmt.Fprintf(os.Stderr, "lantern error: %v\n", err)
+	})
+
+	go func() {
+		if addr, ok := client.Socks5Addr(2 * time.Minute); ok {
+			fmt.Printf("lantern core ready: SOCKS5 listening on %v\n", addr)
+		}
+	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+}
+LANTERN_MAIN
+
+# A replace directive in a dependency's go.mod is ignored - only the main module's count - so the
+# library's three are repeated here, or the build resolves packages its source never targeted.
+cat > "$lantern_src/go.mod" <<LANTERN_MOD
+module lanterncore
+
+go 1.24.2
+
+replace github.com/keighl/mandrill => github.com/getlantern/mandrill v0.0.0-20221004112352-e7c04248adcb
+
+replace github.com/eycorsican/go-tun2socks => github.com/getlantern/go-tun2socks v1.16.12-0.20201218023150-b68f09e5ae93
+
+replace github.com/tetratelabs/wazero => github.com/refraction-networking/wazero v1.7.1-w
+
+require github.com/getlantern/flashlight/v7 $LANTERN_VERSION
+LANTERN_MOD
+
+( cd "$lantern_src" && GOFLAGS=-mod=mod go mod tidy >/dev/null )
+
+lantern_abis=("arm64-v8a" "armeabi-v7a" "x86_64")
+lantern_goarch=("arm64" "arm" "amd64")
+lantern_elf=("b700" "2800" "3e00")
+lantern_triple=("aarch64-linux-android24" "armv7a-linux-androideabi24" "x86_64-linux-android24")
+
+for i in "${!lantern_abis[@]}"; do
+  abi="${lantern_abis[$i]}"
+  mkdir -p "$destination/$abi"
+  output="$destination/$abi/liblantern.so"
+  rm -f "$output"
+
+  # CGO is not optional: two of the library's dependencies have no pure-Go path at all, so the
+  # build goes through the NDK's compiler rather than Go's own.
+  #
+  # -checklinkname=0 is required by a dependency pulled in ONLY on android, which reaches into the
+  # standard library with //go:linkname to work around Android blocking the netlink calls Go's
+  # resolver uses. Without it the link fails on net.zoneCache.
+  #
+  # -static-libstdc++ is what makes the result runnable on a phone: without it the binary NEEDs
+  # libc++_shared.so, which is an NDK library and is not on a device, and the process would die at
+  # exec before running a line of its own code.
+  CGO_ENABLED=1 GOOS=android GOARCH="${lantern_goarch[$i]}" GOARM=7 \
+    CC="$toolchain/${lantern_triple[$i]}-clang" \
+    CXX="$toolchain/${lantern_triple[$i]}-clang++" \
+    CGO_LDFLAGS="-static-libstdc++" \
+    go build -C "$lantern_src" -o "$output" -trimpath -buildvcs=false -buildmode=pie \
+    -ldflags="-s -w -buildid= -checklinkname=0" .
+
+  if [ ! -s "$output" ]; then echo "The Beacon core for $abi is empty." >&2; exit 1; fi
+  machine="$(elf_machine "$output")"
+  if [ "$machine" != "${lantern_elf[$i]}" ]; then
+    echo "Beacon core for $abi has ELF machine $machine, expected ${lantern_elf[$i]}." >&2; exit 1
+  fi
+
+  # Checked rather than trusted, because the one library that must not appear here is the one a
+  # default build links against. A phone has no libc++_shared.so.
+  for lib in $(readelf -d "$output" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p'); do
+    case "$lib" in
+      libc.so|libm.so|libdl.so|liblog.so) ;;
+      *) echo "Beacon core for $abi links $lib, which Android does not ship." >&2; exit 1 ;;
+    esac
+  done
+  echo "Built the Beacon core for $abi ($(stat -c%s "$output") bytes)"
 done

@@ -108,6 +108,7 @@ public final class AetherVpnService extends VpnService {
     private volatile String currentLocationDetail = "";
     private volatile GlobalCore globalCore;
     private volatile StealthCore stealthCore;
+    private volatile LanternCore lanternCore;
     /** The pool the live Stealth engine is dialling from, kept so its history can be saved. */
     private volatile EndpointPool stealthPool;
     /**
@@ -240,7 +241,24 @@ public final class AetherVpnService extends VpnService {
             String engine = value(request, "engine", "turbo");
             boolean global = "global".equals(engine);
             boolean stealth = "stealth".equals(engine);
-            if (stealth) {
+            boolean lantern = "lantern".equals(engine);
+            if (lantern) {
+                if (!startLanternCore(request, session)) {
+                    // Unlike Global, there is no carrier already running to fall back on - Beacon
+                    // needs nothing up first, which is its whole point. So one has to be raised
+                    // here. Doing that beats handing back an error screen when the other engine
+                    // would have worked perfectly well.
+                    stopLanternOnly();
+                    sendLog("Beacon did not come up; falling back to the Turbo tunnel");
+                    if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
+                        throw new IllegalStateException(getString(R.string.service_lantern_failed));
+                    }
+                    lantern = false;
+                    degradedToCarrier = true;
+                    degradedNotice = getString(R.string.service_lantern_degraded);
+                    updateState("securing", degradedNotice);
+                }
+            } else if (stealth) {
                 // Same contract as Global: whichever engine ends up carrying the connection has
                 // written its own loopback port into the socks extra by the time this block ends,
                 // and everything downstream goes on reading that one extra.
@@ -289,8 +307,8 @@ public final class AetherVpnService extends VpnService {
                 // Decided from the engine that ended up carrying the tunnel, not the one that was
                 // armed. A Global run that degraded to the carrier is on an engine that forwards
                 // UDP perfectly well, and should keep the ordinary DNS path.
-                boolean mappedDns = TunnelConfig.usesMappedDns(global ? "global" : "");
-                if (mappedDns) sendLog("Global cannot forward UDP, so DNS is answered inside the tunnel");
+                boolean mappedDns = TunnelConfig.usesMappedDns(global ? "global" : lantern ? "lantern" : "");
+                if (mappedDns) sendLog("This engine cannot forward UDP, so DNS is answered inside the tunnel");
                 establishVpn(request, mappedDns);
                 connectedAt = System.currentTimeMillis();
                 updateState("connected", degradedToCarrier && degradedNotice != null
@@ -298,7 +316,8 @@ public final class AetherVpnService extends VpnService {
                 updateNotification(getString("smart".equals(connectionMode) ? R.string.service_smart_protected : R.string.service_panther_protected));
             }
             scheduleLocationLookup(request, session);
-            if (stealth) monitorStealth(request, session);
+            if (lantern) monitorLantern(request, session);
+            else if (stealth) monitorStealth(request, session);
             else if (global) monitorGlobal(request, session);
             else monitorAether(request, session);
         } catch (Exception error) {
@@ -525,6 +544,59 @@ public final class AetherVpnService extends VpnService {
      * Brings the Global engine up and publishes the port it chose as the socks extra, so the rest
      * of the connection path is identical to the other engine's.
      */
+    /**
+     * Brings the Beacon engine up and points the tunnel at it.
+     *
+     * <p>Nothing else has to be running first. The engine reaches its own infrastructure through
+     * domain fronting, so it bootstraps from a filtered network on its own - which is exactly what
+     * Global cannot do, and why Global has to be carried.
+     */
+    private boolean startLanternCore(Intent request, long session) {
+        updateState("securing", getString(R.string.service_lantern_starting));
+        LanternCore core = new LanternCore(this, line -> sendLog(line));
+        lanternCore = core;
+        // Published before starting, so a stop arriving during the start has something to cancel
+        // rather than leaving it to wait out its own timeout on a connection nobody wants.
+        if (stopping || generation.get() != session) { core.cancel(); return false; }
+        if (!core.start(LanternCore.START_TIMEOUT_MS)) return false;
+        if (stopping || generation.get() != session) return false;
+        request.putExtra("socks", LanternCore.address());
+        sendLog("Beacon engine ready; routing the tunnel through " + LanternCore.address());
+        updateState("securing", getString(R.string.service_lantern_ready));
+        return true;
+    }
+
+    /**
+     * Watches Beacon the way the other monitors watch their engines.
+     *
+     * <p>The process being alive is not the test. It keeps its listener open whether or not it has
+     * anywhere to send traffic, so a dead network reads as a healthy process serving nothing - the
+     * failure that is worse than an error, because the app claims to be protecting the user while
+     * carrying none of their traffic.
+     */
+    private void monitorLantern(Intent request, long session) throws Exception {
+        int quiet = 0;
+        while (!stopping && generation.get() == session) {
+            Thread.sleep(5_000L);
+            if (stopping || generation.get() != session) return;
+            LanternCore core = lanternCore;
+            if (core == null) return;
+            if (!core.isAlive()) {
+                throw new IllegalStateException(getString(R.string.service_lantern_stopped));
+            }
+            if (SocksProbe.carriesTraffic("127.0.0.1", LanternCore.PORT, 6_000)) {
+                quiet = 0;
+                continue;
+            }
+            // One quiet probe is not evidence. The engine rotates between its own routes and a
+            // single request can land in the middle of that; three in a row cannot.
+            if (++quiet >= 3) {
+                throw new IllegalStateException(getString(R.string.service_lantern_stopped));
+            }
+            sendLog("Beacon check " + quiet + " of 3 came back empty");
+        }
+    }
+
     private boolean startGlobalCore(Intent request, long session) throws Exception {
         String region = value(request, "region", GlobalCore.REGION_AUTOMATIC);
         currentRegion = "";
@@ -1046,6 +1118,12 @@ public final class AetherVpnService extends VpnService {
         if (core != null) core.stop();
     }
 
+    private void stopLanternOnly() {
+        LanternCore core = lanternCore;
+        lanternCore = null;
+        if (core != null) core.stop();
+    }
+
     private void monitorAether(Intent request, long session) throws Exception {
         int attempts = 0;
         // Starts when the first recovery does, not when the connection did, and is reset by a core
@@ -1539,6 +1617,7 @@ public final class AetherVpnService extends VpnService {
         globalCore = null;
         if (core != null) core.stop();
         stopStealthOnly();
+        stopLanternOnly();
         stealthPool = null;
         degradedNotice = null;
         locationLookupSequence.incrementAndGet();
@@ -1576,6 +1655,7 @@ public final class AetherVpnService extends VpnService {
             // The engine runs as a child process holding a loopback port. Leaving it alive would
             // stop the next connection from binding that port, so it dies with the runtime.
             stopStealthOnly();
+            stopLanternOnly();
         }
     }
 
