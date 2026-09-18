@@ -53,7 +53,11 @@ Set it to **Automatic** and it takes the best relay anywhere. Pick a country and
 
 The directory is fetched at runtime and cached for three hours, and a failed refresh falls back to the last good copy. On a network where the feed itself is blocked, connect with Turbo once and Relay will have a list.
 
-Two things to know. Relay does not report a ping, and the location card shows the relay's own country rather than an IP lookup — the engine opens no SOCKS port for Panther to ask through, and the relay's country is the honest answer anyway. And these are strangers' machines: same as with any VPN, the exit sees your traffic leave, so stick to HTTPS.
+Your settings come with it. Split tunnelling, the kill switch, the MTU and DNS leak protection all apply to Relay exactly as they do to the other three — it builds its tunnel from an OpenVPN profile rather than through Panther's own bridge, so those are translated onto the profile rather than ignored. One difference worth stating: with the kill switch on, Relay holds the tunnel open and drops traffic while it's reconnecting, but a connect that fails on all five relays ends with no tunnel at all rather than in a blocked state. The other engines can sit there blocking; this one can't, because the interface belongs to its engine and goes with it.
+
+Two things it can't do. **Proxy** and **Smart** modes don't apply: Relay is always a full system VPN and has no local proxy to hand you, so the mode row is greyed out while it's selected and says so. And **Fast Tunnel** is a bridge between Android's VPN interface and a Panther engine — Relay's engine owns its own interface, so the setting doesn't reach it either way.
+
+Two more things to know. Relay does not report a ping, and the location card shows the relay's own country rather than an IP lookup — the engine opens no SOCKS port for Panther to ask through, and the relay's country is the honest answer anyway. And these are strangers' machines: same as with any VPN, the exit sees your traffic leave, so stick to HTTPS.
 
 ## Picking a country
 
@@ -84,7 +88,7 @@ Relay is the exception: it opens no SOCKS port for Panther to ask through, so th
 
 ## Fast Tunnel (beta)
 
-New in 2.12. Every engine hands its traffic to a small packet bridge that sits between Android's VPN interface and the engine. Panther has always used a well-known C bridge for that. Now there's a second, newer one you can switch to in **Settings → Fast Tunnel (Beta)**.
+New in 2.12. Turbo, Global and Prowl hand their traffic to a small packet bridge that sits between Android's VPN interface and the engine. (Relay doesn't use one — its engine builds the interface itself.) Panther has always used a well-known C bridge for that. Now there's a second, newer one you can switch to in **Settings → Fast Tunnel (Beta)**.
 
 - Off by default. Turn it on and reconnect.
 - It was tested on a real TUN interface before shipping: TCP both ways, UDP, DNS for Global, and stopping and starting again.

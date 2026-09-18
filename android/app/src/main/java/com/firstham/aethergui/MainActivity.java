@@ -303,13 +303,28 @@ public final class MainActivity extends AppCompatActivity {
     private void setSelection(MaterialAutoCompleteTextView view, String key, int fallback, int arrayId) { setSelection(view, preferences.getInt(key, fallback), arrayId); }
     private void setSelection(MaterialAutoCompleteTextView view, int index, int arrayId) { String[] values = getResources().getStringArray(arrayId); index = Math.max(0, Math.min(values.length - 1, index)); view.setText(values[index], false); view.setTag(index); }
 
-    private void updateModeUi() { String mode = preferences.getString("mode", "vpn"); binding.modeSummary.setText("smart".equals(mode) ? R.string.smart_mode_summary : R.string.status_ready_message); binding.protocolLayout.setVisibility("smart".equals(mode) ? View.GONE : View.VISIBLE); binding.transportLayout.setVisibility("smart".equals(mode) || selectedIndex(binding.protocolInput) != 0 ? View.GONE : View.VISIBLE); }
+    /**
+     * The connection-mode row, and the one engine it does not describe.
+     *
+     * <p>Relay is the OpenVPN engine: it always builds a full system tunnel and has no local proxy
+     * to offer, so Proxy and Smart mean nothing to it. Saying so is better than leaving a control
+     * on screen that looks like it applies and silently does not.
+     */
+    private void updateModeUi() { String mode = preferences.getString("mode", "vpn"); boolean relay = EngineRouter.usesRelay(preferences); binding.modeSummary.setText(relay ? R.string.mode_summary_relay : "smart".equals(mode) ? R.string.smart_mode_summary : R.string.status_ready_message); binding.modeGroup.setEnabled(!relay); for (int i = 0; i < binding.modeGroup.getChildCount(); i++) binding.modeGroup.getChildAt(i).setEnabled(!relay); binding.protocolLayout.setVisibility(relay || "smart".equals(mode) ? View.GONE : View.VISIBLE); binding.transportLayout.setVisibility(relay || "smart".equals(mode) || selectedIndex(binding.protocolInput) != 0 ? View.GONE : View.VISIBLE); }
 
     private void connect() {
-        if (!validSocks(text(binding.socksInput))) { binding.socksInput.setError(getString(R.string.invalid_socks)); return; }
+        // The SOCKS address is the port the Aether-side engines publish on. Relay never opens one,
+        // so a stale value in that field is no reason to refuse a Relay connect.
+        if (!EngineRouter.usesRelay(preferences) && !validSocks(text(binding.socksInput))) { binding.socksInput.setError(getString(R.string.invalid_socks)); return; }
         if (binding.splitSwitch.isChecked() && selectedPackages().isEmpty() && binding.routingGroup.getCheckedRadioButtonId() == R.id.include_apps_radio) { Toast.makeText(this, R.string.split_include_empty, Toast.LENGTH_LONG).show(); return; }
         saveSettings();
-        if (!"manual".equals(preferences.getString("mode", "vpn"))) { Intent permission = VpnService.prepare(this); if (permission != null) { startActivityForResult(permission, VPN_REQUEST); return; } }
+        // Relay always builds a real system tunnel, so it needs consent even in Proxy mode, where
+        // the other three never touch the VPN interface. Asking here rather than letting the
+        // engine's own prompt appear keeps the flow identical whichever engine is armed.
+        if (EngineRouter.usesRelay(preferences) || !"manual".equals(preferences.getString("mode", "vpn"))) {
+            Intent permission = VpnService.prepare(this);
+            if (permission != null) { startActivityForResult(permission, VPN_REQUEST); return; }
+        }
         startSelectedEngine();
     }
 
@@ -661,6 +676,9 @@ public final class MainActivity extends AppCompatActivity {
                 EngineRouter.RELAY.equals(armed),
                 R.drawable.engine_card_selected_teal, R.color.relay_teal);
         renderExitLocation();
+        // Which settings actually apply depends on the armed engine, so the settings page has to
+        // be repainted whenever this row changes rather than only when it is opened.
+        updateModeUi();
     }
 
     private void paintEngine(View card, TextView title, ImageView icon, boolean armed, int armedBackground, int armedColour) {
@@ -732,7 +750,14 @@ public final class MainActivity extends AppCompatActivity {
 
     private Set<String> selectedPackages() { Set<String> result = new LinkedHashSet<>(); String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; AppSelectionActivity.parsePackages(preferences.getString(key, ""), result); return result; }
     private void updateSelectedCount() { if (binding == null) return; binding.selectedAppsCount.setText(getResources().getQuantityString(R.plurals.app_picker_selected_count, selectedPackages().size(), selectedPackages().size())); }
-    private void resetDefaults() { preferences.edit().clear().putInt("theme", 2).apply(); relayMode = false; restoreSettings(); renderEngine(); saveSettings(); applyTheme(2); }
+    /**
+     * Puts every setting back to its default.
+     *
+     * <p>The tunnel goes down first. Clearing the settings under a live connection left the screen
+     * claiming Turbo with default routing while the engine the user had actually armed carried on
+     * running with the old ones - the one state where nothing on screen was true.
+     */
+    private void resetDefaults() { if (shouldDisconnect()) disconnect(); preferences.edit().clear().putInt("theme", 2).apply(); relayMode = false; restoreSettings(); renderEngine(); saveSettings(); applyTheme(2); renderState("disconnected", getString(R.string.status_ready_message)); }
 
     private void checkForUpdates() { SharedPreferences updates = getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE); updates.edit().putString("status", "checking").apply(); renderUpdateState(); binding.checkUpdatesButton.setEnabled(false); AppUpdateManager.checkNow(this, new AppUpdateManager.Listener() { @Override public void onComplete() { binding.checkUpdatesButton.setEnabled(true); renderUpdateState(); } @Override public void onError(Throwable error) { binding.checkUpdatesButton.setEnabled(true); renderUpdateState(); String detail = error == null ? "" : error.getMessage(); Toast.makeText(MainActivity.this, detail == null || detail.isEmpty() ? getString(R.string.update_failed) : getString(R.string.update_failed) + ": " + detail, Toast.LENGTH_LONG).show(); } }); }
     private void renderUpdateState() { if (binding == null) return; SharedPreferences updates = getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE); String latest = updates.getString(UpdateConfig.KEY_LATEST_VERSION, ""); String status = updates.getString("status", ""); binding.latestVersionValue.setText(latest.isEmpty() ? getString(R.string.not_checked) : latest); int id = "up_to_date".equals(status) ? R.string.update_up_to_date : "available".equals(status) ? R.string.update_available : "downloading".equals(status) ? R.string.update_downloading : "ready_install".equals(status) ? R.string.update_ready_install : "checking".equals(status) ? R.string.update_checking : "download_failed".equals(status) ? R.string.update_download_failed : "verification_failed".equals(status) ? R.string.update_verification_failed : "failed".equals(status) ? R.string.update_failed : R.string.not_checked; binding.updateStatusValue.setText(id); String notes = updates.getString(UpdateConfig.KEY_RELEASE_NOTES, ""); binding.releaseNotesValue.setText(notes); binding.releaseNotesValue.setVisibility(notes.isEmpty() ? View.GONE : View.VISIBLE); boolean downloading = "downloading".equals(status); int progress = downloading ? AppUpdateManager.downloadProgress(this) : -1; binding.updateProgress.setVisibility(downloading ? View.VISIBLE : View.GONE); binding.updateProgress.setIndeterminate(downloading && progress <= 0); if (progress > 0) binding.updateProgress.setProgress(progress); boolean action = "available".equals(status) || "download_failed".equals(status) || "verification_failed".equals(status) || "ready_install".equals(status); binding.downloadUpdateButton.setVisibility(action ? View.VISIBLE : View.GONE); binding.downloadUpdateButton.setText("ready_install".equals(status) ? R.string.install_update : R.string.download_update); }

@@ -40,7 +40,11 @@ public final class AethonTileService extends TileService {
             else VpnConnectionController.disconnect(this);
             return;
         }
-        if (!"manual".equals(preferences.getString("mode", "vpn")) && VpnService.prepare(this) != null) {
+        // Relay builds a real tunnel whatever the connection mode says, so it needs consent even
+        // in Proxy mode. Same rule as the home screen, or the tile would start an engine that then
+        // stalls on a prompt nobody can see from the shade.
+        if ((relay || !"manual".equals(preferences.getString("mode", "vpn")))
+                && VpnService.prepare(this) != null) {
             openPermissionScreen();
             return;
         }
@@ -81,7 +85,8 @@ public final class AethonTileService extends TileService {
         }
     }
 
-    static void requestUpdate(Context context) {
+    /** Asks Android to re-poll the tile. Called by whichever engine just changed state. */
+    public static void requestUpdate(Context context) {
         requestListeningState(context, new ComponentName(context, AethonTileService.class));
     }
 }

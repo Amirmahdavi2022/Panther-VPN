@@ -48,6 +48,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import hev.htproxy.TProxyService;
+import com.firstham.aethergui.vpngate.EngineRouter;
 
 public final class AetherVpnService extends VpnService {
     public static final String ACTION_START = "com.firstham.aethergui.START";
@@ -166,8 +167,16 @@ public final class AetherVpnService extends VpnService {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) {
-            if (stateStore.getBoolean("desiredConnected", false) && VpnService.prepare(this) == null) {
-                return onStartCommand(VpnConnectionController.startIntent(this, getSharedPreferences("aether", MODE_PRIVATE)), flags, startId);
+            // Android restarting the service after the process died. Rebuilding the request from
+            // the settings is right, but only for the engine the user actually has armed: Relay
+            // runs on the other VpnService entirely, and reviving this one underneath it would
+            // bring up a tunnel on an engine they did not choose - and take Relay's away with it,
+            // since only one VpnService can hold the interface.
+            SharedPreferences settings = getSharedPreferences("aether", MODE_PRIVATE);
+            if (stateStore.getBoolean("desiredConnected", false)
+                    && !EngineRouter.usesRelay(settings)
+                    && VpnService.prepare(this) == null) {
+                return onStartCommand(VpnConnectionController.startIntent(this, settings), flags, startId);
             }
             return active ? START_STICKY : START_NOT_STICKY;
         }

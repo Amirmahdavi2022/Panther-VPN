@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.util.Log;
 
 import java.io.StringReader;
+import java.util.HashSet;
 import java.util.Locale;
 
 import de.blinkt.openvpn.VpnProfile;
@@ -26,18 +27,20 @@ import de.blinkt.openvpn.core.VPNLaunchHelper;
  */
 public final class VpnGateConnector {
     private static final String TAG = "VpnGateConnector";
-    private static final String[] DNS = {"1.1.1.1", "1.0.0.1"};
+
+    /** The resolvers used when the user has DNS leak protection on. Same pair the others use. */
+    public static final String[] DNS = {"1.1.1.1", "1.0.0.1"};
 
     private VpnGateConnector() {
     }
 
     /**
-     * Starts one specific relay.
+     * Starts one specific relay with the settings the user chose.
      *
      * @return true when the engine accepted the profile and was asked to start.
      */
-    public static boolean connect(Context context, VpnGateServer server) {
-        String config = VpnGateProfile.build(server, DNS);
+    public static boolean connect(Context context, VpnGateServer server, RelayOptions options) {
+        String config = VpnGateProfile.build(server, options == null ? DNS : options.dns);
         if (config == null) return false;
 
         try {
@@ -69,6 +72,8 @@ public final class VpnGateConnector {
                 if (fallback.contains("BF-CBC")) profile.mUseLegacyProvider = true;
             }
 
+            apply(profile, options);
+
             ProfileManager.setTemporaryProfile(context, profile);
             VPNLaunchHelper.startOpenVpn(profile, context, "Panther", true);
             return true;
@@ -80,6 +85,37 @@ public final class VpnGateConnector {
                     + error.getClass().getSimpleName()
                     + (error.getMessage() == null ? "" : ": " + error.getMessage()));
             return false;
+        }
+    }
+
+    /**
+     * Copies the settings screen onto the profile.
+     *
+     * <p>Everything here was previously left at the engine's default, which meant the settings
+     * page said one thing and a relay connection did another. The values themselves are decided in
+     * {@link RelayOptions}; this only writes them.
+     */
+    private static void apply(VpnProfile profile, RelayOptions options) {
+        if (options == null) return;
+
+        profile.mAllowedAppsVpn = new HashSet<>(options.apps);
+        profile.mAllowedAppsVpnAreDisallowed = options.appsAreExcluded;
+        // The other engines route local networks around the tunnel by default and never offer to
+        // let apps opt out, so neither does this one.
+        profile.mAllowAppVpnBypass = false;
+
+        // The engine only writes a tun-mtu line when this differs from its own default, so an
+        // untouched setting stays untouched.
+        profile.mTunMtu = options.mtu;
+
+        // persist-tun is what keeps the interface up while the engine is down, which blackholes
+        // traffic instead of letting it out around the tunnel. The profile builder adds it
+        // unconditionally, so the kill switch being off has to actively take it away.
+        profile.mPersistTun = options.killSwitch;
+
+        if (options.dns.length == 0) {
+            // DNS leak protection off means the server's own resolvers, exactly as on the others.
+            profile.mOverrideDNS = false;
         }
     }
 

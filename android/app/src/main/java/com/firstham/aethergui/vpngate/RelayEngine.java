@@ -66,6 +66,14 @@ public final class RelayEngine implements RelayStatus.Listener {
     private final RelayStatus status;
 
     private Observer observer;
+    /**
+     * The settings this connect runs with, read once when it starts.
+     *
+     * <p>Read once on purpose: a sequence that walked five relays while the user was editing the
+     * settings screen would otherwise apply a different rule to each attempt, and the one that
+     * happened to connect would decide what the connection did.
+     */
+    private RelayOptions options;
     private List<VpnGateServer> candidates = new ArrayList<>();
     private int index;
     private VpnGateServer current;
@@ -136,6 +144,14 @@ public final class RelayEngine implements RelayStatus.Listener {
      */
     public void start(SharedPreferences preferences) {
         String countryCode = EngineRouter.location(preferences);
+        options = RelayOptions.of(
+                preferences.getInt("routing", RelayOptions.ROUTING_DEFAULT),
+                preferences.getString("splitApps", ""),
+                app.getPackageName(),
+                preferences.getString("mtu", "1500"),
+                preferences.getBoolean("killSwitch", false),
+                preferences.getBoolean("dnsLeak", true),
+                VpnGateConnector.DNS);
         cancelSequence();
         running = true;
         connected = false;
@@ -196,7 +212,7 @@ public final class RelayEngine implements RelayStatus.Listener {
             VpnGateServer server = candidates.get(index++);
             publish("starting", app.getString(R.string.relay_trying,
                     server.countryName, index, candidates.size()));
-            if (VpnGateConnector.connect(app, server)) {
+            if (VpnGateConnector.connect(app, server, options)) {
                 current = server;
                 main.postDelayed(attemptTimeout, ATTEMPT_TIMEOUT_MS);
                 return;
@@ -280,8 +296,18 @@ public final class RelayEngine implements RelayStatus.Listener {
     }
 
     private void publish(String state, String message) {
+        boolean changed = !state.equals(lastState);
         lastState = state;
         lastMessage = message;
         if (observer != null) observer.relayState(state, message);
+        // The tile reads this engine directly, so it has to be told to look again. Without this it
+        // kept whatever it showed when the shade was last opened - which on a relay connect meant
+        // an "off" tile sitting above a live tunnel.
+        if (changed) {
+            try { com.firstham.aethergui.AethonTileService.requestUpdate(app); }
+            catch (Throwable ignored) {
+                // A tile that will not refresh is never a reason to fail a connection.
+            }
+        }
     }
 }
