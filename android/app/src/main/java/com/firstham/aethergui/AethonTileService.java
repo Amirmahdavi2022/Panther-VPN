@@ -10,6 +10,9 @@ import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 import android.annotation.SuppressLint;
 
+import com.firstham.aethergui.vpngate.EngineRouter;
+import com.firstham.aethergui.vpngate.RelayEngine;
+
 public final class AethonTileService extends TileService {
     public static final String EXTRA_CONNECT_FROM_TILE = "connect_from_tile";
 
@@ -24,23 +27,33 @@ public final class AethonTileService extends TileService {
 
     @Override public void onClick() {
         super.onClick();
-        String state = getSharedPreferences("service_state", MODE_PRIVATE).getString("state", "disconnected");
-        if (VpnConnectionController.canDisconnect(state)) {
-            VpnConnectionController.disconnect(this);
+        android.content.SharedPreferences preferences = getSharedPreferences("aether", MODE_PRIVATE);
+        // Relay is the OpenVPN engine and writes none of the Aether service's state, so the tile
+        // has to ask that engine directly. Starting Aether here because the shared state file
+        // says "disconnected" would bring up a tunnel on an engine the user did not arm.
+        boolean relay = EngineRouter.usesRelay(preferences);
+        if (relay ? RelayEngine.get(this).live()
+                : VpnConnectionController.canDisconnect(
+                        getSharedPreferences("service_state", MODE_PRIVATE)
+                                .getString("state", "disconnected"))) {
+            if (relay) RelayEngine.get(this).stop();
+            else VpnConnectionController.disconnect(this);
             return;
         }
-        android.content.SharedPreferences preferences = getSharedPreferences("aether", MODE_PRIVATE);
         if (!"manual".equals(preferences.getString("mode", "vpn")) && VpnService.prepare(this) != null) {
             openPermissionScreen();
             return;
         }
-        VpnConnectionController.connect(this, preferences);
+        if (relay) RelayEngine.get(this).start(preferences);
+        else VpnConnectionController.connect(this, preferences);
     }
 
     private void updateTile() {
         Tile tile = getQsTile();
         if (tile == null) return;
-        String state = getSharedPreferences("service_state", MODE_PRIVATE).getString("state", "disconnected");
+        String state = EngineRouter.usesRelay(getSharedPreferences("aether", MODE_PRIVATE))
+                ? (RelayEngine.get(this).live() ? "connected" : "disconnected")
+                : getSharedPreferences("service_state", MODE_PRIVATE).getString("state", "disconnected");
         if ("connected".equals(state)) {
             tile.setState(Tile.STATE_ACTIVE);
             if (Build.VERSION.SDK_INT >= 29) tile.setSubtitle(getString(R.string.tile_connected));

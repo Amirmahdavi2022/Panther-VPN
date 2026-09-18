@@ -6,7 +6,6 @@ import android.util.Log;
 
 import java.io.StringReader;
 import java.util.Locale;
-import java.util.List;
 
 import de.blinkt.openvpn.VpnProfile;
 import de.blinkt.openvpn.core.VpnStatus;
@@ -22,40 +21,14 @@ import de.blinkt.openvpn.core.VPNLaunchHelper;
  * VpnService, and two of them cannot hold the tunnel at once. Callers must stop the Aether side
  * before starting here, and vice versa - {@link #stop(Context)} exists for that.
  *
- * Relays are volunteer-run and die without notice, so {@link #connectBest} walks the ranked list
- * rather than trusting the top entry.
+ * Relays are volunteer-run and die without notice, so a single start is never the whole plan.
+ * {@link RelayEngine} owns the sequence; this class only knows how to launch one of them.
  */
 public final class VpnGateConnector {
     private static final String TAG = "VpnGateConnector";
     private static final String[] DNS = {"1.1.1.1", "1.0.0.1"};
 
-    /** How many relays to try before giving up on a country. */
-    public static final int MAX_ATTEMPTS = 3;
-
     private VpnGateConnector() {
-    }
-
-    /**
-     * Starts the best usable relay from {@code candidates}.
-     *
-     * A relay whose profile will not parse is skipped rather than surfaced - the user asked for a
-     * country, not for a particular volunteer's machine.
-     *
-     * @return the relay that was launched, or null when none of the candidates produced a usable
-     *         profile. A non-null return means the engine was asked to start, not that the tunnel
-     *         came up; watch VpnStatus for that.
-     */
-    public static VpnGateServer connectBest(Context context, List<VpnGateServer> candidates) {
-        if (context == null || candidates == null || candidates.isEmpty()) return null;
-
-        int attempts = 0;
-        for (VpnGateServer server : candidates) {
-            if (attempts >= MAX_ATTEMPTS) break;
-            attempts++;
-            if (connect(context, server)) return server;
-            Log.w(TAG, "Relay " + server.key() + " produced no usable profile; trying the next one");
-        }
-        return null;
     }
 
     /**

@@ -75,9 +75,17 @@ refuses to build past if the hash does not match. It is used unmodified.
 
 ## ics-openvpn
 
-The relay engine in `android/vpnLib` is derived from ics-openvpn by Arne Schwabe,
-licensed under GNU GPL v2.0. It ships in the package but is not reachable from the
-UI in this release.
+The Relay engine in `android/vpnLib` is derived from ics-openvpn by Arne Schwabe,
+licensed under GNU GPL v2.0. It is used unmodified and carries the tunnel whenever
+the Relay engine is the one selected.
+
+## VPN Gate
+
+Relay dials servers from the public VPN Gate directory run by the University of
+Tsukuba, fetched at runtime from `www.vpngate.net/api/iphone/`. No account, no key
+and no per-server request: each entry carries its own OpenVPN profile inline. The
+servers are volunteer-run and Panther has no relationship with whoever operates any
+of them. Panther is not affiliated with or endorsed by VPN Gate.
 
 ## Location lookup
 

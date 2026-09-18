@@ -13,14 +13,17 @@ A lot of the free VPN apps on GitHub are basically config managers. The UI looks
 | **Turbo** | Closest Cloudflare datacenter | Fastest | No |
 | **Global** | Another country | Slower (two hops) | No |
 | **Prowl** | Wherever the server it found is | Fast (one hop) | No |
+| **Relay** | A country you pick | Fast (one hop), varies a lot | No |
 
-They're the three cards above the connect button. Tap one to switch. Turbo is the default.
+They're the four cards above the connect button. Tap one to switch. Turbo is the default.
 
 **Turbo** hides your IP and your ISP, but you stay in roughly the same place. The network behind it is built to do that, so sites still see your own country.
 
 **Global** is the one that actually moves you. It runs inside the Turbo tunnel instead of dialling out on its own, which is why it can come up on filtered networks at all. You can pick an exit country or leave it on automatic.
 
 **Prowl** is for days when the other two get blocked. It keeps a list of servers, tests them on your phone and uses whichever one really carries traffic. One hop, so it's quick once it connects.
+
+**Relay** is the one where you say which country. It runs OpenVPN against the public VPN Gate directory, so the list of countries is whatever has a volunteer server in it right now, not a list baked into the app.
 
 ## How Prowl finds a server
 
@@ -40,9 +43,21 @@ If you switch networks and the saved route stops working, **Settings → Reset P
 
 There's no country picker for Prowl. It ends up wherever the server it reached happens to be, and that list changes all the time. The location card shows where you actually landed.
 
+## Relay, and why it's the fourth one
+
+Relay is a different trade from the other three. The other engines run on infrastructure Panther knows how to reach; Relay runs on somebody's spare machine that was advertised in a public feed some hours ago and may well be gone. That's the deal: you get to name a country and come out there in one hop, and in exchange the server might not answer.
+
+So a connect here is a sequence, not a single attempt. It ranks the relays, takes the best one, and if it refuses the handshake, fails auth, or just says nothing for 35 seconds, it stops it and takes the next. Five relays get tried before you're told nothing worked. The status line names each one as it goes, so a slow connect looks like progress rather than a frozen screen.
+
+Set it to **Automatic** and it takes the best relay anywhere. Pick a country and it stays in that country or reports that the country has nothing behind it — it will never quietly put you somewhere else, because coming out in the wrong country is the one failure that matters here.
+
+The directory is fetched at runtime and cached for three hours, and a failed refresh falls back to the last good copy. On a network where the feed itself is blocked, connect with Turbo once and Relay will have a list.
+
+Two things to know. Relay does not report a ping, and the location card shows the relay's own country rather than an IP lookup — the engine opens no SOCKS port for Panther to ask through, and the relay's country is the honest answer anyway. And these are strangers' machines: same as with any VPN, the exit sees your traffic leave, so stick to HTTPS.
+
 ## Picking a country
 
-That's for Global. Select it and a card appears at the top where you choose the exit country. Automatic is the default and usually the fastest, so only pick one if you need a specific place.
+That's for Global and Relay. Select either and a card appears at the top where you choose the exit country. Automatic is the default and usually the fastest, so only pick one if you need a specific place. The rest of this section is about Global's list; Relay's is built from the live directory and is covered above.
 
 Each time you connect the app notes which country you came out in. Next time you open the list, those show as connected before and the rest as untried.
 
@@ -65,6 +80,8 @@ It tries these in order until one answers:
 
 On Global the engine also reports which country it connected through. If that doesn't match the IP lookup, the card shows both so you can see something's off.
 
+Relay is the exception: it opens no SOCKS port for Panther to ask through, so the card names the relay's own country and host instead of looking the address up, and there's nothing to refresh.
+
 ## Fast Tunnel (beta)
 
 New in 2.12. Every engine hands its traffic to a small packet bridge that sits between Android's VPN interface and the engine. Panther has always used a well-known C bridge for that. Now there's a second, newer one you can switch to in **Settings → Fast Tunnel (Beta)**.
@@ -78,10 +95,11 @@ The upstream benchmarks were run on a server, not a phone, so don't expect the s
 
 ## Things worth knowing
 
-- **Turbo doesn't change your country.** Want another country, use Global or Prowl.
+- **Turbo doesn't change your country.** Want another country, use Global or Relay.
 - **Global is slower.** Two hops, that's the price of coming out somewhere else.
 - **The first Global connect is slow.** Give it a minute or two while the carrier comes up. It's quicker after that.
 - **Prowl lives on public servers.** They're free and they die all the time. The app scores them and skips the dead ones, but some days the lists are just bad.
+- **Relay does too, and more so.** Volunteer machines with no uptime promise. It tries five before giving up, and some days all five refuse. If Relay won't come up, that's not a bug in the app, that's the pool.
 - **The exit can see your traffic leave.** Same as with any VPN, so stick to HTTPS.
 - **It's not anonymity.** It changes where your traffic seems to come from. If you really need Tor, use Tor.
 - **Android only.** The Windows client was dropped in 2.0.0.

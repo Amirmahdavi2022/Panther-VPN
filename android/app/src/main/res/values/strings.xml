@@ -58,12 +58,15 @@
     <string name="service_stealth_failed">Prowl could not find a working server. Try Turbo, or try again in a moment.</string>
     <string name="service_stealth_no_endpoints">Prowl has no servers saved yet and could not reach its sources. Connect with Turbo once and it will pick some up.</string>
     <string name="engine_turbo">Turbo</string>
-    <!-- Three cards share one row now, so these are kept short and roughly the same length. -->
+    <!-- Four cards share one row now, so these are kept short and roughly the same length: a
+         description that wraps to one more line than its neighbours leaves the row ragged. -->
     <string name="engine_turbo_detail">Fastest. Stays local.</string>
     <string name="engine_global">Global</string>
     <string name="engine_global_detail">Comes out abroad.</string>
     <string name="engine_stealth">Prowl</string>
     <string name="engine_stealth_detail">Gets through anyway.</string>
+    <string name="engine_relay">Relay</string>
+    <string name="engine_relay_detail">Pick a country.</string>
     <string name="engine_label">ENGINE</string>
     <string name="location_refreshing">Checking location…</string>
     <string name="upload_label">&#x2191; Upload</string>
@@ -149,6 +152,8 @@
     <string name="about_mode_relay_body">Comes out in another country, which is what geo-restricted services need. It runs inside the Turbo tunnel rather than beside it, so it works on networks where it could not connect on its own. Slower by nature — two hops instead of one. If it cannot come up, Panther keeps you connected on Turbo instead of dropping you.</string>
     <string name="about_mode_stealth_title">Prowl</string>
     <string name="about_mode_stealth_body">The one that keeps going when the others are blocked. It keeps a list of servers, tests them on your own phone and dials whichever actually works, moving to another the moment one stops. On a network that blocks them outright it opens the connection through the Turbo tunnel instead, so the servers stay reachable — the country you come out in is still the server\'s own.</string>
+    <string name="about_mode_vpngate_title">Relay</string>
+    <string name="about_mode_vpngate_body">The one where you name the country. It dials the public VPN Gate directory over OpenVPN, so the countries on offer are whatever has a volunteer server in it right now rather than a list compiled into the app. One hop, and often fast. These are strangers\' spare machines with no uptime promise, so a connect walks the best five in your country and stops at the first that holds — or tells you none of them would.</string>
     <string name="about_support_title">Support channel</string>
     <string name="about_credits_title">Built on</string>
     <string name="about_credits_body">Panther bundles open-source components. Every one of them, with its full licence and attribution, is listed in NOTICE.md alongside the source.</string>
@@ -228,22 +233,27 @@
     <string name="picker_title">Choose an exit location</string>
     <string name="picker_change">Change</string>
     <string name="picker_automatic">Automatic</string>
-    <string name="picker_automatic_detail">Fastest route. The exit country follows your network.</string>
+    <string name="picker_automatic_detail">Uses the best relay anywhere. Fastest, but you do not choose where you come out.</string>
     <string name="picker_unavailable">No relay list yet. Check your connection and try again.</string>
-    <string name="picker_subtitle">Automatic uses Panther\'s own route. Choosing a country routes you through a VPN Gate relay there.</string>
+    <string name="picker_subtitle">Relay uses volunteer-run VPN Gate servers. Automatic takes the best one anywhere; choose a country to come out there instead.</string>
     <string name="picker_search">Search countries</string>
     <string name="picker_section_fastest">Fastest right now</string>
     <string name="picker_section_all">All countries (%1$d)</string>
     <string name="picker_no_match">No country matches that search.</string>
     <string name="relay_no_country">No relays are available in that country right now. Try another one.</string>
-    <string name="relay_start_failed">Could not start a relay in %1$s. Try another country.</string>
-    <string name="relay_connecting">Connecting through %1$s…</string>
+    <string name="relay_none_available">Could not reach the relay list. Connect with Turbo once and Relay will pick it up.</string>
+    <string name="relay_finding">Finding a relay…</string>
+    <string name="relay_trying">Trying %1$s — relay %2$d of %3$d…</string>
+    <string name="relay_exhausted">None of the relays would carry the connection. Try again, pick another country, or use Turbo.</string>
     <string name="relay_connected">Connected via %1$s</string>
+    <string name="relay_detail">%1$s · %2$s</string>
 
-    <!-- Exit country picker. Global only: Prowl comes out wherever its server sits, which is not
-         something the user picks, and the location card reports it from the live IP instead. -->
+    <!-- Exit country picker. Global and Relay only: Prowl comes out wherever its server sits,
+         which is not something the user picks, and the location card reports it from the live IP
+         instead. -->
     <string name="region_card_label">Global exit country</string>
     <string name="region_card_label_global">Global exit country</string>
+    <string name="region_card_label_relay">Relay exit country</string>
     <string name="region_card_label_idle">Exit country · not in use right now</string>
     <string name="region_picker_title">Exit country</string>
     <string name="region_picker_note">Automatic is usually fastest — pick a country only when you need one.</string>

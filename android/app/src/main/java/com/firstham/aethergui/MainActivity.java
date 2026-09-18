@@ -55,6 +55,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import com.firstham.aethergui.vpngate.EngineRouter;
+import com.firstham.aethergui.vpngate.LocationPicker;
+import com.firstham.aethergui.vpngate.RelayEngine;
+import com.firstham.aethergui.vpngate.VpnGateServer;
 
 public final class MainActivity extends AppCompatActivity {
     private static final int VPN_REQUEST = 41;
@@ -73,8 +76,39 @@ public final class MainActivity extends AppCompatActivity {
     /** True while the armed engine failed and the carrier tunnel is holding the connection. */
     private boolean degraded = false;
 
-    /** True while the chosen exit location routes through the OpenVPN relay engine. */
+    /** True while the armed engine is Relay, which is the OpenVPN engine rather than Aether. */
     private boolean relayMode;
+
+    /**
+     * The screen's window onto the relay engine.
+     *
+     * <p>Aether broadcasts its state; OpenVPN reports on its own status bus and cannot broadcast
+     * anything the receiver above would understand. {@link RelayEngine} bridges the two, and every
+     * callback here guards on relayMode so a late event from the engine that is no longer armed
+     * cannot repaint a screen the other engine now owns.
+     */
+    private final RelayEngine.Observer relayObserver = new RelayEngine.Observer() {
+        @Override public void relayState(String state, String message) {
+            if (!relayMode || binding == null) return;
+            renderState(state, message);
+        }
+
+        @Override public void relayTraffic(long tx, long rx) {
+            if (!relayMode || binding == null) return;
+            animateMetric(binding.uploadValue, formatTraffic(tx));
+            animateMetric(binding.downloadValue, formatTraffic(rx));
+        }
+
+        @Override public void relayServer(VpnGateServer server) {
+            if (!relayMode || binding == null) return;
+            // The relay's own country is the authoritative exit here - there is no in-tunnel
+            // lookup to second-guess it with, because the relay engine opens no SOCKS port.
+            endpoint = LocationPicker.flag(server.countryCode) + "  " + server.countryName;
+            locationDetail = getString(R.string.relay_detail, server.hostName, server.ip);
+            region = "";
+            renderLocation();
+        }
+    };
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
     private final Runnable updateProgressPoll = new Runnable() {
         @Override public void run() {
@@ -138,16 +172,12 @@ public final class MainActivity extends AppCompatActivity {
         binding.currentVersionValue.setText(BuildConfig.VERSION_NAME);
         binding.autoDownloadSwitch.setChecked(getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE).getBoolean(UpdateConfig.KEY_AUTO_DOWNLOAD, false));
         renderUpdateState();
-        // The VPN Gate relay countries are public, heavily abused endpoints; in practice they
-        // refuse the handshake far more often than they accept it, and a country list that mostly
-        // fails is worse than no country list. Automatic (the Aether core) is the only exit now.
-        // Anyone whose preferences still point at a country gets moved back here, once, silently.
-        EngineRouter.setLocation(preferences, null, null);
-        relayMode = false;
-        // The card itself is reused for the Global engine's exit country, which is a different
-        // thing entirely from the relay country above: it is a parameter handed to the engine, not
-        // a server this app picks. renderExitLocation decides when it is on screen.
-        binding.exitLocationCard.setOnClickListener(view -> showRegionPicker());
+        relayMode = EngineRouter.usesRelay(preferences);
+        // One card, two meanings, because they are the same question asked of different engines:
+        // on Global the country is a parameter handed to the engine, on Relay it filters the pool
+        // of volunteer servers this app dials itself. renderExitLocation decides when it is on
+        // screen and which of the two it is showing.
+        binding.exitLocationCard.setOnClickListener(view -> showExitPicker());
         renderState("disconnected", getString(R.string.status_ready_message));
         if (getIntent().getBooleanExtra(AethonTileService.EXTRA_CONNECT_FROM_TILE, false)) {
             getIntent().removeExtra(AethonTileService.EXTRA_CONNECT_FROM_TILE);
@@ -238,6 +268,7 @@ public final class MainActivity extends AppCompatActivity {
         binding.engineTurbo.setOnClickListener(v -> selectEngine("turbo"));
         binding.engineGlobal.setOnClickListener(v -> selectEngine("global"));
         binding.engineStealth.setOnClickListener(v -> selectEngine("stealth"));
+        binding.engineRelay.setOnClickListener(v -> selectEngine(EngineRouter.RELAY));
         binding.locationCard.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); refreshLocation(); });
         binding.chooseAppsButton.setOnClickListener(v -> openAppSelection());
         binding.advancedToggle.setOnClickListener(v -> { boolean show = binding.advancedContainer.getVisibility() != View.VISIBLE; binding.advancedContainer.setVisibility(show ? View.VISIBLE : View.GONE); binding.advancedToggle.setText(show ? R.string.hide_advanced : R.string.show_advanced); });
@@ -289,57 +320,92 @@ public final class MainActivity extends AppCompatActivity {
         EngineRouter.stopAll(this);
     }
 
-    /** Routes the connect to whichever engine the chosen exit location needs. */
+    /** Routes the connect to the armed engine, stopping whichever one is not wanted. */
     private void startSelectedEngine() {
         relayMode = EngineRouter.usesRelay(preferences);
+        endpoint = "";
+        locationDetail = "";
+        region = "";
         if (!relayMode) {
+            degraded = false;
             EngineRouter.stopAll(this);
             VpnConnectionController.connect(this, preferences);
             return;
         }
-        // Relay mode runs OpenVPN, so the Aether core must not be holding the tunnel.
+        // Relay runs OpenVPN, which brings its own VpnService, so the Aether core must not be
+        // holding the tunnel when it starts.
         VpnConnectionController.disconnect(this);
-        // The directory lookup happens off-thread and can take a second or two on a cold cache.
+        // Relay never degrades onto the carrier - it either finds a relay that holds or it says
+        // so - and leaving a stale degrade flag set would mislabel the exit card.
+        degraded = false;
+        // The directory load happens off-thread and can take a second or two on a cold cache.
         // Move the orb now so the press is visibly acknowledged instead of appearing to do nothing.
-        renderState("starting", getString(R.string.status_connecting));
-        EngineRouter.connectRelay(this, preferences, new EngineRouter.RelayCallback() {
-            @Override public void connecting(String countryName) {
-                binding.locationValue.setText(getString(R.string.relay_connecting, countryName));
-            }
-
-            @Override public void connected(com.firstham.aethergui.vpngate.VpnGateServer server) {
-                binding.locationValue.setText(getString(R.string.relay_connected, server.countryName));
-            }
-
-            @Override public void failed(String reason) {
-                Toast.makeText(MainActivity.this, reason, Toast.LENGTH_LONG).show();
-                binding.locationValue.setText(R.string.connection_location_unavailable);
-                renderState("error", reason);
-            }
-        });
+        renderState("starting", getString(R.string.relay_finding));
+        RelayEngine.get(this).start(preferences);
     }
 
     /**
-     * The exit country card, which belongs to Global alone.
+     * The exit country card, which belongs to Global and Relay.
      *
-     * <p>Prowl used to offer one too. It was the wrong shape for that engine: its exit is wherever
-     * the server it managed to dial happens to sit, so a country was a filter over a pool that
-     * might have nothing behind it, and the pool changes under you. The location card already
-     * reports the real exit from the live IP, which is the honest version of the same information.
+     * <p>Prowl offers none. It was the wrong shape for that engine: its exit is wherever the
+     * server it managed to dial happens to sit, so a country was a filter over a pool that might
+     * have nothing behind it, and the pool changes under you. The location card already reports
+     * the real exit from the live IP, which is the honest version of the same information.
+     *
+     * <p>Relay is the opposite case and does get one: its whole pool is published per country, so
+     * a country is a question the engine can actually answer before it dials.
      */
     private void renderExitLocation() {
         String armed = engine();
-        boolean choosable = "global".equals(armed);
+        boolean relay = EngineRouter.RELAY.equals(armed);
+        boolean choosable = "global".equals(armed) || relay;
         binding.exitLocationCard.setVisibility(choosable ? View.VISIBLE : View.GONE);
+        if (!choosable) return;
+        if (relay) {
+            binding.exitLocationLabel.setText(R.string.region_card_label_relay);
+            String code = EngineRouter.location(preferences);
+            binding.exitLocationValue.setText(code == null
+                    ? getString(R.string.picker_automatic)
+                    : LocationPicker.flag(code) + "  " + EngineRouter.locationName(preferences));
+            return;
+        }
         // When Global degrades onto the carrier the chosen country is not in effect at all, which
         // is worth saying rather than leaving a flag on screen that means nothing.
         binding.exitLocationLabel.setText(degraded && "connected".equals(state)
                 ? R.string.region_card_label_idle : R.string.region_card_label_global);
-        if (!choosable) return;
         String code = GlobalRegions.normalise(preferences.getString(regionKey(), ""));
         binding.exitLocationValue.setText(code.isEmpty()
                 ? getString(R.string.picker_automatic)
                 : ExitLocation.flag(code) + "  " + GlobalRegions.name(code));
+    }
+
+    /** Sends the card's tap to whichever picker the armed engine understands. */
+    private void showExitPicker() {
+        if (EngineRouter.usesRelay(preferences)) showRelayPicker();
+        else showRegionPicker();
+    }
+
+    /**
+     * The relay country picker.
+     *
+     * <p>Unlike Global's list, this one is built from the live directory, so it offers exactly the
+     * countries that have a relay in them right now rather than a list compiled into the app.
+     */
+    private void showRelayPicker() {
+        String current = EngineRouter.location(preferences);
+        LocationPicker.show(this, current, (code, name) -> {
+            String chosen = code == null || code.trim().isEmpty()
+                    ? null : code.trim().toUpperCase(Locale.US);
+            if (chosen == null ? current == null : chosen.equals(current)) return;
+            EngineRouter.setLocation(preferences, chosen, name);
+            renderExitLocation();
+            // The country is read when the sequence starts, so a live tunnel has to be rebuilt
+            // for the choice to mean anything.
+            if (shouldDisconnect()) {
+                renderState("starting", getString(R.string.relay_finding));
+                startSelectedEngine();
+            }
+        });
     }
 
     /** Which preference the card writes to. Only Global has one now. */
@@ -579,7 +645,8 @@ public final class MainActivity extends AppCompatActivity {
     private void renderEngine() {
         String armed = engine();
         // An unrecognised stored value would otherwise leave the row with nothing lit at all.
-        if (!"global".equals(armed) && !"stealth".equals(armed)) armed = "turbo";
+        if (!"global".equals(armed) && !"stealth".equals(armed)
+                && !EngineRouter.RELAY.equals(armed)) armed = "turbo";
         paintEngine(binding.engineTurbo, binding.engineTurboTitle, binding.engineTurboIcon, "turbo".equals(armed),
                 R.drawable.engine_card_selected, R.color.blue_600);
         paintEngine(binding.engineGlobal, binding.engineGlobalTitle, binding.engineGlobalIcon, "global".equals(armed),
@@ -588,6 +655,11 @@ public final class MainActivity extends AppCompatActivity {
         // other two and should not be read as a variation on either.
         paintEngine(binding.engineStealth, binding.engineStealthTitle, binding.engineStealthIcon, "stealth".equals(armed),
                 R.drawable.engine_card_selected_violet, R.color.stealth_violet);
+        // Relay carries its own colour for the same reason: the traffic leaves through somebody
+        // else's machine, which is not a variation on the other three.
+        paintEngine(binding.engineRelay, binding.engineRelayTitle, binding.engineRelayIcon,
+                EngineRouter.RELAY.equals(armed),
+                R.drawable.engine_card_selected_teal, R.color.relay_teal);
         renderExitLocation();
     }
 
@@ -607,12 +679,13 @@ public final class MainActivity extends AppCompatActivity {
         // Switching engines while a tunnel is up means rebuilding it on the other one. Do that
         // rather than leaving the selector disagreeing with what is actually carrying traffic.
         if (shouldDisconnect()) {
-            endpoint = "";
-            locationDetail = "";
-            region = "";
             renderState("starting", getString(R.string.status_connecting));
             startSelectedEngine();
+            return;
         }
+        // Nothing is running, but the selector decides which engine's status the screen listens
+        // to, so it has to be right before the next connect rather than after it.
+        relayMode = EngineRouter.usesRelay(preferences);
     }
 
     /** Fills the location card from the last status broadcast. */
@@ -632,8 +705,11 @@ public final class MainActivity extends AppCompatActivity {
         boolean hasDetail = locationDetail != null && !locationDetail.isEmpty();
         binding.locationDetail.setText(hasDetail ? locationDetail : "");
         binding.locationDetail.setVisibility(hasDetail ? View.VISIBLE : View.GONE);
-        // The refresh control only means anything while a tunnel is up to re-ask through.
-        binding.locationRefresh.setVisibility("connected".equals(state) ? View.VISIBLE : View.GONE);
+        // The refresh control only means anything while an Aether tunnel is up to re-ask
+        // through. Relay opens no SOCKS port, so there is nothing to look the exit up over and
+        // the relay's own country is already the answer.
+        binding.locationRefresh.setVisibility(
+                "connected".equals(state) && !relayMode ? View.VISIBLE : View.GONE);
     }
 
     private int dp(int value) {
@@ -641,7 +717,7 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void refreshLocation() {
-        if (!"connected".equals(state)) return;
+        if (!"connected".equals(state) || relayMode) return;
         binding.locationValue.setText(R.string.location_refreshing);
         binding.locationDetail.setVisibility(View.GONE);
         binding.locationRefresh.animate().rotationBy(360f).setDuration(600).start();
@@ -656,7 +732,7 @@ public final class MainActivity extends AppCompatActivity {
 
     private Set<String> selectedPackages() { Set<String> result = new LinkedHashSet<>(); String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; AppSelectionActivity.parsePackages(preferences.getString(key, ""), result); return result; }
     private void updateSelectedCount() { if (binding == null) return; binding.selectedAppsCount.setText(getResources().getQuantityString(R.plurals.app_picker_selected_count, selectedPackages().size(), selectedPackages().size())); }
-    private void resetDefaults() { preferences.edit().clear().putInt("theme", 2).apply(); restoreSettings(); saveSettings(); applyTheme(2); }
+    private void resetDefaults() { preferences.edit().clear().putInt("theme", 2).apply(); relayMode = false; restoreSettings(); renderEngine(); saveSettings(); applyTheme(2); }
 
     private void checkForUpdates() { SharedPreferences updates = getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE); updates.edit().putString("status", "checking").apply(); renderUpdateState(); binding.checkUpdatesButton.setEnabled(false); AppUpdateManager.checkNow(this, new AppUpdateManager.Listener() { @Override public void onComplete() { binding.checkUpdatesButton.setEnabled(true); renderUpdateState(); } @Override public void onError(Throwable error) { binding.checkUpdatesButton.setEnabled(true); renderUpdateState(); String detail = error == null ? "" : error.getMessage(); Toast.makeText(MainActivity.this, detail == null || detail.isEmpty() ? getString(R.string.update_failed) : getString(R.string.update_failed) + ": " + detail, Toast.LENGTH_LONG).show(); } }); }
     private void renderUpdateState() { if (binding == null) return; SharedPreferences updates = getSharedPreferences(UpdateConfig.PREFS, MODE_PRIVATE); String latest = updates.getString(UpdateConfig.KEY_LATEST_VERSION, ""); String status = updates.getString("status", ""); binding.latestVersionValue.setText(latest.isEmpty() ? getString(R.string.not_checked) : latest); int id = "up_to_date".equals(status) ? R.string.update_up_to_date : "available".equals(status) ? R.string.update_available : "downloading".equals(status) ? R.string.update_downloading : "ready_install".equals(status) ? R.string.update_ready_install : "checking".equals(status) ? R.string.update_checking : "download_failed".equals(status) ? R.string.update_download_failed : "verification_failed".equals(status) ? R.string.update_verification_failed : "failed".equals(status) ? R.string.update_failed : R.string.not_checked; binding.updateStatusValue.setText(id); String notes = updates.getString(UpdateConfig.KEY_RELEASE_NOTES, ""); binding.releaseNotesValue.setText(notes); binding.releaseNotesValue.setVisibility(notes.isEmpty() ? View.GONE : View.VISIBLE); boolean downloading = "downloading".equals(status); int progress = downloading ? AppUpdateManager.downloadProgress(this) : -1; binding.updateProgress.setVisibility(downloading ? View.VISIBLE : View.GONE); binding.updateProgress.setIndeterminate(downloading && progress <= 0); if (progress > 0) binding.updateProgress.setProgress(progress); boolean action = "available".equals(status) || "download_failed".equals(status) || "verification_failed".equals(status) || "ready_install".equals(status); binding.downloadUpdateButton.setVisibility(action ? View.VISIBLE : View.GONE); binding.downloadUpdateButton.setText("ready_install".equals(status) ? R.string.install_update : R.string.download_update); }
@@ -693,6 +769,6 @@ public final class MainActivity extends AppCompatActivity {
     private String text(com.google.android.material.textfield.TextInputEditText view) { return view.getText() == null ? "" : view.getText().toString().trim(); }
     private boolean validSocks(String value) { int split = value.lastIndexOf(':'); if (split <= 0) return false; try { int port = Integer.parseInt(value.substring(split + 1)); return port > 0 && port <= 65535; } catch (Exception ignored) { return false; } }
 
-    @Override protected void onStart() { super.onStart(); if (!receiverRegistered) { IntentFilter filter = new IntentFilter(); filter.addAction(AetherVpnService.ACTION_STATUS); filter.addAction(AetherVpnService.ACTION_STATS); filter.addAction(UpdateConfig.ACTION_STATE); ContextCompat.registerReceiver(this, receiver, filter, INTERNAL_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED); receiverRegistered = true; } if (!relayMode) startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_QUERY)); updateHandler.removeCallbacks(updateProgressPoll); updateHandler.post(updateProgressPoll); }
-    @Override protected void onStop() { updateHandler.removeCallbacks(updateProgressPoll); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
+    @Override protected void onStart() { super.onStart(); if (!receiverRegistered) { IntentFilter filter = new IntentFilter(); filter.addAction(AetherVpnService.ACTION_STATUS); filter.addAction(AetherVpnService.ACTION_STATS); filter.addAction(UpdateConfig.ACTION_STATE); ContextCompat.registerReceiver(this, receiver, filter, INTERNAL_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED); receiverRegistered = true; } RelayEngine.get(this).observe(relayObserver); if (!relayMode) startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_QUERY)); updateHandler.removeCallbacks(updateProgressPoll); updateHandler.post(updateProgressPoll); }
+    @Override protected void onStop() { RelayEngine.get(this).stopObserving(relayObserver); updateHandler.removeCallbacks(updateProgressPoll); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
 }
