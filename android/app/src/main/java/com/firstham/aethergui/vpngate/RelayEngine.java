@@ -50,6 +50,9 @@ public final class RelayEngine implements RelayStatus.Listener {
      */
     private static final String STATE_PREFS = "relay_state";
 
+    /** Where {@link RelayMemory} keeps the relays that have worked on this phone. */
+    private static final String KEY_KNOWN_GOOD = "knownGood";
+
     /**
      * The gap between tearing down a dead attempt and starting the next.
      *
@@ -192,13 +195,18 @@ public final class RelayEngine implements RelayStatus.Listener {
         candidates = new ArrayList<>();
         publish("starting", app.getString(R.string.relay_finding));
 
+        // Read on the main thread while the preferences are certainly current, used off it.
+        final java.util.Collection<String> proven = knownGood();
+
         WORKER.execute(() -> {
             VpnGateRepository repository = new VpnGateRepository(app.getFilesDir());
-            List<VpnGateServer> found = RelayPlan.candidates(repository.load(false), countryCode);
+            List<VpnGateServer> found = RelayPlan.candidates(
+                    repository.load(false), countryCode, RelayPlan.MAX_ATTEMPTS, proven);
             if (found.isEmpty()) {
                 // An empty or stale cache on a first run is the usual cause, so pay for one
                 // forced refresh before telling the user there is nothing there.
-                found = RelayPlan.candidates(repository.load(true), countryCode);
+                found = RelayPlan.candidates(
+                        repository.load(true), countryCode, RelayPlan.MAX_ATTEMPTS, proven);
             }
             final List<VpnGateServer> chosen = found;
             main.post(() -> {
@@ -293,8 +301,14 @@ public final class RelayEngine implements RelayStatus.Listener {
             // A process restarted under a live tunnel learns from the engine that the tunnel is
             // up, but not which relay it is. That part only this app knows, so it is read back
             // rather than left blank.
-            if (current == null) current = remembered();
-            else remember(current);
+            if (current == null) {
+                current = remembered();
+            } else {
+                remember(current);
+                // It carried a connection on this network, which is worth more than anything the
+                // feed says about it. Next connect starts here.
+                rememberGood(current);
+            }
             String name = current == null ? null : current.countryName;
             // The exit is named before the state flips, or the location line would show
             // "unavailable" for a frame on every successful connect.
@@ -333,6 +347,29 @@ public final class RelayEngine implements RelayStatus.Listener {
         publish(state, message);
     }
 
+    /** The relays this phone has connected through, best remembered first. */
+    private java.util.Collection<String> knownGood() {
+        try {
+            SharedPreferences store = app.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE);
+            return RelayMemory.parse(store.getString(KEY_KNOWN_GOOD, ""),
+                    System.currentTimeMillis()).keySet();
+        } catch (Throwable ignored) {
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    /** Files a relay that actually carried traffic. Survives {@link #forget()} by design. */
+    private void rememberGood(VpnGateServer server) {
+        try {
+            SharedPreferences store = app.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE);
+            store.edit().putString(KEY_KNOWN_GOOD, RelayMemory.remember(
+                    store.getString(KEY_KNOWN_GOOD, ""), server.key(),
+                    System.currentTimeMillis())).apply();
+        } catch (Throwable ignored) {
+            // Learning nothing is a worse connect next time, never a failed one now.
+        }
+    }
+
     /** Stores just enough of a relay to name it on screen after a restart. */
     private void remember(VpnGateServer server) {
         try {
@@ -361,9 +398,19 @@ public final class RelayEngine implements RelayStatus.Listener {
         }
     }
 
+    /**
+     * Drops the "which relay am I on" label.
+     *
+     * <p>Deliberately not a wipe: {@link #KEY_KNOWN_GOOD} is what the device has learned about
+     * this network and has to outlive every disconnect, or the next connect starts from nothing
+     * every time.
+     */
     private void forget() {
-        try { app.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE).edit().clear().apply(); }
-        catch (Throwable ignored) { }
+        try {
+            app.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE).edit()
+                    .remove("host").remove("ip").remove("countryCode").remove("countryName")
+                    .apply();
+        } catch (Throwable ignored) { }
     }
 
     @Override public void relayTraffic(long tx, long rx) {

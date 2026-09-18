@@ -1,7 +1,10 @@
 package com.firstham.aethergui.vpngate;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Chooses which relays a connect will walk through, and in what order.
@@ -14,6 +17,11 @@ import java.util.List;
  * quietly works through forty dead volunteer machines is indistinguishable from a frozen app; a
  * handful of tries either finds something or the honest answer is that nothing here is reachable
  * right now.
+ *
+ * <p>Relays this phone has actually connected through lead the list. The feed's own score is a
+ * global average and says nothing about whether a machine answers from the network you are on
+ * right now, which is the only question a connect is really asking. Anything the device has proved
+ * for itself beats anything the feed asserts - the same reasoning Prowl's pool already runs on.
  */
 public final class RelayPlan {
 
@@ -33,14 +41,42 @@ public final class RelayPlan {
      */
     public static List<VpnGateServer> candidates(List<VpnGateServer> servers, String countryCode,
                                                  int limit) {
+        return candidates(servers, countryCode, limit, null);
+    }
+
+    public static List<VpnGateServer> candidates(List<VpnGateServer> servers, String countryCode) {
+        return candidates(servers, countryCode, MAX_ATTEMPTS, null);
+    }
+
+    /**
+     * The ordered candidate list, with relays this phone has connected through before first.
+     *
+     * <p>A remembered relay still has to be in the directory and still has to be in the chosen
+     * country - the memory reorders the list, it never adds to it, so it can never send a
+     * connection somewhere the user did not ask for.
+     *
+     * @param knownGood keys ({@link VpnGateServer#key()}) of relays that have worked here, best
+     *                  remembered first; null or empty simply means no history yet
+     */
+    public static List<VpnGateServer> candidates(List<VpnGateServer> servers, String countryCode,
+                                                 int limit, Collection<String> knownGood) {
         if (servers == null || servers.isEmpty() || limit <= 0) return new ArrayList<>();
         List<VpnGateServer> ranked = countryCode == null || countryCode.trim().isEmpty()
                 ? VpnGateDirectory.ranked(servers)
                 : VpnGateDirectory.inCountry(servers, countryCode);
-        return ranked.size() <= limit ? ranked : new ArrayList<>(ranked.subList(0, limit));
-    }
 
-    public static List<VpnGateServer> candidates(List<VpnGateServer> servers, String countryCode) {
-        return candidates(servers, countryCode, MAX_ATTEMPTS);
+        if (knownGood != null && !knownGood.isEmpty()) {
+            Set<String> wanted = new LinkedHashSet<>(knownGood);
+            List<VpnGateServer> proven = new ArrayList<>();
+            List<VpnGateServer> rest = new ArrayList<>();
+            for (VpnGateServer server : ranked) {
+                if (wanted.contains(server.key())) proven.add(server);
+                else rest.add(server);
+            }
+            proven.addAll(rest);
+            ranked = proven;
+        }
+
+        return ranked.size() <= limit ? ranked : new ArrayList<>(ranked.subList(0, limit));
     }
 }

@@ -234,7 +234,7 @@
     <string name="picker_title">Choose an exit location</string>
     <string name="picker_change">Change</string>
     <string name="picker_automatic">Automatic</string>
-    <string name="picker_automatic_detail">Uses the best relay anywhere. Fastest, but you do not choose where you come out.</string>
+    <string name="picker_automatic_detail">Uses the best relay anywhere, preferring one that has worked on this phone. Fastest, but you do not choose where you come out.</string>
     <string name="picker_unavailable">No relay list yet. Check your connection and try again.</string>
     <string name="picker_subtitle">Relay uses volunteer-run VPN Gate servers. Automatic takes the best one anywhere; choose a country to come out there instead.</string>
     <string name="picker_search">Search countries</string>
