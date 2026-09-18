@@ -21,6 +21,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.app.StatusBarManager;
 import android.view.Gravity;
@@ -97,6 +98,7 @@ public final class MainActivity extends AppCompatActivity {
                 rememberAvailableRegions(intent.getStringExtra("availableRegions"));
                 rememberVerdict();
                 degraded = intent.getBooleanExtra("degraded", false);
+                connectedSince = intent.getLongExtra("connectedSince", 0L);
                 renderState(intent.getStringExtra("state"), intent.getStringExtra("message"));
             }
             else if (AetherVpnService.ACTION_STATS.equals(intent.getAction())) renderStats(intent);
@@ -526,8 +528,44 @@ public final class MainActivity extends AppCompatActivity {
             binding.connectionMessage.setVisibility(showMessage ? View.VISIBLE : View.GONE);
             binding.connectionInfo.setVisibility(View.VISIBLE);
         }
+        if (connected) startConnectionTimer(); else stopConnectionTimer();
         preferences.edit().putString("state", state).putString("message", message == null ? "" : message).apply();
         if (!connected) resetStats();
+    }
+
+    /** When the tunnel came up, on the monotonic clock, or 0 when it is not up. */
+    private long connectedSince;
+
+    private final Handler timerHandler = new Handler(Looper.getMainLooper());
+
+    private final Runnable timerTick = new Runnable() {
+        @Override public void run() {
+            long since = connectedSince;
+            if (since <= 0L) { stopConnectionTimer(); return; }
+            long elapsed = SystemClock.elapsedRealtime() - since;
+            // A stamp that reads as being in the future is a stale one from before a reboot.
+            if (elapsed < 0L) { stopConnectionTimer(); return; }
+            long seconds = elapsed / 1000L;
+            binding.connectionTimer.setText(String.format(Locale.US, "%02d:%02d:%02d",
+                    seconds / 3600L, (seconds % 3600L) / 60L, seconds % 60L));
+            // Aim at the next whole second rather than posting a flat 1000ms, which drifts and
+            // eventually skips a second on screen.
+            timerHandler.postDelayed(this, Math.max(200L, 1000L - (elapsed % 1000L)));
+        }
+    };
+
+    private void startConnectionTimer() {
+        if (connectedSince <= 0L) { stopConnectionTimer(); return; }
+        binding.connectionTimer.setVisibility(View.VISIBLE);
+        binding.stateLabel.setVisibility(View.GONE);
+        timerHandler.removeCallbacks(timerTick);
+        timerHandler.post(timerTick);
+    }
+
+    private void stopConnectionTimer() {
+        timerHandler.removeCallbacks(timerTick);
+        binding.connectionTimer.setVisibility(View.GONE);
+        binding.stateLabel.setVisibility(View.VISIBLE);
     }
 
     private boolean shouldDisconnect() { return "connected".equals(state) || "starting".equals(state) || "smart-testing".equals(state) || "scanning".equals(state) || "securing".equals(state) || "reconnecting".equals(state) || "disconnecting".equals(state); }
@@ -694,5 +732,5 @@ public final class MainActivity extends AppCompatActivity {
     private boolean validSocks(String value) { int split = value.lastIndexOf(':'); if (split <= 0) return false; try { int port = Integer.parseInt(value.substring(split + 1)); return port > 0 && port <= 65535; } catch (Exception ignored) { return false; } }
 
     @Override protected void onStart() { super.onStart(); if (!receiverRegistered) { IntentFilter filter = new IntentFilter(); filter.addAction(AetherVpnService.ACTION_STATUS); filter.addAction(AetherVpnService.ACTION_STATS); filter.addAction(UpdateConfig.ACTION_STATE); ContextCompat.registerReceiver(this, receiver, filter, INTERNAL_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED); receiverRegistered = true; } if (!relayMode) startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_QUERY)); updateHandler.removeCallbacks(updateProgressPoll); updateHandler.post(updateProgressPoll); }
-    @Override protected void onStop() { updateHandler.removeCallbacks(updateProgressPoll); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
+    @Override protected void onStop() { timerHandler.removeCallbacks(timerTick); updateHandler.removeCallbacks(updateProgressPoll); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
 }

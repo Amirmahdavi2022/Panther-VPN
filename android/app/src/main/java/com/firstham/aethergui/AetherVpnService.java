@@ -16,6 +16,7 @@ import android.net.VpnService;
 import android.telephony.TelephonyManager;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.util.Log;
 import android.content.Context;
 
@@ -1599,6 +1600,16 @@ public final class AetherVpnService extends VpnService {
     }
 
     private void updateState(String state, String message) {
+        // Stamped only on the transition INTO connected. This method is called again while
+        // already connected - a restore, a region change, a degrade notice - and re-stamping
+        // there would silently zero the timer in front of the user.
+        if ("connected".equals(state)) {
+            if (!"connected".equals(currentState) || stateStore.getLong("connectedSince", 0L) <= 0L) {
+                stateStore.edit().putLong("connectedSince", SystemClock.elapsedRealtime()).apply();
+            }
+        } else if (stateStore.getLong("connectedSince", 0L) != 0L) {
+            stateStore.edit().putLong("connectedSince", 0L).apply();
+        }
         currentState = state;
         currentMessage = message == null ? "" : message;
         stateStore.edit().putString("state", currentState).putString("message", currentMessage).putString("endpoint", currentEndpoint).putString("locationDetail", currentLocationDetail).apply();
@@ -1614,7 +1625,11 @@ public final class AetherVpnService extends VpnService {
                 .putExtra("availableRegions", currentAvailableRegions)
                 // The one case where a connected tunnel is not the engine the user armed. Without
                 // this the screen looks like an ordinary success and the explanation is thrown away.
-                .putExtra("degraded", degradedToCarrier);
+                .putExtra("degraded", degradedToCarrier)
+                // elapsedRealtime, not wall time: a clock correction or a timezone change cannot
+                // make the duration jump, and it resetting at boot is correct because a reboot
+                // drops the tunnel anyway.
+                .putExtra("connectedSince", stateStore.getLong("connectedSince", 0L));
         sendBroadcast(intent, INTERNAL_PERMISSION);
     }
 
