@@ -1,0 +1,139 @@
+name: fix support chip tint
+
+# One-shot, and small. The release build got all the way through fetching and building every
+# native core - liblantern.so included - and then stopped at lint, which refuses android:tint on
+# an ImageView and names app:tint as the replacement. Two errors, both that attribute, both in
+# the one layout this adds.
+#
+# The views are now declared as AppCompatImageView rather than left to the inflater to swap,
+# because this layout is inflated as a menu action view rather than as part of the activity tree,
+# and app:tint is the AppCompat widget's attribute. Naming the widget removes the question.
+#
+# Nothing under .github/ is touched: the built-in token cannot push a commit that changes a
+# workflow file.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/fix-support-chip-tint.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Write the patcher
+        run: |
+          cat > fix.py <<'PYFILE'
+          import os
+          import sys
+
+          PATH = "android/app/src/main/res/layout/view_support_chip.xml"
+
+          # Lint refuses android:tint on an ImageView and names the replacement itself. The views are
+          # declared as AppCompatImageView rather than left to the inflater to substitute, because this
+          # layout is inflated as a menu action view rather than as part of the activity's own tree, and
+          # app:tint belongs to the AppCompat widget - naming it removes the question entirely.
+          CONTENT = '''<?xml version="1.0" encoding="utf-8"?>
+          <!-- Sits where the bare glyph used to. The glyph alone said nothing about what tapping it does,
+               which is the whole reason a first-time user never tapped it. Small type, one accent, and a
+               chevron that says it leaves the app. -->
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:app="http://schemas.android.com/apk/res-auto"
+              android:id="@+id/support_chip"
+              android:layout_width="wrap_content"
+              android:layout_height="30dp"
+              android:layout_gravity="center_vertical"
+              android:layout_marginEnd="6dp"
+              android:background="@drawable/support_chip"
+              android:clickable="true"
+              android:contentDescription="@string/menu_telegram"
+              android:focusable="true"
+              android:gravity="center_vertical"
+              android:orientation="horizontal"
+              android:paddingStart="9dp"
+              android:paddingEnd="7dp">
+
+              <androidx.appcompat.widget.AppCompatImageView
+                  android:layout_width="13dp"
+                  android:layout_height="13dp"
+                  android:contentDescription="@null"
+                  android:src="@drawable/ic_telegram"
+                  app:tint="@color/blue_600" />
+
+              <TextView
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_marginStart="6dp"
+                  android:letterSpacing="0.03"
+                  android:text="@string/support_channel"
+                  android:textColor="@color/blue_600"
+                  android:textSize="10sp"
+                  android:textStyle="bold" />
+
+              <androidx.appcompat.widget.AppCompatImageView
+                  android:layout_width="11dp"
+                  android:layout_height="11dp"
+                  android:layout_marginStart="2dp"
+                  android:contentDescription="@null"
+                  android:src="@drawable/ic_chevron_right"
+                  app:tint="@color/blue_600" />
+          </LinearLayout>
+          '''
+
+
+          def main():
+              if not os.path.exists(PATH):
+                  print("missing %s" % PATH)
+                  return 1
+              current = open(PATH, encoding="utf-8").read()
+              if "android:tint" not in current:
+                  print("already fixed, nothing to do")
+                  return 1
+              open(PATH, "w", encoding="utf-8").write(CONTENT)
+              print("rewrote %s" % PATH)
+              return 0
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
+
+          PYFILE
+          python3 -c "import ast; ast.parse(open('fix.py').read()); print('patcher parses')"
+
+      - name: Apply it
+        run: python3 fix.py
+
+      - name: Check it
+        run: |
+          python3 - <<'CHECK'
+          import xml.etree.ElementTree as ET
+          path = "android/app/src/main/res/layout/view_support_chip.xml"
+          ET.parse(path)
+          text = open(path, encoding="utf-8").read()
+          assert "android:tint" not in text, "android:tint is still there"
+          assert text.count("app:tint") == 2, "expected both tints to be app:tint"
+          print("the chip layout parses and carries no android:tint")
+          CHECK
+
+      - name: Commit
+        run: |
+          rm -f fix.py
+          if git diff --quiet; then
+            echo "nothing changed"
+            exit 1
+          fi
+          git config user.name "Panther"
+          git config user.email "panther@users.noreply.invalid"
+          git add -A
+          git commit -q -m "Tint the support chip the way lint asks for"
+          git push origin HEAD:main
+          git log -1 --stat
