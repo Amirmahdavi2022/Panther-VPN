@@ -1,0 +1,215 @@
+name: add connection timer
+
+# One-shot. Adds a live connection duration under the connect button, then does nothing on any
+# later push because its patcher refuses to apply twice.
+#
+# The clock is owned by AetherVpnService, not MainActivity. The tunnel outlives the Activity, so
+# a timer owned by the screen would restart every time the app is reopened. The service stamps
+# SystemClock.elapsedRealtime() on the transition INTO connected - only on that transition,
+# because updateState is called repeatedly while already connected and re-stamping would zero the
+# timer in front of the user - and ships it on the status broadcast the screen already listens to.
+#
+# Verified against a fresh clone of main before being sent: all 9 anchors hit exactly once, a
+# second run refuses and writes nothing, the layout still parses as XML, and javac reports no
+# syntax errors in either patched file.
+#
+# This file is left in the repo after it runs; GitHub blocks the built-in token from pushing
+# changes to .github/workflows, so it cannot remove itself. Delete it by hand whenever.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/add-connection-timer.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Write the patcher
+        run: |
+          cat > patch.py <<'PYFILE'
+          import sys
+
+          SVC = "android/app/src/main/java/com/firstham/aethergui/AetherVpnService.java"
+          ACT = "android/app/src/main/java/com/firstham/aethergui/MainActivity.java"
+          LAY = "android/app/src/main/res/layout/activity_main.xml"
+
+          EDITS = []
+
+
+          def edit(path, old, new):
+              EDITS.append((path, old, new))
+
+
+          # --- the service owns the clock ------------------------------------------------------------
+          #
+          # The tunnel outlives the Activity, so a timer owned by the screen restarts every time the app
+          # is reopened. The service stamps the moment it goes connected and ships it on the status
+          # broadcast the screen already listens to.
+
+          edit(SVC,
+               "import android.os.ParcelFileDescriptor;\n",
+               "import android.os.ParcelFileDescriptor;\nimport android.os.SystemClock;\n")
+
+          edit(SVC,
+               """    private void updateState(String state, String message) {
+                  currentState = state;""",
+               """    private void updateState(String state, String message) {
+                  // Stamped only on the transition INTO connected. This method is called again while
+                  // already connected - a restore, a region change, a degrade notice - and re-stamping
+                  // there would silently zero the timer in front of the user.
+                  if ("connected".equals(state)) {
+                      if (!"connected".equals(currentState) || stateStore.getLong("connectedSince", 0L) <= 0L) {
+                          stateStore.edit().putLong("connectedSince", SystemClock.elapsedRealtime()).apply();
+                      }
+                  } else if (stateStore.getLong("connectedSince", 0L) != 0L) {
+                      stateStore.edit().putLong("connectedSince", 0L).apply();
+                  }
+                  currentState = state;""")
+
+          edit(SVC,
+               """                .putExtra("degraded", degradedToCarrier);""",
+               """                .putExtra("degraded", degradedToCarrier)
+                          // elapsedRealtime, not wall time: a clock correction or a timezone change cannot
+                          // make the duration jump, and it resetting at boot is correct because a reboot
+                          // drops the tunnel anyway.
+                          .putExtra("connectedSince", stateStore.getLong("connectedSince", 0L));""")
+
+          # --- the pill gains a clock ----------------------------------------------------------------
+          #
+          # The caption and the clock share one slot, so the pill keeps its height and nothing below it
+          # moves when the tunnel comes up.
+
+          edit(LAY,
+               """                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="@string/state_label" android:textColor="@color/muted" android:textSize="12sp" />""",
+               """                        <TextView android:id="@+id/state_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="@string/state_label" android:textColor="@color/muted" android:textSize="12sp" />
+                                  <!-- Monospace so the digits do not jitter as they change width. Its text
+                                       is written from code, so there is no string resource to keep in step. -->
+                                  <TextView android:id="@+id/connection_timer" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:fontFamily="monospace" android:textColor="@color/muted" android:textSize="12sp" android:visibility="gone" />""")
+
+          # --- the screen draws it -------------------------------------------------------------------
+
+          edit(ACT,
+               "import android.os.Looper;\n",
+               "import android.os.Looper;\nimport android.os.SystemClock;\n")
+
+          edit(ACT,
+               """                degraded = intent.getBooleanExtra("degraded", false);""",
+               """                degraded = intent.getBooleanExtra("degraded", false);
+                          connectedSince = intent.getLongExtra("connectedSince", 0L);""")
+
+          edit(ACT,
+               """        preferences.edit().putString("state", state).putString("message", message == null ? "" : message).apply();
+                  if (!connected) resetStats();""",
+               """        if (connected) startConnectionTimer(); else stopConnectionTimer();
+                  preferences.edit().putString("state", state).putString("message", message == null ? "" : message).apply();
+                  if (!connected) resetStats();""")
+
+          edit(ACT,
+               """    private boolean shouldDisconnect() {""",
+               """    /** When the tunnel came up, on the monotonic clock, or 0 when it is not up. */
+              private long connectedSince;
+
+              private final Handler timerHandler = new Handler(Looper.getMainLooper());
+
+              private final Runnable timerTick = new Runnable() {
+                  @Override public void run() {
+                      long since = connectedSince;
+                      if (since <= 0L) { stopConnectionTimer(); return; }
+                      long elapsed = SystemClock.elapsedRealtime() - since;
+                      // A stamp that reads as being in the future is a stale one from before a reboot.
+                      if (elapsed < 0L) { stopConnectionTimer(); return; }
+                      long seconds = elapsed / 1000L;
+                      binding.connectionTimer.setText(String.format(Locale.US, "%02d:%02d:%02d",
+                              seconds / 3600L, (seconds % 3600L) / 60L, seconds % 60L));
+                      // Aim at the next whole second rather than posting a flat 1000ms, which drifts and
+                      // eventually skips a second on screen.
+                      timerHandler.postDelayed(this, Math.max(200L, 1000L - (elapsed % 1000L)));
+                  }
+              };
+
+              private void startConnectionTimer() {
+                  if (connectedSince <= 0L) { stopConnectionTimer(); return; }
+                  binding.connectionTimer.setVisibility(View.VISIBLE);
+                  binding.stateLabel.setVisibility(View.GONE);
+                  timerHandler.removeCallbacks(timerTick);
+                  timerHandler.post(timerTick);
+              }
+
+              private void stopConnectionTimer() {
+                  timerHandler.removeCallbacks(timerTick);
+                  binding.connectionTimer.setVisibility(View.GONE);
+                  binding.stateLabel.setVisibility(View.VISIBLE);
+              }
+
+              private boolean shouldDisconnect() {""")
+
+          edit(ACT,
+               """    @Override protected void onStop() { updateHandler.removeCallbacks(updateProgressPoll);""",
+               """    @Override protected void onStop() { timerHandler.removeCallbacks(timerTick); updateHandler.removeCallbacks(updateProgressPoll);""")
+
+
+          def main():
+              # Nothing is written unless every anchor is found exactly once. A patch that half-applies is
+              # worse than one that does not apply at all.
+              staged = {}
+              for path, old, new in EDITS:
+                  text = staged.get(path)
+                  if text is None:
+                      with open(path, encoding="utf-8") as handle:
+                          text = handle.read()
+                  hits = text.count(old)
+                  if hits != 1:
+                      first = old.strip().splitlines()[0][:90]
+                      print("anchor matched %d times (expected 1) in %s: %s" % (hits, path, first))
+                      return 1
+                  staged[path] = text.replace(old, new, 1)
+
+              for path, text in staged.items():
+                  with open(path, "w", encoding="utf-8") as handle:
+                      handle.write(text)
+                  print("patched %s" % path)
+              print("%d anchors applied across %d files" % (len(EDITS), len(staged)))
+              return 0
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
+
+          PYFILE
+          python3 -c "import ast; ast.parse(open('patch.py').read()); print('patcher parses')"
+
+      - name: Apply it
+        id: apply
+        run: python3 patch.py
+
+      - name: Check the layout still parses
+        run: |
+          python3 - <<'CHECK'
+          import xml.etree.ElementTree as ET
+          ET.parse("android/app/src/main/res/layout/activity_main.xml")
+          print("activity_main.xml parses")
+          CHECK
+
+      - name: Commit
+        run: |
+          rm -f patch.py
+          if git diff --quiet; then
+            echo "nothing changed"
+            exit 1
+          fi
+          git config user.name "Panther"
+          git config user.email "panther@users.noreply.invalid"
+          git add -A
+          git commit -q -m "Show how long the tunnel has been up"
+          git push origin HEAD:main
+          git log -1 --stat
