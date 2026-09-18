@@ -1,0 +1,1017 @@
+name: add beacon engine
+
+# One-shot. Adds the fourth engine, and refuses to do anything on a later run because its patcher
+# will not overwrite a file that already exists.
+#
+# The engine is Lantern's flashlight, shipped as a STANDALONE EXECUTABLE rather than the Android
+# library its authors publish. That is not a preference: their library and the Global engine are
+# both gomobile builds, each carrying jni/<abi>/libgojni.so and a copy of go/Seq, so one APK
+# cannot hold both. Measured on the two real files, 31MB against 40MB for the same path. It is the
+# same wall that ended the Xray-as-a-library attempt in September, and the same answer works:
+# an executable shares no runtime with anything.
+#
+# The core itself was already built and PROVEN before this patch was written - compiled for all
+# three ABIs, started on a runner, and made to carry real traffic through its SOCKS5 port both by
+# hostname and by raw IP. Three traps were measured rather than guessed on the way, and all three
+# are handled in the build recipe this patch adds to fetch-android-assets.sh:
+#   CGO is mandatory        two dependencies have no pure-Go path at all
+#   -checklinkname=0        a dependency used only on android reaches into the standard library
+#   -static-libstdc++       without it the binary NEEDs libc++_shared.so, which no phone has, and
+#                           the process dies at exec before running a line of its own code
+#
+# Verified against a fresh clone of main before being sent: 37 anchors hit exactly once each, 6
+# new files land, a second run refuses, every XML in the tree parses, no string carries an
+# unescaped quote, the shell script parses, the embedded Go is gofmt-clean and matches the source
+# CI proved, and javac reports the same errors on the patched tree as on the untouched one.
+# LanternCore.java was compiled for real against the repo's own SocksProbe.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/add-beacon-engine.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Write the patcher
+        run: |
+          cat > patch.py <<'PYFILE'
+          import os
+          import sys
+
+          JAVA = "android/app/src/main/java/com/firstham/aethergui"
+          RES = "android/app/src/main/res"
+          SVC = JAVA + "/AetherVpnService.java"
+          ACT = JAVA + "/MainActivity.java"
+          TUN = JAVA + "/TunnelConfig.java"
+          LAY = RES + "/layout/activity_main.xml"
+          STR = RES + "/values/strings.xml"
+          COL = RES + "/values/colors.xml"
+          COLN = RES + "/values-night/colors.xml"
+          MENU = RES + "/menu/main_toolbar.xml"
+          FETCH = "scripts/fetch-android-assets.sh"
+          RELEASE = ".github/workflows/release.yml"
+          GRADLE = "android/app/build.gradle"
+
+          NEW = {}
+          EDITS = []
+
+
+          def new(path, content):
+              NEW[path] = content
+
+
+          def edit(path, old, replacement):
+              EDITS.append((path, old, replacement))
+
+
+          # ==============================================================================================
+          # The engine itself
+          # ==============================================================================================
+
+          new(JAVA + "/LanternCore.java", '''package com.firstham.aethergui;
+
+          import android.content.Context;
+
+          import java.io.BufferedReader;
+          import java.io.File;
+          import java.io.InputStreamReader;
+          import java.nio.charset.StandardCharsets;
+          import java.util.ArrayList;
+          import java.util.List;
+          import java.util.Locale;
+          import java.util.concurrent.TimeUnit;
+
+          /**
+           * The Beacon engine: a third-party circumvention network, run as its own process.
+           *
+           * <p>It is the only engine here that needs nothing else to be up first. Turbo dials a fixed
+           * provider, Global cannot bootstrap from a filtered network without Turbo carrying it, and Prowl
+           * needs a pool of endpoints that are alive today. This one reaches its own infrastructure through
+           * domain fronting, so a phone that can reach any large CDN can reach it, and it finds its own way
+           * out from there.
+           *
+           * <p>🚨 It ships as a standalone executable rather than the library its authors publish, and that
+           * is not a preference. Their Android library and the Global engine are both gomobile builds: each
+           * one carries jni/&lt;abi&gt;/libgojni.so and a copy of go/Seq, so an APK can hold only one of
+           * them. Measured on the two real files - 31MB against 40MB for the same path - and it is the same
+           * wall that ended the attempt to ship the Prowl core as a library. An executable shares no runtime
+           * with anything, so there is nothing to collide over.
+           *
+           * <p>Shipped as {@code liblantern.so} for the same reason the other cores are: since Android 10 an
+           * app may not execute a file it wrote into its own data directory, and the installer's native
+           * library directory is the one place a shipped binary arrives with the execute bit already set.
+           */
+          final class LanternCore {
+
+              /**
+               * The loopback port the engine serves SOCKS5 on.
+               *
+               * <p>Its own number, clear of Turbo on 1819 and Prowl on 1820, so a process left behind by a
+               * previous run cannot be mistaken for this one.
+               */
+              static final int PORT = 1821;
+
+              /** How long a cold start is given. Measured at about 15s on a real phone; this is generous. */
+              static final int START_TIMEOUT_MS = 120_000;
+
+              interface Listener {
+                  void onLog(String line);
+              }
+
+              private final File binary;
+              private final File configDir;
+              private final Listener listener;
+
+              private volatile Process process;
+              private volatile boolean cancelled;
+              private volatile int forwarded;
+
+              LanternCore(Context context, Listener listener) {
+                  this.binary = new File(context.getApplicationInfo().nativeLibraryDir, "liblantern.so");
+                  // Its own directory under the app's files, because the engine caches the bootstrap it
+                  // fetched there. Keeping it across runs is what makes the second connect quicker than
+                  // the first, and what lets it come up at all on a network where the fetch is blocked.
+                  this.configDir = new File(context.getFilesDir(), "beacon");
+                  this.listener = listener;
+              }
+
+              /**
+               * Whether this engine can be offered at all.
+               *
+               * <p>Checked before it is armed rather than discovered by a failed connect, so a build that
+               * shipped without the binary says so instead of looking like a network problem.
+               */
+              boolean available() {
+                  return binary.isFile() && binary.canExecute();
+              }
+
+              static String address() {
+                  return "127.0.0.1:" + PORT;
+              }
+
+              int port() {
+                  return PORT;
+              }
+
+              boolean isAlive() {
+                  Process running = process;
+                  return running != null && running.isAlive();
+              }
+
+              /**
+               * Starts the engine and does not report success until it has actually carried a request.
+               *
+               * @return true once traffic really passes through it
+               */
+              boolean start(int timeoutMs) {
+                  stop();
+                  cancelled = false;
+                  forwarded = 0;
+                  if (!available()) {
+                      log("The Beacon core is missing from this build");
+                      return false;
+                  }
+                  if (!configDir.isDirectory() && !configDir.mkdirs()) {
+                      log("Beacon could not create its working directory");
+                      return false;
+                  }
+                  List<String> command = new ArrayList<>();
+                  command.add(binary.getAbsolutePath());
+                  command.add("-socks");
+                  command.add(address());
+                  // A port of its own choosing for the HTTP listener: the engine insists on having one and
+                  // nothing here uses it, so it gets an ephemeral port rather than a number worth guarding.
+                  command.add("-http");
+                  command.add("127.0.0.1:0");
+                  command.add("-configdir");
+                  command.add(configDir.getAbsolutePath());
+                  try {
+                      ProcessBuilder builder = new ProcessBuilder(command);
+                      builder.redirectErrorStream(true);
+                      process = builder.start();
+                  } catch (Throwable error) {
+                      process = null;
+                      log("Beacon could not start: " + error);
+                      return false;
+                  }
+                  drain(process);
+                  return waitUntilUsable(timeoutMs);
+              }
+
+              /**
+               * 🚨 The port opening is NOT readiness, and treating it as such is the mistake that made this
+               * engine look dead the first time it was measured. The listener binds within a second, long
+               * before the engine has fetched its configuration and has anywhere to send traffic; asked too
+               * early it answers the handshake locally and then resets every connection. So the port is only
+               * the first gate, and a request that comes back is the second.
+               */
+              private boolean waitUntilUsable(int timeoutMs) {
+                  long deadline = System.currentTimeMillis() + Math.max(1, timeoutMs);
+                  boolean listening = false;
+                  while (!cancelled && System.currentTimeMillis() < deadline) {
+                      Process running = process;
+                      if (running == null) return false;
+                      if (!running.isAlive()) {
+                          log("Beacon stopped before it was ready");
+                          return false;
+                      }
+                      if (!listening) {
+                          if (SocksProbe.opens("127.0.0.1", PORT, 400)) {
+                              listening = true;
+                              log("Beacon is listening on " + address() + "; waiting for it to find a route");
+                          }
+                      } else if (SocksProbe.carriesTraffic("127.0.0.1", PORT, 6_000)) {
+                          return true;
+                      }
+                      if (!sleep(listening ? 1_500L : 400L)) return false;
+                  }
+                  if (!cancelled) {
+                      log(listening
+                              ? "Beacon was listening but never carried a request"
+                              : "Beacon never opened its SOCKS5 listener");
+                  }
+                  stop();
+                  return false;
+              }
+
+              /** Tells a start in flight to give up without waiting for its own timeout. */
+              void cancel() {
+                  cancelled = true;
+              }
+
+              void stop() {
+                  cancelled = true;
+                  Process running = process;
+                  process = null;
+                  if (running == null) return;
+                  running.destroy();
+                  try {
+                      if (!running.waitFor(2, TimeUnit.SECONDS)) running.destroyForcibly();
+                  } catch (InterruptedException error) {
+                      Thread.currentThread().interrupt();
+                  }
+              }
+
+              /**
+               * Reads the engine's output so its pipe cannot fill and stall it, and keeps almost none of it.
+               *
+               * <p>It logs every dial it makes at debug level - hundreds of lines a minute - and the app's
+               * own log is a small buffer meant to be read by a person. Only failures are kept, and only a
+               * handful of those, which is enough to tell a broken engine from a blocked network.
+               */
+              private void drain(final Process running) {
+                  Thread reader = new Thread(() -> {
+                      try (BufferedReader lines = new BufferedReader(
+                              new InputStreamReader(running.getInputStream(), StandardCharsets.UTF_8))) {
+                          String line;
+                          while ((line = lines.readLine()) != null) {
+                              String upper = line.toUpperCase(Locale.US);
+                              if (upper.contains("ERROR") || upper.contains("FATAL")) {
+                                  if (forwarded < 8) {
+                                      forwarded++;
+                                      log("Beacon: " + line.trim());
+                                  }
+                              }
+                          }
+                      } catch (Throwable ignored) {
+                          // The pipe closing when the process ends is the ordinary way out of this loop.
+                      }
+                  }, "beacon-output");
+                  reader.setDaemon(true);
+                  reader.start();
+              }
+
+              private boolean sleep(long millis) {
+                  try {
+                      Thread.sleep(millis);
+                      return true;
+                  } catch (InterruptedException error) {
+                      Thread.currentThread().interrupt();
+                      return false;
+                  }
+              }
+
+              private void log(String line) {
+                  Listener sink = listener;
+                  if (sink != null) sink.onLog(line);
+              }
+          }
+          ''')
+
+
+          # ==============================================================================================
+          # Drawables and the support chip
+          # ==============================================================================================
+
+          new(RES + "/drawable/ic_beacon.xml", '''<?xml version="1.0" encoding="utf-8"?>
+          <!-- A lit beacon: a small flame inside a ring, which reads at 17dp where a detailed lantern
+               would turn to mush. -->
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24"
+              android:tint="#FFFFFF">
+              <path
+                  android:fillColor="@android:color/white"
+                  android:pathData="M12,2C12,2 7,7.2 7,11.2C7,14.4 9.2,17 12,17C14.8,17 17,14.4 17,11.2C17,7.2 12,2 12,2ZM12,15C10.3,15 9,13.3 9,11.2C9,9.1 10.8,6.3 12,4.7C13.2,6.3 15,9.1 15,11.2C15,13.3 13.7,15 12,15Z" />
+              <path
+                  android:fillColor="@android:color/white"
+                  android:pathData="M8,19h8v2h-8z" />
+          </vector>
+          ''')
+
+          new(RES + "/drawable/engine_card_selected_amber.xml", '''<?xml version="1.0" encoding="utf-8"?>
+          <!-- The armed Beacon card. Same shape as the other three so the row stays one object; only the
+               colour differs, because it is a different kind of connection again. -->
+          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+              <item>
+                  <shape android:shape="rectangle">
+                      <gradient android:angle="270" android:startColor="#3A2607" android:endColor="@color/lantern_amber_soft" />
+                      <stroke android:width="1.5dp" android:color="@color/lantern_amber" />
+                      <corners android:radius="16dp" />
+                  </shape>
+              </item>
+          </layer-list>
+          ''')
+
+          new(RES + "/drawable/support_chip.xml", '''<?xml version="1.0" encoding="utf-8"?>
+          <!-- The toolbar chip. A hairline outline and a barely-there fill, so it reads as a control
+               rather than as a badge stuck on top of the bar. -->
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+              <solid android:color="#141A24" />
+              <stroke android:width="1dp" android:color="#24354A" />
+              <corners android:radius="13dp" />
+          </shape>
+          ''')
+
+          new(RES + "/drawable/ic_chevron_right.xml", '''<?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="24dp"
+              android:height="24dp"
+              android:viewportWidth="24"
+              android:viewportHeight="24"
+              android:tint="#FFFFFF">
+              <path
+                  android:fillColor="@android:color/white"
+                  android:pathData="M9.3,6.7L10.7,5.3L17.4,12L10.7,18.7L9.3,17.3L14.6,12Z" />
+          </vector>
+          ''')
+
+          new(RES + "/layout/view_support_chip.xml", '''<?xml version="1.0" encoding="utf-8"?>
+          <!-- Sits where the bare glyph used to. The glyph alone said nothing about what tapping it does,
+               which is the whole reason a first-time user never tapped it. Small type, one accent, and a
+               chevron that says it leaves the app. -->
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:id="@+id/support_chip"
+              android:layout_width="wrap_content"
+              android:layout_height="30dp"
+              android:layout_gravity="center_vertical"
+              android:layout_marginEnd="6dp"
+              android:background="@drawable/support_chip"
+              android:clickable="true"
+              android:contentDescription="@string/menu_telegram"
+              android:focusable="true"
+              android:gravity="center_vertical"
+              android:orientation="horizontal"
+              android:paddingStart="9dp"
+              android:paddingEnd="7dp">
+
+              <ImageView
+                  android:layout_width="13dp"
+                  android:layout_height="13dp"
+                  android:contentDescription="@null"
+                  android:src="@drawable/ic_telegram"
+                  android:tint="@color/blue_600" />
+
+              <TextView
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:layout_marginStart="6dp"
+                  android:letterSpacing="0.03"
+                  android:text="@string/support_channel"
+                  android:textColor="@color/blue_600"
+                  android:textSize="10sp"
+                  android:textStyle="bold" />
+
+              <ImageView
+                  android:layout_width="11dp"
+                  android:layout_height="11dp"
+                  android:layout_marginStart="2dp"
+                  android:contentDescription="@null"
+                  android:src="@drawable/ic_chevron_right"
+                  android:tint="@color/blue_600" />
+          </LinearLayout>
+          ''')
+
+
+          # ==============================================================================================
+          # Resources
+          # ==============================================================================================
+
+          edit(MENU,
+               '''    <item android:id="@+id/action_telegram" android:icon="@drawable/ic_telegram" android:title="@string/menu_telegram" app:showAsAction="always" />''',
+               '''    <!-- actionLayout rather than a plain icon, so the item can say what it is. A consequence
+                   worth knowing: an item with an action view does not fire onMenuItemClick, so the click
+                   is wired on the view itself in MainActivity. -->
+              <item android:id="@+id/action_telegram" android:title="@string/menu_telegram" app:actionLayout="@layout/view_support_chip" app:showAsAction="always" />''')
+
+          edit(COL,
+               '''    <color name="stealth_violet">#A97BFF</color>
+              <color name="stealth_violet_soft">#1B1030</color>''',
+               '''    <color name="stealth_violet">#A97BFF</color>
+              <color name="stealth_violet_soft">#1B1030</color>
+              <!-- And the second exception, for the same reason: the Beacon engine is a different kind of
+                   connection again. Warm, because it is the one that works when the others do not. -->
+              <color name="lantern_amber">#FFB74A</color>
+              <color name="lantern_amber_soft">#2A1A08</color>''')
+
+          edit(COLN,
+               '''    <color name="stealth_violet">#A97BFF</color>
+              <color name="stealth_violet_soft">#1B1030</color>''',
+               '''    <color name="stealth_violet">#A97BFF</color>
+              <color name="stealth_violet_soft">#1B1030</color>
+              <color name="lantern_amber">#FFB74A</color>
+              <color name="lantern_amber_soft">#2A1A08</color>''')
+
+          edit(STR,
+               '''    <string name="engine_stealth">Prowl</string>
+              <string name="engine_stealth_detail">Gets through anyway.</string>''',
+               '''    <string name="engine_stealth">Prowl</string>
+              <string name="engine_stealth_detail">Gets through anyway.</string>
+              <string name="engine_lantern">Beacon</string>
+              <string name="engine_lantern_detail">Stands on its own.</string>
+              <string name="service_lantern_starting">Starting the Beacon engine</string>
+              <string name="service_lantern_ready">Beacon is carrying the tunnel</string>
+              <string name="service_lantern_failed">Beacon could not find a way out, and neither could Turbo.</string>
+              <string name="service_lantern_degraded">Beacon could not find a way out, so Turbo is carrying the connection.</string>
+              <string name="service_lantern_stopped">The Beacon connection dropped.</string>
+              <string name="support_channel">Support Channel</string>''')
+
+
+          # ==============================================================================================
+          # The fourth card
+          # ==============================================================================================
+          #
+          # Four cards in the row that was built for three, so the padding and type step down one notch.
+          # Each card still takes the row's full height, or a description wrapping to one more line than
+          # its neighbours leaves the row ragged.
+
+          for name, ident in (("turbo", "engine_turbo"), ("global", "engine_global"), ("stealth", "engine_stealth")):
+              edit(LAY,
+                   '''android:id="@+id/%s" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginHorizontal="3dp"''' % ident,
+                   '''android:id="@+id/%s" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginHorizontal="2dp"''' % ident)
+              edit(LAY,
+                   '''android:orientation="vertical" android:paddingHorizontal="10dp" android:paddingVertical="12dp">
+                                      <ImageView android:id="@+id/%s_icon" android:layout_width="18dp" android:layout_height="18dp" android:layout_marginBottom="6dp"''' % ident,
+                   '''android:orientation="vertical" android:paddingHorizontal="7dp" android:paddingVertical="11dp">
+                                      <ImageView android:id="@+id/%s_icon" android:layout_width="17dp" android:layout_height="17dp" android:layout_marginBottom="5dp"''' % ident)
+              edit(LAY,
+                   '''android:id="@+id/%s_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/%s" android:textColor="@color/text" android:textSize="15sp"''' % (ident, ident),
+                   '''android:id="@+id/%s_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/%s" android:textColor="@color/text" android:textSize="14sp"''' % (ident, ident))
+              edit(LAY,
+                   '''android:id="@+id/%s_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/%s_detail" android:textColor="@color/muted" android:textSize="11sp"''' % (ident, ident),
+                   '''android:id="@+id/%s_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/%s_detail" android:textColor="@color/muted" android:textSize="10sp"''' % (ident, ident))
+
+          edit(LAY,
+               '''<TextView android:id="@+id/engine_stealth_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/engine_stealth_detail" android:textColor="@color/muted" android:textSize="10sp" />
+                                  </LinearLayout>
+                              </LinearLayout>''',
+               '''<TextView android:id="@+id/engine_stealth_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/engine_stealth_detail" android:textColor="@color/muted" android:textSize="10sp" />
+                                  </LinearLayout>
+
+                                  <LinearLayout android:id="@+id/engine_lantern" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginHorizontal="2dp" android:layout_weight="1" android:background="@drawable/engine_card" android:clickable="true" android:focusable="true" android:orientation="vertical" android:paddingHorizontal="7dp" android:paddingVertical="11dp">
+                                      <ImageView android:id="@+id/engine_lantern_icon" android:layout_width="17dp" android:layout_height="17dp" android:layout_marginBottom="5dp" android:contentDescription="@null" android:importantForAccessibility="no" android:src="@drawable/ic_beacon" />
+                                      <TextView android:id="@+id/engine_lantern_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/engine_lantern" android:textColor="@color/text" android:textSize="14sp" android:textStyle="bold" />
+                                      <TextView android:id="@+id/engine_lantern_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="@string/engine_lantern_detail" android:textColor="@color/muted" android:textSize="10sp" />
+                                  </LinearLayout>
+                              </LinearLayout>''')
+
+
+          # ==============================================================================================
+          # The screen
+          # ==============================================================================================
+
+          edit(ACT,
+               '''        binding.engineStealth.setOnClickListener(v -> selectEngine("stealth"));''',
+               '''        binding.engineStealth.setOnClickListener(v -> selectEngine("stealth"));
+                  binding.engineLantern.setOnClickListener(v -> selectEngine("lantern"));''')
+
+          edit(ACT,
+               '''        if (!"global".equals(armed) && !"stealth".equals(armed)) armed = "turbo";''',
+               '''        if (!"global".equals(armed) && !"stealth".equals(armed) && !"lantern".equals(armed)) armed = "turbo";''')
+
+          edit(ACT,
+               '''        paintEngine(binding.engineStealth, binding.engineStealthTitle, binding.engineStealthIcon, "stealth".equals(armed),
+                          R.drawable.engine_card_selected_violet, R.color.stealth_violet);
+                  renderExitLocation();''',
+               '''        paintEngine(binding.engineStealth, binding.engineStealthTitle, binding.engineStealthIcon, "stealth".equals(armed),
+                          R.drawable.engine_card_selected_violet, R.color.stealth_violet);
+                  paintEngine(binding.engineLantern, binding.engineLanternTitle, binding.engineLanternIcon, "lantern".equals(armed),
+                          R.drawable.engine_card_selected_amber, R.color.lantern_amber);
+                  renderExitLocation();''')
+
+          edit(ACT,
+               '''        binding.toolbar.setOnMenuItemClickListener(item -> {
+                      if (item.getItemId() != R.id.action_telegram) return false;
+                      openTelegram();
+                      return true;
+                  });''',
+               '''        binding.toolbar.setOnMenuItemClickListener(item -> {
+                      if (item.getItemId() != R.id.action_telegram) return false;
+                      openTelegram();
+                      return true;
+                  });
+                  // An item with an action view draws its own view and swallows its own taps, so the
+                  // listener above never fires for it. Wiring the view itself is not belt and braces: it
+                  // is the only thing that makes the chip do anything at all.
+                  android.view.MenuItem support = binding.toolbar.getMenu().findItem(R.id.action_telegram);
+                  View supportChip = support == null ? null : support.getActionView();
+                  if (supportChip != null) supportChip.setOnClickListener(v -> openTelegram());''')
+
+
+          # ==============================================================================================
+          # The service
+          # ==============================================================================================
+
+          edit(SVC,
+               '''    private volatile StealthCore stealthCore;''',
+               '''    private volatile StealthCore stealthCore;
+              private volatile LanternCore lanternCore;''')
+
+          edit(SVC,
+               '''            boolean global = "global".equals(engine);
+                      boolean stealth = "stealth".equals(engine);
+                      if (stealth) {''',
+               '''            boolean global = "global".equals(engine);
+                      boolean stealth = "stealth".equals(engine);
+                      boolean lantern = "lantern".equals(engine);
+                      if (lantern) {
+                          if (!startLanternCore(request, session)) {
+                              // Unlike Global, there is no carrier already running to fall back on - Beacon
+                              // needs nothing up first, which is its whole point. So one has to be raised
+                              // here. Doing that beats handing back an error screen when the other engine
+                              // would have worked perfectly well.
+                              stopLanternOnly();
+                              sendLog("Beacon did not come up; falling back to the Turbo tunnel");
+                              if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
+                                  throw new IllegalStateException(getString(R.string.service_lantern_failed));
+                              }
+                              lantern = false;
+                              degradedToCarrier = true;
+                              degradedNotice = getString(R.string.service_lantern_degraded);
+                              updateState("securing", degradedNotice);
+                          }
+                      } else if (stealth) {''')
+
+          edit(SVC,
+               '''                boolean mappedDns = TunnelConfig.usesMappedDns(global ? "global" : "");
+                          if (mappedDns) sendLog("Global cannot forward UDP, so DNS is answered inside the tunnel");''',
+               '''                boolean mappedDns = TunnelConfig.usesMappedDns(global ? "global" : lantern ? "lantern" : "");
+                          if (mappedDns) sendLog("This engine cannot forward UDP, so DNS is answered inside the tunnel");''')
+
+          edit(SVC,
+               '''            scheduleLocationLookup(request, session);
+                      if (stealth) monitorStealth(request, session);''',
+               '''            scheduleLocationLookup(request, session);
+                      if (lantern) monitorLantern(request, session);
+                      else if (stealth) monitorStealth(request, session);''')
+
+          edit(SVC,
+               '''    private boolean startGlobalCore(Intent request, long session) throws Exception {''',
+               '''    /**
+               * Brings the Beacon engine up and points the tunnel at it.
+               *
+               * <p>Nothing else has to be running first. The engine reaches its own infrastructure through
+               * domain fronting, so it bootstraps from a filtered network on its own - which is exactly what
+               * Global cannot do, and why Global has to be carried.
+               */
+              private boolean startLanternCore(Intent request, long session) {
+                  updateState("securing", getString(R.string.service_lantern_starting));
+                  LanternCore core = new LanternCore(this, line -> sendLog(line));
+                  lanternCore = core;
+                  // Published before starting, so a stop arriving during the start has something to cancel
+                  // rather than leaving it to wait out its own timeout on a connection nobody wants.
+                  if (stopping || generation.get() != session) { core.cancel(); return false; }
+                  if (!core.start(LanternCore.START_TIMEOUT_MS)) return false;
+                  if (stopping || generation.get() != session) return false;
+                  request.putExtra("socks", LanternCore.address());
+                  sendLog("Beacon engine ready; routing the tunnel through " + LanternCore.address());
+                  updateState("securing", getString(R.string.service_lantern_ready));
+                  return true;
+              }
+
+              /**
+               * Watches Beacon the way the other monitors watch their engines.
+               *
+               * <p>The process being alive is not the test. It keeps its listener open whether or not it has
+               * anywhere to send traffic, so a dead network reads as a healthy process serving nothing - the
+               * failure that is worse than an error, because the app claims to be protecting the user while
+               * carrying none of their traffic.
+               */
+              private void monitorLantern(Intent request, long session) throws Exception {
+                  int quiet = 0;
+                  while (!stopping && generation.get() == session) {
+                      Thread.sleep(5_000L);
+                      if (stopping || generation.get() != session) return;
+                      LanternCore core = lanternCore;
+                      if (core == null) return;
+                      if (!core.isAlive()) {
+                          throw new IllegalStateException(getString(R.string.service_lantern_stopped));
+                      }
+                      if (SocksProbe.carriesTraffic("127.0.0.1", LanternCore.PORT, 6_000)) {
+                          quiet = 0;
+                          continue;
+                      }
+                      // One quiet probe is not evidence. The engine rotates between its own routes and a
+                      // single request can land in the middle of that; three in a row cannot.
+                      if (++quiet >= 3) {
+                          throw new IllegalStateException(getString(R.string.service_lantern_stopped));
+                      }
+                      sendLog("Beacon check " + quiet + " of 3 came back empty");
+                  }
+              }
+
+              private boolean startGlobalCore(Intent request, long session) throws Exception {''')
+
+          edit(SVC,
+               '''            stopAetherOnly();
+                      // The engine runs as a child process holding a loopback port. Leaving it alive would
+                      // stop the next connection from binding that port, so it dies with the runtime.
+                      stopStealthOnly();
+                  }
+              }''',
+               '''            stopAetherOnly();
+                      // The engine runs as a child process holding a loopback port. Leaving it alive would
+                      // stop the next connection from binding that port, so it dies with the runtime.
+                      stopStealthOnly();
+                      stopLanternOnly();
+                  }
+              }''')
+
+          edit(SVC,
+               '''        if (core != null) core.stop();
+                  stopStealthOnly();
+                  stealthPool = null;''',
+               '''        if (core != null) core.stop();
+                  stopStealthOnly();
+                  stopLanternOnly();
+                  stealthPool = null;''')
+
+          edit(SVC,
+               '''    private void stopStealthOnly() {
+                  StealthCore core = stealthCore;
+                  stealthCore = null;
+                  if (core != null) core.stop();
+              }''',
+               '''    private void stopStealthOnly() {
+                  StealthCore core = stealthCore;
+                  stealthCore = null;
+                  if (core != null) core.stop();
+              }
+
+              private void stopLanternOnly() {
+                  LanternCore core = lanternCore;
+                  lanternCore = null;
+                  if (core != null) core.stop();
+              }''')
+
+          edit(TUN,
+               '''    static boolean usesMappedDns(String engine) {
+                  return "global".equals(engine);
+              }''',
+               '''    static boolean usesMappedDns(String engine) {
+                  // Beacon joins Global for the same reason, read out of its own source rather than guessed:
+                  // its SOCKS5 server implements CONNECT and nothing else, so a UDP ASSOCIATE gets refused
+                  // exactly as it does on Global and every lookup would go into a hole.
+                  return "global".equals(engine) || "lantern".equals(engine);
+              }''')
+
+
+          # ==============================================================================================
+          # Build
+          # ==============================================================================================
+
+          edit(FETCH,
+               '''NDK_VERSION="27.2.12479018"''',
+               '''# The Beacon engine is built here from source for the same reason the Stealth core is: its
+          # publisher ships a library, not a program, and that library cannot live in the same APK as the
+          # Global engine - both are gomobile builds and both carry libgojni.so. Building the engine as its
+          # own executable sidesteps that entirely. Building it per release also keeps its bootstrap config
+          # fresh, which matters: a stale one is what makes it stop working.
+          LANTERN_VERSION="v7.6.241"
+          NDK_VERSION="27.2.12479018"''')
+
+          edit(FETCH,
+               '''  echo "Built the shaping proxy for $abi ($size bytes)"
+          done''',
+               '''  echo "Built the shaping proxy for $abi ($size bytes)"
+          done
+
+          # --- the Beacon engine --------------------------------------------------------------------
+          #
+          # A small main() around the upstream library, written here rather than vendored, so there is no
+          # third-party source in this repository and the pin above is the only thing that decides what is
+          # built.
+
+          lantern_src="$temp/lanterncore"
+          mkdir -p "$lantern_src"
+          cat > "$lantern_src/main.go" <<'LANTERN_MAIN'
+          package main
+
+          import (
+          	"flag"
+          	"fmt"
+          	"os"
+          	"os/signal"
+          	"syscall"
+          	"time"
+
+          	"github.com/getlantern/flashlight/v7"
+          	"github.com/getlantern/flashlight/v7/client"
+          	"github.com/getlantern/flashlight/v7/common"
+          	"github.com/getlantern/flashlight/v7/stats"
+          )
+
+          // The free-tier credentials the upstream Android SDK ships. They are what authenticates to the
+          // engine's own API; without them no configuration is fetched and nothing connects.
+          const (
+          	deviceID = "a34113"
+          	userID   = int64(381696446)
+          	token    = "K1qttSsZruN"
+          )
+
+          func main() {
+          	socksAddr := flag.String("socks", "127.0.0.1:1821", "address for the local SOCKS5 listener")
+          	httpAddr := flag.String("http", "127.0.0.1:0", "address for the local HTTP listener")
+          	configDir := flag.String("configdir", "", "directory the engine keeps its fetched config in")
+          	appName := flag.String("appname", "lantern", "application name reported upstream")
+          	appVersion := flag.String("appversion", "7.6.241", "application version reported upstream")
+          	proxyAll := flag.Bool("proxyall", true, "send every connection through the engine")
+          	flag.Parse()
+
+          	if *configDir == "" {
+          		fmt.Fprintln(os.Stderr, "configdir is required")
+          		os.Exit(2)
+          	}
+          	if err := os.MkdirAll(*configDir, 0o700); err != nil {
+          		fmt.Fprintf(os.Stderr, "cannot use configdir %v: %v\\n", *configDir, err)
+          		os.Exit(2)
+          	}
+
+          	userConfig := common.NewUserConfigData(*appName, deviceID, userID, token, map[string]string{}, "")
+
+          	// 🚨 Must not be nil. The library only installs one of its own when VPN mode is on, and the
+          	// SOCKS5 handler calls it on every single connection - so a nil here is a crash on the first
+          	// request, which would read as the engine not working rather than as a missing argument.
+          	// Addresses pass through untouched: the tunnel in front already decided where traffic goes.
+          	reverseDNS := func(addr string) (string, error) { return addr, nil }
+
+          	runner, err := flashlight.New(
+          		*appName,
+          		*appVersion,
+          		time.Now().Format("2006-01-02"),
+          		*configDir,
+          		false,                        // VPN mode would try to bind 127.0.0.1:53
+          		func() bool { return false }, // disconnected
+          		func() bool { return *proxyAll },
+          		func() bool { return false }, // allowPrivateHosts
+          		func() bool { return true },  // autoReport
+          		map[string]interface{}{},
+          		userConfig,
+          		stats.NewTracker(),
+          		func() bool { return false }, // isPro
+          		func() string { return "" },  // lang, desktop only
+          		reverseDNS,
+          		func(category, action, label string) {},
+          	)
+          	if err != nil {
+          		fmt.Fprintf(os.Stderr, "the engine did not start: %v\\n", err)
+          		os.Exit(1)
+          	}
+
+          	fmt.Printf("lantern core starting, config dir %v\\n", *configDir)
+
+          	go runner.Run(*httpAddr, *socksAddr, nil, func(err error) {
+          		fmt.Fprintf(os.Stderr, "lantern error: %v\\n", err)
+          	})
+
+          	go func() {
+          		if addr, ok := client.Socks5Addr(2 * time.Minute); ok {
+          			fmt.Printf("lantern core ready: SOCKS5 listening on %v\\n", addr)
+          		}
+          	}()
+
+          	sig := make(chan os.Signal, 1)
+          	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+          	<-sig
+          }
+          LANTERN_MAIN
+
+          # A replace directive in a dependency's go.mod is ignored - only the main module's count - so the
+          # library's three are repeated here, or the build resolves packages its source never targeted.
+          cat > "$lantern_src/go.mod" <<LANTERN_MOD
+          module lanterncore
+
+          go 1.24.2
+
+          replace github.com/keighl/mandrill => github.com/getlantern/mandrill v0.0.0-20221004112352-e7c04248adcb
+
+          replace github.com/eycorsican/go-tun2socks => github.com/getlantern/go-tun2socks v1.16.12-0.20201218023150-b68f09e5ae93
+
+          replace github.com/tetratelabs/wazero => github.com/refraction-networking/wazero v1.7.1-w
+
+          require github.com/getlantern/flashlight/v7 $LANTERN_VERSION
+          LANTERN_MOD
+
+          ( cd "$lantern_src" && GOFLAGS=-mod=mod go mod tidy >/dev/null )
+
+          lantern_abis=("arm64-v8a" "armeabi-v7a" "x86_64")
+          lantern_goarch=("arm64" "arm" "amd64")
+          lantern_elf=("b700" "2800" "3e00")
+          lantern_triple=("aarch64-linux-android24" "armv7a-linux-androideabi24" "x86_64-linux-android24")
+
+          for i in "${!lantern_abis[@]}"; do
+            abi="${lantern_abis[$i]}"
+            mkdir -p "$destination/$abi"
+            output="$destination/$abi/liblantern.so"
+            rm -f "$output"
+
+            # CGO is not optional: two of the library's dependencies have no pure-Go path at all, so the
+            # build goes through the NDK's compiler rather than Go's own.
+            #
+            # -checklinkname=0 is required by a dependency pulled in ONLY on android, which reaches into the
+            # standard library with //go:linkname to work around Android blocking the netlink calls Go's
+            # resolver uses. Without it the link fails on net.zoneCache.
+            #
+            # -static-libstdc++ is what makes the result runnable on a phone: without it the binary NEEDs
+            # libc++_shared.so, which is an NDK library and is not on a device, and the process would die at
+            # exec before running a line of its own code.
+            CGO_ENABLED=1 GOOS=android GOARCH="${lantern_goarch[$i]}" GOARM=7 \\
+              CC="$toolchain/${lantern_triple[$i]}-clang" \\
+              CXX="$toolchain/${lantern_triple[$i]}-clang++" \\
+              CGO_LDFLAGS="-static-libstdc++" \\
+              go build -C "$lantern_src" -o "$output" -trimpath -buildvcs=false -buildmode=pie \\
+              -ldflags="-s -w -buildid= -checklinkname=0" .
+
+            if [ ! -s "$output" ]; then echo "The Beacon core for $abi is empty." >&2; exit 1; fi
+            machine="$(elf_machine "$output")"
+            if [ "$machine" != "${lantern_elf[$i]}" ]; then
+              echo "Beacon core for $abi has ELF machine $machine, expected ${lantern_elf[$i]}." >&2; exit 1
+            fi
+
+            # Checked rather than trusted, because the one library that must not appear here is the one a
+            # default build links against. A phone has no libc++_shared.so.
+            for lib in $(readelf -d "$output" | sed -n 's/.*Shared library: \\[\\(.*\\)\\]/\\1/p'); do
+              case "$lib" in
+                libc.so|libm.so|libdl.so|liblog.so) ;;
+                *) echo "Beacon core for $abi links $lib, which Android does not ship." >&2; exit 1 ;;
+              esac
+            done
+            echo "Built the Beacon core for $abi ($(stat -c%s "$output") bytes)"
+          done''')
+
+          edit(RELEASE,
+               '''            for lib in libaether.so libhev-socks5-tunnel.so libxray.so libbyedpi.so libzeptun-jni.so; do''',
+               '''            for lib in libaether.so libhev-socks5-tunnel.so libxray.so libbyedpi.so libzeptun-jni.so liblantern.so; do''')
+
+          edit(RELEASE,
+               '''          check_pin FAST_BRIDGE_VERSION "fast TUN bridge"''',
+               '''          check_pin FAST_BRIDGE_VERSION "fast TUN bridge"
+                    check_pin LANTERN_VERSION "Beacon core"''')
+
+          edit("NOTICE.md",
+               '''## byedpi''',
+               '''## Beacon engine
+
+          The Beacon engine is the flashlight library from
+          https://github.com/getlantern/flashlight, published by Brave New Software under the
+          GNU General Public License v3.0, which is compatible with the AGPL-3.0 this project
+          is under.
+
+          It is pinned at **v7.6.241** and built from source by
+          `scripts/fetch-android-assets.sh`, which writes a small `main()` around the library
+          and compiles it as a standalone executable. No upstream source file is committed to
+          this repository. The library itself is used unmodified; only the entry point and the
+          build flags are ours.
+
+          Lantern, flashlight and their marks belong to Brave New Software. Panther is an
+          independent client and is not affiliated with, endorsed by or supported by them. Do
+          not report Panther issues to that project.
+
+          ## byedpi''')
+
+          edit(GRADLE,
+               """        versionCode 33
+                  versionName '2.12.0'""",
+               """        versionCode 34
+                  versionName '2.13.0'""")
+
+          edit("package.json",
+               '''"version": "2.12.0"''',
+               '''"version": "2.13.0"''')
+
+
+          def main():
+              # Nothing is written unless every anchor is found exactly once, and no new file lands unless
+              # all of them are missing. A patch that half-applies is worse than one that does not apply.
+              for path in NEW:
+                  if os.path.exists(path):
+                      print("refusing to overwrite an existing %s" % path)
+                      return 1
+
+              staged = {}
+              for path, old, replacement in EDITS:
+                  text = staged.get(path)
+                  if text is None:
+                      if not os.path.exists(path):
+                          print("missing file: %s" % path)
+                          return 1
+                      with open(path, encoding="utf-8") as handle:
+                          text = handle.read()
+                  hits = text.count(old)
+                  if hits != 1:
+                      print("anchor matched %d times (expected 1) in %s: %s"
+                            % (hits, path, old.strip().splitlines()[0][:100]))
+                      return 1
+                  staged[path] = text.replace(old, replacement, 1)
+
+              for path, content in NEW.items():
+                  directory = os.path.dirname(path)
+                  if directory:
+                      os.makedirs(directory, exist_ok=True)
+                  with open(path, "w", encoding="utf-8") as handle:
+                      handle.write(content)
+                  print("added %s" % path)
+
+              for path, text in staged.items():
+                  with open(path, "w", encoding="utf-8") as handle:
+                      handle.write(text)
+                  print("patched %s" % path)
+
+              print("%d new files, %d anchors across %d files" % (len(NEW), len(EDITS), len(staged)))
+              return 0
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
+
+          PYFILE
+          python3 -c "import ast; ast.parse(open('patch.py').read()); print('patcher parses')"
+
+      - name: Apply it
+        run: python3 patch.py
+
+      - name: Check what it produced
+        run: |
+          python3 - <<'CHECK'
+          import glob
+          import xml.etree.ElementTree as ET
+          bad = 0
+          for path in glob.glob("android/app/src/main/res/**/*.xml", recursive=True):
+              try:
+                  ET.parse(path)
+              except Exception as error:
+                  print("XML FAILED", path, error)
+                  bad += 1
+          # An unescaped quote inside a string is valid XML and illegal to aapt, so it passes
+          # every check but the one that matters and fails the build much later with a message
+          # that names neither the string nor the character.
+          for path in glob.glob("android/app/src/main/res/values*/strings.xml"):
+              for entry in ET.parse(path).getroot():
+                  text = entry.text or ""
+                  for i, ch in enumerate(text):
+                      if ch in "'\"" and (i == 0 or text[i - 1] != "\\"):
+                          print("UNESCAPED", path, entry.get("name"))
+                          bad += 1
+          if bad:
+              raise SystemExit("%d problems" % bad)
+          print("every res XML parses and no string carries an unescaped quote")
+          CHECK
+          bash -n scripts/fetch-android-assets.sh && echo "the fetch script parses"
+          python3 -c "import yaml; yaml.safe_load(open('.github/workflows/release.yml')); print('release.yml parses')"
+
+      - name: Commit
+        run: |
+          rm -f patch.py
+          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
+            echo "nothing changed"
+            exit 1
+          fi
+          git config user.name "Panther"
+          git config user.email "panther@users.noreply.invalid"
+          git add -A
+          git commit -q -m "Add Beacon, a fourth engine that needs nothing else up first"
+          git push origin HEAD:main
+          git log -1 --stat
