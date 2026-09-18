@@ -78,6 +78,18 @@ public final class RelayEngine implements RelayStatus.Listener {
     private int index;
     private VpnGateServer current;
 
+    /**
+     * Counts connects, so work left over from an abandoned one cannot land on its replacement.
+     *
+     * <p>Two things outlive a connect by design: the directory load, which is on a worker thread,
+     * and the pause between tearing a dead relay down and starting the next. Both come back to the
+     * main thread later and both used to check only whether <em>a</em> connect was running. Tap
+     * disconnect and connect again inside that window - or change the country and reconnect - and
+     * the old one would finish into the new one: candidates chosen for the country you just left,
+     * or an attempt stepped forward through a list that had been replaced under it.
+     */
+    private int connectId;
+
     /** True from the moment a connect is asked for until it succeeds, fails or is stopped. */
     private boolean running;
     private boolean connected;
@@ -143,6 +155,7 @@ public final class RelayEngine implements RelayStatus.Listener {
      * before it had even chosen a server.
      */
     public void start(SharedPreferences preferences) {
+        final int id = ++connectId;
         String countryCode = EngineRouter.location(preferences);
         options = RelayOptions.of(
                 preferences.getInt("routing", RelayOptions.ROUTING_DEFAULT),
@@ -172,7 +185,7 @@ public final class RelayEngine implements RelayStatus.Listener {
             }
             final List<VpnGateServer> chosen = found;
             main.post(() -> {
-                if (!running) return;
+                if (!running || connectId != id) return;
                 candidates = chosen;
                 index = 0;
                 if (candidates.isEmpty()) {
@@ -188,6 +201,7 @@ public final class RelayEngine implements RelayStatus.Listener {
 
     /** Tears the relay down and abandons any sequence in flight. */
     public void stop() {
+        connectId++;
         cancelSequence();
         running = false;
         connected = false;
@@ -230,7 +244,11 @@ public final class RelayEngine implements RelayStatus.Listener {
         main.removeCallbacks(attemptTimeout);
         current = null;
         VpnGateConnector.stop(app);
-        main.postDelayed(this::attemptNext, HANDOVER_MS);
+        final int id = connectId;
+        main.postDelayed(() -> {
+            if (connectId != id) return;
+            attemptNext();
+        }, HANDOVER_MS);
     }
 
     private void fail(String reason) {
