@@ -3,6 +3,7 @@
      which is the whole reason a first-time user never tapped it. Small type, one accent, and a
      chevron that says it leaves the app. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/support_chip"
     android:layout_width="wrap_content"
     android:layout_height="30dp"
@@ -17,12 +18,12 @@
     android:paddingStart="9dp"
     android:paddingEnd="7dp">
 
-    <ImageView
+    <androidx.appcompat.widget.AppCompatImageView
         android:layout_width="13dp"
         android:layout_height="13dp"
         android:contentDescription="@null"
         android:src="@drawable/ic_telegram"
-        android:tint="@color/blue_600" />
+        app:tint="@color/blue_600" />
 
     <TextView
         android:layout_width="wrap_content"
@@ -34,11 +35,11 @@
         android:textSize="10sp"
         android:textStyle="bold" />
 
-    <ImageView
+    <androidx.appcompat.widget.AppCompatImageView
         android:layout_width="11dp"
         android:layout_height="11dp"
         android:layout_marginStart="2dp"
         android:contentDescription="@null"
         android:src="@drawable/ic_chevron_right"
-        android:tint="@color/blue_600" />
+        app:tint="@color/blue_600" />
 </LinearLayout>
