@@ -5,8 +5,8 @@ import android.content.Intent;
 import android.util.Log;
 
 import java.io.StringReader;
+import java.util.HashSet;
 import java.util.Locale;
-import java.util.List;
 
 import de.blinkt.openvpn.VpnProfile;
 import de.blinkt.openvpn.core.VpnStatus;
@@ -22,49 +22,25 @@ import de.blinkt.openvpn.core.VPNLaunchHelper;
  * VpnService, and two of them cannot hold the tunnel at once. Callers must stop the Aether side
  * before starting here, and vice versa - {@link #stop(Context)} exists for that.
  *
- * Relays are volunteer-run and die without notice, so {@link #connectBest} walks the ranked list
- * rather than trusting the top entry.
+ * Relays are volunteer-run and die without notice, so a single start is never the whole plan.
+ * {@link RelayEngine} owns the sequence; this class only knows how to launch one of them.
  */
 public final class VpnGateConnector {
     private static final String TAG = "VpnGateConnector";
-    private static final String[] DNS = {"1.1.1.1", "1.0.0.1"};
 
-    /** How many relays to try before giving up on a country. */
-    public static final int MAX_ATTEMPTS = 3;
+    /** The resolvers used when the user has DNS leak protection on. Same pair the others use. */
+    public static final String[] DNS = {"1.1.1.1", "1.0.0.1"};
 
     private VpnGateConnector() {
     }
 
     /**
-     * Starts the best usable relay from {@code candidates}.
-     *
-     * A relay whose profile will not parse is skipped rather than surfaced - the user asked for a
-     * country, not for a particular volunteer's machine.
-     *
-     * @return the relay that was launched, or null when none of the candidates produced a usable
-     *         profile. A non-null return means the engine was asked to start, not that the tunnel
-     *         came up; watch VpnStatus for that.
-     */
-    public static VpnGateServer connectBest(Context context, List<VpnGateServer> candidates) {
-        if (context == null || candidates == null || candidates.isEmpty()) return null;
-
-        int attempts = 0;
-        for (VpnGateServer server : candidates) {
-            if (attempts >= MAX_ATTEMPTS) break;
-            attempts++;
-            if (connect(context, server)) return server;
-            Log.w(TAG, "Relay " + server.key() + " produced no usable profile; trying the next one");
-        }
-        return null;
-    }
-
-    /**
-     * Starts one specific relay.
+     * Starts one specific relay with the settings the user chose.
      *
      * @return true when the engine accepted the profile and was asked to start.
      */
-    public static boolean connect(Context context, VpnGateServer server) {
-        String config = VpnGateProfile.build(server, DNS);
+    public static boolean connect(Context context, VpnGateServer server, RelayOptions options) {
+        String config = VpnGateProfile.build(server, options == null ? DNS : options.dns);
         if (config == null) return false;
 
         try {
@@ -96,6 +72,8 @@ public final class VpnGateConnector {
                 if (fallback.contains("BF-CBC")) profile.mUseLegacyProvider = true;
             }
 
+            apply(profile, options);
+
             ProfileManager.setTemporaryProfile(context, profile);
             VPNLaunchHelper.startOpenVpn(profile, context, "Panther", true);
             return true;
@@ -107,6 +85,37 @@ public final class VpnGateConnector {
                     + error.getClass().getSimpleName()
                     + (error.getMessage() == null ? "" : ": " + error.getMessage()));
             return false;
+        }
+    }
+
+    /**
+     * Copies the settings screen onto the profile.
+     *
+     * <p>Everything here was previously left at the engine's default, which meant the settings
+     * page said one thing and a relay connection did another. The values themselves are decided in
+     * {@link RelayOptions}; this only writes them.
+     */
+    private static void apply(VpnProfile profile, RelayOptions options) {
+        if (options == null) return;
+
+        profile.mAllowedAppsVpn = new HashSet<>(options.apps);
+        profile.mAllowedAppsVpnAreDisallowed = options.appsAreExcluded;
+        // The other engines route local networks around the tunnel by default and never offer to
+        // let apps opt out, so neither does this one.
+        profile.mAllowAppVpnBypass = false;
+
+        // The engine only writes a tun-mtu line when this differs from its own default, so an
+        // untouched setting stays untouched.
+        profile.mTunMtu = options.mtu;
+
+        // persist-tun is what keeps the interface up while the engine is down, which blackholes
+        // traffic instead of letting it out around the tunnel. The profile builder adds it
+        // unconditionally, so the kill switch being off has to actively take it away.
+        profile.mPersistTun = options.killSwitch;
+
+        if (options.dns.length == 0) {
+            // DNS leak protection off means the server's own resolvers, exactly as on the others.
+            profile.mOverrideDNS = false;
         }
     }
 

@@ -48,6 +48,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import hev.htproxy.TProxyService;
+import com.firstham.aethergui.vpngate.EngineRouter;
 
 public final class AetherVpnService extends VpnService {
     public static final String ACTION_START = "com.firstham.aethergui.START";
@@ -81,6 +82,18 @@ public final class AetherVpnService extends VpnService {
     private static final String TAG = "AetherVpnService";
 
     private final ExecutorService worker = Executors.newCachedThreadPool();
+
+    /**
+     * Every start and stop of a connection, one at a time.
+     *
+     * <p>These used to go on {@code worker}, which is a cached pool, so two of them ran at once.
+     * A connect that was still bringing an engine up while the next one tore things down and built
+     * its own could finish afterwards and take the tunnel back - which is what made a stuck connect
+     * need a second press to land, sometimes on the country the user had already moved away from.
+     * One thread means a new attempt cannot begin until the last one has finished unwinding, and
+     * its own teardown then cleans up whatever the last one left.
+     */
+    private final ExecutorService lifecycle = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService telemetry = Executors.newSingleThreadScheduledExecutor();
     private final AtomicLong generation = new AtomicLong();
     private final AtomicBoolean healthCheckRunning = new AtomicBoolean();
@@ -166,8 +179,16 @@ public final class AetherVpnService extends VpnService {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) {
-            if (stateStore.getBoolean("desiredConnected", false) && VpnService.prepare(this) == null) {
-                return onStartCommand(VpnConnectionController.startIntent(this, getSharedPreferences("aether", MODE_PRIVATE)), flags, startId);
+            // Android restarting the service after the process died. Rebuilding the request from
+            // the settings is right, but only for the engine the user actually has armed: Relay
+            // runs on the other VpnService entirely, and reviving this one underneath it would
+            // bring up a tunnel on an engine they did not choose - and take Relay's away with it,
+            // since only one VpnService can hold the interface.
+            SharedPreferences settings = getSharedPreferences("aether", MODE_PRIVATE);
+            if (stateStore.getBoolean("desiredConnected", false)
+                    && !EngineRouter.usesRelay(settings)
+                    && VpnService.prepare(this) == null) {
+                return onStartCommand(VpnConnectionController.startIntent(this, settings), flags, startId);
             }
             return active ? START_STICKY : START_NOT_STICKY;
         }
@@ -194,19 +215,21 @@ public final class AetherVpnService extends VpnService {
         if (ACTION_STOP.equals(action)) {
             stateStore.edit().putBoolean("desiredConnected", false).apply();
             generation.incrementAndGet();
-            stopping = true;
+            cancelInFlight();
             updateState("disconnecting", getString(R.string.service_disconnecting));
-            worker.execute(() -> stopConnection(true));
+            lifecycle.execute(() -> stopConnection(true));
             return START_NOT_STICKY;
         }
         if (ACTION_START.equals(action)) {
             stateStore.edit().putBoolean("desiredConnected", true).apply();
             Intent request = new Intent(intent);
             long session = generation.incrementAndGet();
-            stopping = true;
+            // Before queueing, not inside the task: whatever is running now has to be told to stop
+            // waiting straight away, or it sits on a timeout while this one waits behind it.
+            cancelInFlight();
             updateState("starting", getString(R.string.service_preparing));
             startForegroundCompat(notification(getString(R.string.service_preparing), false));
-            worker.execute(() -> {
+            lifecycle.execute(() -> {
                 stopConnection(false);
                 if (generation.get() != session) return;
                 activeRequest = request;
@@ -218,6 +241,23 @@ public final class AetherVpnService extends VpnService {
             return START_STICKY;
         }
         return active ? START_STICKY : START_NOT_STICKY;
+    }
+
+    /**
+     * Tells whatever connection is in flight that it is over, without blocking.
+     *
+     * <p>Safe on the main thread, which is the point: the flag alone is not enough, because the
+     * engines block on their own waits - the Global engine for up to two and a half minutes - and
+     * would otherwise go on searching long after the user gave up, then surface as a connection
+     * nobody asked for any more. The real teardown still happens on the lifecycle thread.
+     */
+    private void cancelInFlight() {
+        stopping = true;
+        GlobalCore global = globalCore;
+        if (global != null) global.cancel();
+        StealthCore stealth = stealthCore;
+        if (stealth != null) stealth.cancel();
+        synchronized (networkLock) { networkLock.notifyAll(); }
     }
 
     private void runConnection(Intent request, long session) {
@@ -278,6 +318,12 @@ public final class AetherVpnService extends VpnService {
             } else if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
                 throw new IllegalStateException(aetherExitMessage("Turbo did not open its SOCKS5 listener"));
             }
+
+            // 🚨 The last point where an abandoned connect can still be stopped for free. Past
+            // here it builds an interface and calls itself connected, and a superseded session
+            // doing that is how a cancelled attempt came back and took the tunnel - on whichever
+            // country it had been started with, not the one now on screen.
+            if (stopping || generation.get() != session) return;
 
             connectionEstablished = true;
             if ("manual".equals(connectionMode)) {
@@ -564,6 +610,14 @@ public final class AetherVpnService extends VpnService {
             @Override public void onLog(String line) { sendLog(line); }
         });
         globalCore = core;
+        // Closes the one gap cancelInFlight cannot: a cancel that lands between publishing the
+        // core and starting it would find nothing to cancel, and the start below would then wait
+        // out its whole timeout on a connect that is already over.
+        if (stopping || generation.get() != session) {
+            core.stop();
+            globalCore = null;
+            return false;
+        }
         if (!core.start(GLOBAL_TIMEOUT_MS)) {
             core.stop();
             globalCore = null;
@@ -724,6 +778,14 @@ public final class AetherVpnService extends VpnService {
             }
         });
         stealthCore = core;
+        // Same gap the Global engine has, closed the same way: a cancel that lands before this
+        // core was published has nothing to cancel, and the dial loop below would run on for a
+        // connect that is already over.
+        if (stopping || generation.get() != session) {
+            core.stop();
+            stealthCore = null;
+            return false;
+        }
         core.prefer(wantedCountry);
         boolean up = core.start();
         if (!up && refreshDeferred && !stopping && generation.get() == session) {
@@ -1694,8 +1756,8 @@ public final class AetherVpnService extends VpnService {
     @Override public void onRevoke() {
         stateStore.edit().putBoolean("desiredConnected", false).apply();
         generation.incrementAndGet();
-        stopping = true;
-        worker.execute(() -> stopConnection(true));
+        cancelInFlight();
+        lifecycle.execute(() -> stopConnection(true));
         super.onRevoke();
     }
 
@@ -1713,6 +1775,7 @@ public final class AetherVpnService extends VpnService {
             AethonTileService.requestUpdate(this);
         }
         telemetry.shutdownNow();
+        lifecycle.shutdownNow();
         worker.shutdownNow();
         try { connectivityManager.unregisterNetworkCallback(networkCallback); }
         catch (RuntimeException error) { Log.w(TAG, "Network callback was already unregistered", error); }
