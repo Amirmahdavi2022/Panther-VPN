@@ -1,0 +1,400 @@
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:44:33 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:44:47 'constructor(p0: @NonNull() Context!, p1: @NonNull() File!, p2: @NonNull() MasterKey!, p3: @NonNull() EncryptedFile.FileEncryptionScheme!): EncryptedFile.Builder' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:48:17 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:48:31 'enum class FileEncryptionScheme : Enum<EncryptedFile.FileEncryptionScheme!>' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:56:33 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:56:47 'constructor(p0: @NonNull() Context!, p1: @NonNull() File!, p2: @NonNull() MasterKey!, p3: @NonNull() EncryptedFile.FileEncryptionScheme!): EncryptedFile.Builder' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:60:17 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:60:31 'enum class FileEncryptionScheme : Enum<EncryptedFile.FileEncryptionScheme!>' is deprecated. Deprecated in Java.
+
+> Task :vpnLib:compileDebugJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+> Task :vpnLib:processDebugJavaRes
+> Task :vpnLib:bundleLibRuntimeToJarDebug
+> Task :vpnLib:bundleLibCompileToJarDebug
+
+> Task :app:compileDebugJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :vpnLib:compileDebugUnitTestKotlin NO-SOURCE
+> Task :vpnLib:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :vpnLib:processDebugUnitTestJavaRes NO-SOURCE
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :vpnLib:testDebugUnitTest NO-SOURCE
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:compileDebugUnitTestJavaWithJavac
+> Task :app:testDebugUnitTest
+[Incubating] Problems report is available at: file:///home/runner/work/Panther-VPN/Panther-VPN/android/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 1m 31s
+42 actionable tasks: 42 executed
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders
+> Task :vpnLib:preBuild UP-TO-DATE
+> Task :vpnLib:preReleaseBuild UP-TO-DATE
+> Task :vpnLib:mergeReleaseJniLibFolders
+> Task :vpnLib:mergeReleaseNativeLibs
+> Task :vpnLib:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :vpnLib:generateReleaseBuildConfig
+> Task :vpnLib:generateReleaseResValues
+> Task :vpnLib:generateReleaseResources
+> Task :vpnLib:copyReleaseJniLibsProjectOnly
+> Task :vpnLib:packageReleaseResources
+> Task :vpnLib:compileReleaseAidl
+> Task :vpnLib:javaPreCompileRelease
+> Task :vpnLib:parseReleaseLocalResources
+> Task :app:checkReleaseDuplicateClasses
+> Task :vpnLib:generateReleaseRFile
+> Task :app:dataBindingMergeDependencyArtifactsRelease
+> Task :app:mergeReleaseNativeLibs
+> Task :app:generateReleaseResValues
+> Task :app:generateReleaseResources
+
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libaether.so, libbyedpi.so, libgojni.so, libhev-socks5-tunnel.so, liblantern.so, libopenvpn.so, libovpnexec.so, libovpnutil.so, libxray.so, libzeptun-jni.so.
+
+> Task :app:packageReleaseResources
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:generateReleaseBuildConfig
+> Task :app:parseReleaseLocalResources
+> Task :app:javaPreCompileRelease
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :vpnLib:extractDeepLinksRelease
+> Task :vpnLib:writeReleaseAarMetadata
+> Task :vpnLib:processReleaseManifest
+> Task :app:checkReleaseAarMetadata
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :vpnLib:prepareReleaseArtProfile
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeReleaseArtProfile
+> Task :app:extractProguardFiles
+> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:mergeReleaseStartupProfile
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :vpnLib:mergeReleaseShaders
+> Task :vpnLib:compileReleaseShaders NO-SOURCE
+> Task :vpnLib:generateReleaseAssets UP-TO-DATE
+> Task :vpnLib:mergeReleaseAssets
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets
+> Task :app:extractReleaseVersionControlInfo
+> Task :vpnLib:extractProguardFiles
+> Task :vpnLib:prepareLintJarForPublish
+> Task :vpnLib:extractDeepLinksForAarRelease
+> Task :vpnLib:writeReleaseLintModelMetadata
+
+> Task :vpnLib:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libopenvpn.so, libovpnexec.so, libovpnutil.so.
+
+> Task :app:collectReleaseDependencies
+> Task :vpnLib:copyReleaseJniLibsProjectAndLocalJars
+> Task :app:sdkReleaseDependencyData
+> Task :app:validateSigningRelease
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:preReleaseUnitTestBuild UP-TO-DATE
+> Task :vpnLib:preReleaseUnitTestBuild UP-TO-DATE
+> Task :app:mergeReleaseResources
+> Task :app:dataBindingGenBaseClassesRelease
+
+> Task :vpnLib:compileReleaseKotlin
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:9:8 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:10:8 'class MasterKey : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:25:33 'class MasterKey : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:31:30 'class MasterKey : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:31:40 'constructor(p0: @NonNull() Context!): MasterKey.Builder' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:32:37 'class MasterKey : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:32:47 'enum class KeyScheme : Enum<MasterKey.KeyScheme!>' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:44:33 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:44:47 'constructor(p0: @NonNull() Context!, p1: @NonNull() File!, p2: @NonNull() MasterKey!, p3: @NonNull() EncryptedFile.FileEncryptionScheme!): EncryptedFile.Builder' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:48:17 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:48:31 'enum class FileEncryptionScheme : Enum<EncryptedFile.FileEncryptionScheme!>' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:56:33 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:56:47 'constructor(p0: @NonNull() Context!, p1: @NonNull() File!, p2: @NonNull() MasterKey!, p3: @NonNull() EncryptedFile.FileEncryptionScheme!): EncryptedFile.Builder' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:60:17 'class EncryptedFile : Any' is deprecated. Deprecated in Java.
+w: file:///home/runner/work/Panther-VPN/Panther-VPN/android/vpnLib/src/main/java/de/blinkt/openvpn/core/ProfileEncryption.kt:60:31 'enum class FileEncryptionScheme : Enum<EncryptedFile.FileEncryptionScheme!>' is deprecated. Deprecated in Java.
+
+> Task :app:processReleaseResources
+
+> Task :vpnLib:compileReleaseJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+> Task :vpnLib:mergeReleaseGeneratedProguardFiles
+> Task :vpnLib:exportReleaseConsumerProguardFiles
+> Task :vpnLib:processReleaseJavaRes
+> Task :vpnLib:bundleLibCompileToJarRelease
+> Task :vpnLib:bundleLibRuntimeToJarRelease
+> Task :app:mergeReleaseJavaResource
+
+> Task :app:compileReleaseJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :app:mergeReleaseGeneratedProguardFiles
+> Task :vpnLib:createFullJarRelease
+> Task :app:expandReleaseArtProfileWildcards
+> Task :vpnLib:generateReleaseLintModel
+> Task :app:generateReleaseLintVitalReportModel
+> Task :vpnLib:extractReleaseAnnotations
+> Task :vpnLib:mergeReleaseConsumerProguardFiles
+> Task :vpnLib:mergeReleaseJavaResource
+> Task :vpnLib:syncReleaseLibJars
+> Task :vpnLib:bundleReleaseLocalLintAar
+> Task :vpnLib:generateReleaseLintVitalModel
+> Task :app:generateReleaseLintReportModel
+> Task :app:bundleReleaseClassesToCompileJar
+> Task :app:generateReleaseUnitTestLintModel
+> Task :app:minifyReleaseWithR8
+> Task :vpnLib:lintVitalAnalyzeRelease
+> Task :app:lintAnalyzeReleaseUnitTest
+> Task :vpnLib:generateReleaseUnitTestLintModel
+> Task :vpnLib:lintAnalyzeReleaseUnitTest
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease SKIPPED
+> Task :app:lintVitalRelease SKIPPED
+> Task :vpnLib:lintAnalyzeRelease
+> Task :app:lintAnalyzeRelease
+
+> Task :app:lintReportRelease
+Wrote HTML report to file:///home/runner/work/Panther-VPN/Panther-VPN/android/app/build/reports/lint-results-release.html
+
+> Task :app:lintRelease FAILED
+Lint found 2 errors, 72 warnings. First failure:
+
+/home/runner/work/Panther-VPN/Panther-VPN/android/app/src/main/res/layout/view_support_chip.xml:25: Error: Must use app:tint instead of android:tint [UseAppTint from androidx.appcompat]
+        android:tint="@color/blue_600" />
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The full lint text report is located at:
+  /home/runner/work/Panther-VPN/Panther-VPN/android/app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt
+[Incubating] Problems report is available at: file:///home/runner/work/Panther-VPN/Panther-VPN/android/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:lintRelease'.
+> Lint found errors in the project; aborting build.
+  
+  Fix the issues identified by lint, or create a baseline to see only new errors.
+  To create a baseline, run `gradlew updateLintBaseline` after adding the following to the module's build.gradle file:
+  ```
+  android {
+      lint {
+          baseline = file("lint-baseline.xml")
+      }
+  }
+  ```
+  For more details, see https://developer.android.com/studio/write/lint#snapshot
+  
+  Lint found 2 errors, 72 warnings. First failure:
+  
+  /home/runner/work/Panther-VPN/Panther-VPN/android/app/src/main/res/layout/view_support_chip.xml:25: Error: Must use app:tint instead of android:tint [UseAppTint from androidx.appcompat]
+          android:tint="@color/blue_600" />
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  The full lint text report is located at:
+    /home/runner/work/Panther-VPN/Panther-VPN/android/app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt
+
+* Try:
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+* Exception is:
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:lintRelease'.
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:130)
+	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:293)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:128)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+Caused by: java.lang.RuntimeException: Lint found errors in the project; aborting build.
+
+Fix the issues identified by lint, or create a baseline to see only new errors.
+To create a baseline, run `gradlew updateLintBaseline` after adding the following to the module's build.gradle file:
+```
+android {
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
+}
+```
+For more details, see https://developer.android.com/studio/write/lint#snapshot
+
+Lint found 2 errors, 72 warnings. First failure:
+
+/home/runner/work/Panther-VPN/Panther-VPN/android/app/src/main/res/layout/view_support_chip.xml:25: Error: Must use app:tint instead of android:tint [UseAppTint from androidx.appcompat]
+        android:tint="@color/blue_600" />
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The full lint text report is located at:
+  /home/runner/work/Panther-VPN/Panther-VPN/android/app/build/intermediates/lint_intermediate_text_report/release/lintReportRelease/lint-results-release.txt
+	at com.android.build.gradle.internal.lint.AndroidLintWorkAction$Companion.maybeThrowException(AndroidLintWorkAction.kt:235)
+	at com.android.build.gradle.internal.lint.AndroidLintTextOutputTask.doTaskAction(AndroidLintTextOutputTask.kt:120)
+	at com.android.build.gradle.internal.tasks.NonIncrementalTask$taskAction$$inlined$recordTaskAction$1.invoke(BaseTask.kt:60)
+	at com.android.build.gradle.internal.tasks.Blocks.recordSpan(Blocks.java:51)
+	at com.android.build.gradle.internal.tasks.NonIncrementalTask.taskAction(NonIncrementalTask.kt:78)
+	at jdk.internal.reflect.GeneratedMethodAccessor75.invoke(Unknown Source)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.doExecute(StandardTaskAction.java:58)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:244)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:229)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:212)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:195)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:162)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:42)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:75)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:67)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:37)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:69)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:46)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:40)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:29)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$1(BuildCacheStep.java:75)
+	at org.gradle.internal.Either$Right.fold(Either.java:175)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:75)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:35)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:65)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:36)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:107)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:56)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:64)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:43)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:125)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:56)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:289)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:48)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:35)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:61)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:127)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+
+
+BUILD FAILED in 2m 1s
+90 actionable tasks: 90 executed
