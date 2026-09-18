@@ -103,12 +103,26 @@ public final class GlobalCore {
         return isConnected() && socksPort.get() > 0;
     }
 
-    public void stop() {
+    /**
+     * Abandons a start that is still waiting, without tearing the engine down.
+     *
+     * <p>{@link #start} blocks for up to its whole timeout - two and a half minutes - and nothing
+     * it waits on notices that the user has changed their mind. So a connect the user cancelled
+     * went on searching in the background and, if it eventually found a route, came back and took
+     * the tunnel: the press that was meant to stop it did not, and the connection that landed was
+     * the one from before. This is the part that has to be safe to call from the main thread, so
+     * it only unblocks the wait; {@link #stop} still does the work.
+     */
+    public void cancel() {
         stopped.set(true);
         connected.set(false);
+        ready.countDown();
+    }
+
+    public void stop() {
+        cancel();
         PsiphonTunnel running = tunnel;
         tunnel = null;
-        ready.countDown();
         if (running != null) {
             try { running.stop(); }
             catch (Throwable error) { listener.onLog("Global engine did not stop cleanly: " + error); }

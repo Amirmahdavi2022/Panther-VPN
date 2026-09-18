@@ -344,9 +344,21 @@ public final class StealthCore {
                 CANDIDATE_TIMEOUT_MS);
     }
 
-    public void stop() {
+    /**
+     * Abandons a dial loop that is still running, without tearing anything down.
+     *
+     * <p>Same reason as the Global engine's: the loop can run for a long time and needs to be told
+     * from the main thread that the connect it belongs to is over. Every stage of the loop already
+     * checks this flag, so setting it is enough. {@link #stop} still does the work, and is not
+     * safe to call from the main thread.
+     */
+    public void cancel() {
         stopped.set(true);
         connected.set(false);
+    }
+
+    public void stop() {
+        cancel();
         current.set(null);
         stopProcess();
         // Leaving the shaping proxy listening after a stop would hold a loopback port that the
