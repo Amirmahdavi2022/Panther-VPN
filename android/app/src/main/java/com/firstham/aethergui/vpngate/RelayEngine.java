@@ -2,6 +2,7 @@ package com.firstham.aethergui.vpngate;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.SharedPreferences.Editor;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -37,6 +38,17 @@ public final class RelayEngine implements RelayStatus.Listener {
 
     /** How long one relay gets to bring the tunnel up before the next one is tried. */
     private static final long ATTEMPT_TIMEOUT_MS = 35_000L;
+
+    /**
+     * Where the relay currently carrying the connection is remembered.
+     *
+     * <p>Only so the screen can still name the exit after the app's process has been restarted
+     * under a live tunnel. The engine's own status bus replays that the tunnel is up, but not
+     * which relay it is, and the relay engine opens no proxy for the location card to ask
+     * through - so without this the home screen read "location unavailable" over a working
+     * connection until the user reconnected.
+     */
+    private static final String STATE_PREFS = "relay_state";
 
     /**
      * The gap between tearing down a dead attempt and starting the next.
@@ -118,6 +130,7 @@ public final class RelayEngine implements RelayStatus.Listener {
 
     private RelayEngine(Context context) {
         this.app = context.getApplicationContext();
+        this.current = remembered();
         this.status = new RelayStatus(this.app, this);
         // Registered for the life of the process. Registration replays the engine's last known
         // state, which is how a relay that is already up survives the activity being recreated.
@@ -133,7 +146,7 @@ public final class RelayEngine implements RelayStatus.Listener {
     public void observe(Observer newObserver) {
         this.observer = newObserver;
         if (newObserver == null) return;
-        if (connected && current != null) newObserver.relayServer(current);
+        if (current != null && (connected || RelayStatus.live())) newObserver.relayServer(current);
         newObserver.relayState(lastState, lastMessage);
     }
 
@@ -207,6 +220,7 @@ public final class RelayEngine implements RelayStatus.Listener {
         connected = false;
         failed = false;
         current = null;
+        forget();
         VpnGateConnector.stop(app);
         publish("disconnected", null);
     }
@@ -256,6 +270,7 @@ public final class RelayEngine implements RelayStatus.Listener {
         running = false;
         connected = false;
         current = null;
+        forget();
         VpnGateConnector.stop(app);
         failed = true;
         publish("error", reason);
@@ -271,6 +286,11 @@ public final class RelayEngine implements RelayStatus.Listener {
             connected = true;
             running = true;
             failed = false;
+            // A process restarted under a live tunnel learns from the engine that the tunnel is
+            // up, but not which relay it is. That part only this app knows, so it is read back
+            // rather than left blank.
+            if (current == null) current = remembered();
+            else remember(current);
             String name = current == null ? null : current.countryName;
             // The exit is named before the state flips, or the location line would show
             // "unavailable" for a frame on every successful connect.
@@ -307,6 +327,39 @@ public final class RelayEngine implements RelayStatus.Listener {
         }
 
         publish(state, message);
+    }
+
+    /** Stores just enough of a relay to name it on screen after a restart. */
+    private void remember(VpnGateServer server) {
+        try {
+            Editor editor = app.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE).edit();
+            editor.putString("host", server.hostName)
+                    .putString("ip", server.ip)
+                    .putString("countryCode", server.countryCode)
+                    .putString("countryName", server.countryName)
+                    .apply();
+        } catch (Throwable ignored) {
+            // Losing the label is never worth losing the connection over.
+        }
+    }
+
+    /** The relay remembered from before, or null when there is nothing usable stored. */
+    private VpnGateServer remembered() {
+        try {
+            SharedPreferences store = app.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE);
+            String host = store.getString("host", "");
+            String code = store.getString("countryCode", "");
+            if (host == null || host.isEmpty() || code == null || code.length() != 2) return null;
+            return new VpnGateServer(host, store.getString("ip", ""), 0L, 0, 0L,
+                    store.getString("countryName", code), code, 0, 0L, "");
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private void forget() {
+        try { app.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE).edit().clear().apply(); }
+        catch (Throwable ignored) { }
     }
 
     @Override public void relayTraffic(long tx, long rx) {
