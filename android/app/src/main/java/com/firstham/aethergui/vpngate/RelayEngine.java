@@ -185,6 +185,10 @@ public final class RelayEngine implements RelayStatus.Listener {
         failed = false;
         index = 0;
         current = null;
+        // The relay remembered from the last connection is not this one's. Dropping it here means
+        // a process that dies mid-sequence comes back naming nothing rather than naming the exit
+        // of a tunnel that has already been replaced.
+        forget();
         candidates = new ArrayList<>();
         publish("starting", app.getString(R.string.relay_finding));
 
