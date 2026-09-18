@@ -24,6 +24,11 @@ name: add beacon engine
 # unescaped quote, the shell script parses, the embedded Go is gofmt-clean and matches the source
 # CI proved, and javac reports the same errors on the patched tree as on the untouched one.
 # LanternCore.java was compiled for real against the repo's own SocksProbe.
+#
+# 🚨 Run 1 of this file failed, and the reason is worth keeping: it also improved release.yml,
+# and GitHub refuses to let the built-in token push a commit that changes a workflow file - no
+# permission grants that. Everything else had already been done when the push was rejected, so
+# nothing landed at all. The patcher now refuses outright to touch anything under .github/.
 
 on:
   workflow_dispatch:
@@ -882,14 +887,12 @@ jobs:
             echo "Built the Beacon core for $abi ($(stat -c%s "$output") bytes)"
           done''')
 
-          edit(RELEASE,
-               '''            for lib in libaether.so libhev-socks5-tunnel.so libxray.so libbyedpi.so libzeptun-jni.so; do''',
-               '''            for lib in libaether.so libhev-socks5-tunnel.so libxray.so libbyedpi.so libzeptun-jni.so liblantern.so; do''')
-
-          edit(RELEASE,
-               '''          check_pin FAST_BRIDGE_VERSION "fast TUN bridge"''',
-               '''          check_pin FAST_BRIDGE_VERSION "fast TUN bridge"
-                    check_pin LANTERN_VERSION "Beacon core"''')
+          # 🚨 Nothing under .github/ is touched here, and that is a hard constraint rather than an
+          # oversight. GitHub refuses to let the built-in token push a commit that changes a workflow file,
+          # whatever permissions the workflow asks for - so a patch that improved release.yml would be
+          # rejected at the push, after doing all its other work, and nothing at all would land. The two
+          # guards that belong there (liblantern.so in the jniLibs check, and a NOTICE pin check for the
+          # Beacon core) are safety nets, not requirements, and are added by hand afterwards.
 
           edit("NOTICE.md",
                '''## byedpi''',
@@ -924,6 +927,13 @@ jobs:
 
 
           def main():
+              # A commit that touches a workflow file cannot be pushed with the built-in token, so a patch
+              # that produced one would fail at the very last step with everything else already done.
+              for path in list(NEW) + [path for path, _, _ in EDITS]:
+                  if path.startswith(".github/"):
+                      print("refusing to touch %s: the built-in token cannot push workflow changes" % path)
+                      return 1
+
               # Nothing is written unless every anchor is found exactly once, and no new file lands unless
               # all of them are missing. A patch that half-applies is worse than one that does not apply.
               for path in NEW:
