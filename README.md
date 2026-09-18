@@ -47,7 +47,7 @@ There's no country picker for Prowl. It ends up wherever the server it reached h
 
 Relay is a different trade from the other three. The other engines run on infrastructure Panther knows how to reach; Relay runs on somebody's spare machine that was advertised in a public feed some hours ago and may well be gone. That's the deal: you get to name a country and come out there in one hop, and in exchange the server might not answer.
 
-So a connect here is a sequence, not a single attempt. It ranks the relays, takes the best one, and if it refuses the handshake, fails auth, or just says nothing for 35 seconds, it stops it and takes the next. Five relays get tried before you're told nothing worked. The status line names each one as it goes, so a slow connect looks like progress rather than a frozen screen.
+So a connect here is a sequence, not a single attempt. It ranks the relays, takes the best one, and if it refuses the handshake, fails auth, or just says nothing for 35 seconds, it stops it and takes the next. Up to five get tried before you're told nothing worked — fewer if the country has fewer than five. The status line names each one as it goes and counts them off, so a slow connect looks like progress rather than a frozen screen.
 
 Set it to **Automatic** and it takes the best relay anywhere. Pick a country and it stays in that country or reports that the country has nothing behind it — it will never quietly put you somewhere else, because coming out in the wrong country is the one failure that matters here.
 
@@ -55,7 +55,7 @@ It also remembers. A relay that actually carried a connection on your phone goes
 
 The directory is fetched at runtime and cached for three hours, and a failed refresh falls back to the last good copy. On a network where the feed itself is blocked, connect with Turbo once and Relay will have a list.
 
-Your settings come with it. Split tunnelling, the kill switch, the MTU and DNS leak protection all apply to Relay exactly as they do to the other three — it builds its tunnel from an OpenVPN profile rather than through Panther's own bridge, so those are translated onto the profile rather than ignored. One difference worth stating: with the kill switch on, Relay holds the tunnel open and drops traffic while it's reconnecting, but a connect that fails on all five relays ends with no tunnel at all rather than in a blocked state. The other engines can sit there blocking; this one can't, because the interface belongs to its engine and goes with it.
+Your settings come with it. Split tunnelling, the kill switch, the MTU and DNS leak protection all apply to Relay exactly as they do to the other three — it builds its tunnel from an OpenVPN profile rather than through Panther's own bridge, so those are translated onto the profile rather than ignored. One difference worth stating: with the kill switch on, Relay holds the tunnel open and drops traffic while it's reconnecting, but a connect that fails on every relay it tried ends with no tunnel at all rather than in a blocked state. The other engines can sit there blocking; this one can't, because the interface belongs to its engine and goes with it.
 
 Two things it can't do. **Proxy** and **Smart** modes don't apply: Relay is always a full system VPN and has no local proxy to hand you, so the mode row is greyed out while it's selected and says so. And **Fast Tunnel** is a bridge between Android's VPN interface and a Panther engine — Relay's engine owns its own interface, so the setting doesn't reach it either way.
 
@@ -105,7 +105,7 @@ The upstream benchmarks were run on a server, not a phone, so don't expect the s
 - **Global is slower.** Two hops, that's the price of coming out somewhere else.
 - **The first Global connect is slow.** Give it a minute or two while the carrier comes up. It's quicker after that.
 - **Prowl lives on public servers.** They're free and they die all the time. The app scores them and skips the dead ones, but some days the lists are just bad.
-- **Relay does too, and more so.** Volunteer machines with no uptime promise. It tries five before giving up, and some days all five refuse. If Relay won't come up, that's not a bug in the app, that's the pool.
+- **Relay does too, and more so.** Volunteer machines with no uptime promise. It tries up to five before giving up, and some days all five refuse. If Relay won't come up, that's not a bug in the app, that's the pool — though it does remember what worked here, so it usually gets better after the first successful connect.
 - **The exit can see your traffic leave.** Same as with any VPN, so stick to HTTPS.
 - **It's not anonymity.** It changes where your traffic seems to come from. If you really need Tor, use Tor.
 - **Android only.** The Windows client was dropped in 2.0.0.
