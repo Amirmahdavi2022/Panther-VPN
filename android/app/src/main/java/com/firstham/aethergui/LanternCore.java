@@ -41,8 +41,21 @@ final class LanternCore {
      */
     static final int PORT = 1821;
 
-    /** How long a cold start is given. Measured at about 15s on a real phone; this is generous. */
+    /** How long a start is given once the engine has its configuration cached on disk. */
     static final int START_TIMEOUT_MS = 120_000;
+
+    /** How often a start that is still running says where it has got to. */
+    static final long PROGRESS_INTERVAL_MS = 30_000L;
+
+    /**
+     * How long a start is given when the engine has never fetched its configuration here.
+     *
+     * <p>A first run has to pull its bootstrap through domain fronting before it has a single
+     * route to offer, and on a filtered network that is a different order of task from reusing
+     * what is already on disk. The shorter budget above is right for the warm case and was
+     * spending the cold one's entire allowance on the fetch.
+     */
+    static final int COLD_START_TIMEOUT_MS = 210_000;
 
     interface Listener {
         void onLog(String line);
@@ -105,6 +118,11 @@ final class LanternCore {
             log("Beacon could not create its working directory");
             return false;
         }
+        boolean cold = configBytes() == 0;
+        int budget = cold ? Math.max(timeoutMs, COLD_START_TIMEOUT_MS) : timeoutMs;
+        log(cold
+                ? "Beacon has no cached configuration; fetching it can take a few minutes"
+                : "Beacon config: " + describeConfig());
         List<String> command = new ArrayList<>();
         command.add(binary.getAbsolutePath());
         command.add("-socks");
@@ -125,7 +143,37 @@ final class LanternCore {
             return false;
         }
         drain(process);
-        return waitUntilUsable(timeoutMs);
+        return waitUntilUsable(budget);
+    }
+
+    /** Total bytes the engine has cached. Zero means it has never completed a fetch here. */
+    private long configBytes() {
+        File[] files = configDir.listFiles();
+        if (files == null) return 0L;
+        long total = 0L;
+        for (File file : files) if (file.isFile()) total += file.length();
+        return total;
+    }
+
+    /**
+     * The cache, in one line.
+     *
+     * <p>Worth logging rather than inferring, because it splits the two failures that look
+     * identical from outside: nothing here means the engine never reached its own bootstrap, and
+     * a populated directory with no working route means it did and the routes are dead. Guessing
+     * between those two cost a whole test cycle once already.
+     */
+    private String describeConfig() {
+        File[] files = configDir.listFiles();
+        if (files == null || files.length == 0) return "empty";
+        int count = 0;
+        long total = 0L;
+        for (File file : files) {
+            if (!file.isFile()) continue;
+            count++;
+            total += file.length();
+        }
+        return count == 0 ? "empty" : count + " files, " + total + " bytes";
     }
 
     /**
@@ -136,9 +184,19 @@ final class LanternCore {
      * the first gate, and a request that comes back is the second.
      */
     private boolean waitUntilUsable(int timeoutMs) {
-        long deadline = System.currentTimeMillis() + Math.max(1, timeoutMs);
+        long started = System.currentTimeMillis();
+        long deadline = started + Math.max(1, timeoutMs);
+        long nextReport = started + PROGRESS_INTERVAL_MS;
         boolean listening = false;
         while (!cancelled && System.currentTimeMillis() < deadline) {
+            // A silent wait and a frozen app are the same picture. Saying what the engine has
+            // fetched so far turns a two-minute blank into something a person can read, and
+            // leaves the answer in the log for whoever asks afterwards.
+            if (System.currentTimeMillis() >= nextReport) {
+                nextReport += PROGRESS_INTERVAL_MS;
+                log("Beacon still starting after " + ((System.currentTimeMillis() - started) / 1000)
+                        + "s; config " + describeConfig());
+            }
             Process running = process;
             if (running == null) return false;
             if (!running.isAlive()) {
@@ -157,8 +215,8 @@ final class LanternCore {
         }
         if (!cancelled) {
             log(listening
-                    ? "Beacon was listening but never carried a request"
-                    : "Beacon never opened its SOCKS5 listener");
+                    ? "Beacon was listening but never carried a request; config " + describeConfig()
+                    : "Beacon never opened its SOCKS5 listener; config " + describeConfig());
         }
         stop();
         return false;
@@ -196,6 +254,13 @@ final class LanternCore {
                 String line;
                 while ((line = lines.readLine()) != null) {
                     String upper = line.toUpperCase(Locale.US);
+                    // The core announces the address it is serving on, and says so without the
+                    // word this filter was built around - so the one line worth keeping was the
+                    // one being dropped.
+                    if (upper.contains("SOCKS5 LISTENING ON")) {
+                        log("Beacon: " + line.trim());
+                        continue;
+                    }
                     if (upper.contains("ERROR") || upper.contains("FATAL")) {
                         if (forwarded < 8) {
                             forwarded++;

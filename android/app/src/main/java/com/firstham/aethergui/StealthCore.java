@@ -710,6 +710,32 @@ public final class StealthCore {
     }
 
     /**
+     * How many per-connection lines from one core run reach the connection log.
+     *
+     * <p>A fanout round opens forty-eight of them within a few milliseconds. The first handful
+     * say everything the rest do - which inbound went to which outbound, and whether DNS took the
+     * route it was supposed to - so the remainder are pure displacement in a buffer that trims
+     * from the front.
+     */
+    static final int PER_CONNECTION_LOG_LIMIT = 12;
+
+    /**
+     * Whether a line is the core reminding its own developers to migrate a transport.
+     *
+     * <p>Emitted once per configured inbound and outbound, so roughly sixty per fanout round, and
+     * identical every time regardless of network, endpoint or outcome. They were the single
+     * largest consumer of the connection log and have never once answered a question asked of it.
+     */
+    static boolean isUpstreamNagging(String line) {
+        return line.contains("common/errors: The feature ");
+    }
+
+    /** Whether a line describes one accepted connection rather than the core's own state. */
+    static boolean isPerConnection(String line) {
+        return line.contains(" accepted ");
+    }
+
+    /**
      * Reads the core's output on a background thread.
      *
      * <p>Not for the logging: a process whose output nobody reads fills its pipe buffer and then
@@ -717,11 +743,25 @@ public final class StealthCore {
      */
     private void drainOutput(final Process started) {
         Thread reader = new Thread(() -> {
+            int kept = 0;
+            boolean announced = false;
             try (BufferedReader lines = new BufferedReader(
                     new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = lines.readLine()) != null) {
-                    if (!line.isEmpty()) listener.onLog("Stealth core: " + line);
+                    if (line.isEmpty() || isUpstreamNagging(line)) continue;
+                    if (isPerConnection(line)) {
+                        if (kept >= PER_CONNECTION_LOG_LIMIT) {
+                            if (!announced) {
+                                announced = true;
+                                listener.onLog("Stealth core: further per-connection lines are"
+                                        + " suppressed for this run");
+                            }
+                            continue;
+                        }
+                        kept++;
+                    }
+                    listener.onLog("Stealth core: " + line);
                 }
             } catch (Exception ignored) {
                 // The stream closes when the process ends; that is not worth reporting.
