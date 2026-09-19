@@ -1,0 +1,233 @@
+name: beacon in about and readme
+
+# One-shot. Beacon shipped without appearing anywhere a user actually looks: the About tagline
+# still counted three engines, the "How it connects" list had three entries, and the README said
+# "the three cards above the connect button". The one engine that depends on nothing else was the
+# one nobody could read about.
+#
+# This adds the fourth entry to About in English, because no Persian goes inside the app,
+# replaces the README with a Persian one that covers Beacon, and moves the version to 2.13.1.
+# The version bump is here rather than left to the tag: release files are named after the tag,
+# but the version the app shows comes from versionName and Android decides an APK is an update
+# from versionCode, so tagging alone would ship a build calling itself the previous release.
+#
+# The README travels as base64. It is embedded in a YAML block scalar inside a shell heredoc, and
+# right-to-left text carrying its own quotes and backticks has three chances to be mangled on the
+# way through; encoded, it either decodes byte for byte or not at all.
+#
+# Nothing under .github/ is touched, so this file cannot delete itself. Remove it by hand after.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/beacon-about-readme.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Write the patcher
+        run: |
+          cat > patch.py <<'PYFILE'
+          """Adds Beacon to the About screen and replaces the README. Anchors must hit exactly once."""
+
+          import base64
+          import os
+          import sys
+
+          STRINGS = "android/app/src/main/res/values/strings.xml"
+          LAYOUT = "android/app/src/main/res/layout/activity_main.xml"
+          README = "README.md"
+
+          EDITS = []
+
+
+          def edit(path, old, new, note):
+              EDITS.append((path, old, new, note))
+
+
+          # --- The About screen still described three engines ---------------------------------------------
+          #
+          # Beacon shipped without appearing anywhere a user looks. The tagline counted three, the "How it
+          # connects" section listed three, and the one engine that does not depend on any of the others was
+          # the one nobody could read about.
+          #
+          # No apostrophes anywhere in the new strings. An unescaped one is valid XML and illegal to aapt,
+          # it passes every check that runs before the build and then fails resource merging with a message
+          # that names neither the character nor the string. Avoiding the character entirely beats
+          # remembering to escape it.
+
+          edit(
+              STRINGS,
+              '<string name="about_tagline">Three engines, one connect button.'
+              '\\nNo account, nothing to paste in.</string>',
+              '<string name="about_tagline">Four engines, one connect button.'
+              '\\nNo account, nothing to paste in.</string>',
+              "strings: the tagline counted three",
+          )
+
+          edit(
+              STRINGS,
+              '    <string name="about_support_title">Support channel</string>',
+              '    <string name="about_mode_beacon_title">Beacon</string>\n'
+              '    <string name="about_mode_beacon_body">The only engine that needs nothing else running'
+              ' first. It reaches its own network by hiding its requests inside ordinary traffic to large'
+              ' content providers, so it finds a way out of a filtered network on its own rather than'
+              ' borrowing a tunnel from another engine. The exit is abroad and the engine picks it, so there'
+              ' is no country to choose and it can differ each time you connect. The first connect after'
+              ' installing is slow, sometimes a few minutes, because it has to fetch its configuration'
+              ' before it has anywhere to send traffic; after that it is cached and quick. If it cannot come'
+              ' up, Panther keeps you connected on Turbo instead of dropping you.</string>\n'
+              '    <string name="about_support_title">Support channel</string>',
+              "strings: add the Beacon entry",
+          )
+
+          edit(
+              LAYOUT,
+              '                        <TextView android:layout_width="match_parent"'
+              ' android:layout_height="wrap_content" android:layout_marginTop="4dp"'
+              ' android:lineSpacingMultiplier="1.25" android:text="@string/about_mode_stealth_body"'
+              ' android:textColor="@color/muted" android:textSize="12sp" />\n'
+              '                    </LinearLayout>',
+              '                        <TextView android:layout_width="match_parent"'
+              ' android:layout_height="wrap_content" android:layout_marginTop="4dp"'
+              ' android:lineSpacingMultiplier="1.25" android:text="@string/about_mode_stealth_body"'
+              ' android:textColor="@color/muted" android:textSize="12sp" />\n'
+              '\n'
+              '                        <TextView android:layout_width="wrap_content"'
+              ' android:layout_height="wrap_content" android:layout_marginTop="14dp"'
+              ' android:text="@string/about_mode_beacon_title" android:textColor="@color/blue_600"'
+              ' android:textSize="13sp" android:textStyle="bold" />\n'
+              '                        <TextView android:layout_width="match_parent"'
+              ' android:layout_height="wrap_content" android:layout_marginTop="4dp"'
+              ' android:lineSpacingMultiplier="1.25" android:text="@string/about_mode_beacon_body"'
+              ' android:textColor="@color/muted" android:textSize="12sp" />\n'
+              '                    </LinearLayout>',
+              "layout: add the Beacon block after Prowl",
+          )
+
+
+          # --- The version ---------------------------------------------------------------------------------
+          #
+          # v2.13.0 is already tagged and built, so anything that lands after it needs its own number. The
+          # release files are named after the tag, but the version the app shows itself comes from
+          # versionName, and versionCode is what Android uses to decide something is an update at all - so a
+          # tag alone would ship a build calling itself the previous version and refusing to install over it.
+          # Both live in exactly two files.
+
+          edit(
+              "android/app/build.gradle",
+              "        versionCode 34\n        versionName '2.13.0'",
+              "        versionCode 35\n        versionName '2.13.1'",
+              "gradle: version",
+          )
+
+          edit(
+              "package.json",
+              '  "version": "2.13.0",',
+              '  "version": "2.13.1",',
+              "package.json: version",
+          )
+
+
+          # --- The README ---------------------------------------------------------------------------------
+          #
+          # Rewritten in Persian at the owner request, and carrying Beacon. Base64 rather than inline text:
+          # the file is embedded in a YAML block scalar inside a shell heredoc, and right-to-left text with
+          # its own quotes and backticks has three chances to be mangled on the way through. Encoded, it
+          # either decodes byte for byte or it does not decode at all.
+
+          README_B64 = "IyBQYW50aGVyIFZQTgoK2YjbjOKAjNm+24zigIzYp9mGINmF2KrZhuKAjNio2KfYsiDYqNix2KfbjCDYp9mG2K/YsdmI24zYry4g2YbZhyDYp9qp2KfZhtiqINmF24zigIzYrtmI2KfYr9iMINmG2Ycg2KfYtNiq2LHYp9qp2Iwg2YbZhyDaqdin2YbZgduM2q/bjCDaqdmHINio2KfbjNivINio2q/Ysdiv24wg2b7bjNiv2Kcg2qnZhtuMINmIINqp2b7bjCDaqdmG24wuINmG2LXYqNi0INmF24zigIzaqdmG24wg2YggQ29ubmVjdCDYsdmIINmF24zigIzYstmG24wuCgpb2YbYs9iu2YfigIzZh9inXShodHRwczovL2dpdGh1Yi5jb20vQW1pcm1haGRhdmkyMDIyL1BhbnRoZXItVlBOL3JlbGVhc2VzKSDCtyBb2KfZhdmG24zYql0oU0VDVVJJVFkubWQpIMK3IFvZhdi02KfYsdqp2KpdKENPTlRSSUJVVElORy5tZCkgwrcgW9mE2KfbjNiz2YbYs+KAjNmH2KddKE5PVElDRS5tZCkKCiMjINqG24zaqdin2LEg2YXbjOKAjNqp2YbZhwoK2K7bjNmE24wg2KfYsiDZiNuM4oCM2b7bjOKAjNin2YbigIzZh9in24wg2LHYp9uM2q/Yp9mGINix2YjbjCDar9uM2KrigIzZh9in2Kgg2K/YsSDZiNin2YLYuSDaqdin2YbZgduM2q/igIzZhdmG24zYrNix2YYuINi42KfZh9ix2LQg2YLYtNmG2q/Zh9iMINio2LnYryDZhtuM2YUg2LPYp9i52Kog2YXbjOKAjNqv2LHYr9uMINiv2YbYqNin2YQg2LPYsdmI2LHbjCDaqdmHINmH2YbZiNiyINqp2KfYsSDaqdmG2YcuINm+2YbYqtixINix2KfZhyDYrtix2YjYrCDYrtmI2K/YtCDYsdmIINio2Kcg2K7ZiNiv2LQg2YXbjNin2LHZhy4KCnwg2YXZiNiq2YjYsSB8INin2LIg2qnYrNinINiv2LHZhduM2KfbjCB8INiz2LHYudiqIHwg2LPYsdmI2LEg2K7ZiNiv2Kog2YTYp9iy2YXZh9ifIHwKfC0tLXwtLS18LS0tfC0tLXwKfCAqKlR1cmJvKiogfCDZhtiy2K/bjNqp4oCM2KrYsduM2YYg2K/bjNiq2KfYs9mG2KrYsSDaqdmE2KfYr9mB2YTYsSB8INiz2LHbjNi54oCM2KrYsduM2YYgfCDZhtmHIHwKfCAqKkdsb2JhbCoqIHwg24zZhyDaqdi02YjYsSDYr9uM2q/ZhyB8INqp2YbYr9iq2LEgKNiv2Ygg2YfYp9m+KSB8INmG2YcgfAp8ICoqUHJvd2wqKiB8INmH2LEg2KzYpyDaqdmHINiz2LHZiNix24wg2qnZhyDZvtuM2K/YpyDaqdix2K/ZhyDYqNin2LTZhyB8INiz2LHbjNi5ICjbjNqpINmH2KfZvikgfCDZhtmHIHwKfCAqKkJlYWNvbioqIHwg24zZhyDaqdi02YjYsSDYr9uM2q/ZhyB8INmF2KrZiNiz2LcgfCDZhtmHIHwKCtin24zZhtinINmH2YXZiNmGINqG2YfYp9ixINiq2Kcg2qnYp9ix2KrZhiDaqdmHINio2KfZhNin24wg2K/aqdmF2YfZlCDYp9iq2LXYp9mEINmF24zigIzYqNuM2YbbjC4g2KjYstmG24wg2LHZiNi02YjZhiDYudmI2LYg2YXbjOKAjNi02YcuINm+24zYtOKAjNmB2LHYtiBUdXJibyDZgNmA2YcuCgoqKlR1cmJvKiog2KLbjOKAjNm+24wg2Ygg2KfZvtix2KfYqtmI2LHYqiDYsdmIINmC2KfbjNmFINmF24zigIzaqdmG2Ycg2YjZhNuMINiq2YLYsduM2KjYp9mLINmH2YXZiNmG4oCM2KzYpyDZhduM4oCM2YXZiNmG24wuINi02KjaqdmH4oCM2KfbjCDaqdmHINm+2LTYqti02Ycg2KfYtdmE2KfZiyDYqNix2KfbjCDZh9mF24zZhiDYs9in2K7YqtmHINi02K/Zh9iMINio2LHYp9uMINmH2YXbjNmGINiz2KfbjNiq4oCM2YfYpyDZh9mF2obZhtin2YYg2qnYtNmI2LEg2K7ZiNiv2Kog2LHZiCDZhduM4oCM2KjbjNmG2YYuCgoqKkdsb2JhbCoqINin2YjZhtuM2Ycg2qnZhyDZiNin2YLYudin2Ysg2KzYp9io2YfigIzYrNin2Kog2YXbjOKAjNqp2YbZhy4g2KjZh+KAjNis2KfbjCDYp9uM2YbaqdmHINiu2YjYr9i0INmF2LPYqtmC24zZhSDYqNiy2YbZhyDYqNuM2LHZiNmG2Iwg2K/Yp9iu2YQg2KrZiNmG2YQgVHVyYm8g2YXbjOKAjNiv2YjZh9iMINmIINiv2YLbjNmC2KfZiyDYqNmHINmH2YXbjNmGINiu2KfYt9ix2Ycg2qnZhyDYsdmI24wg2LTYqNqp2YfZlCDZgduM2YTYqtix2LTYr9mHINin2LXZhNin2Ysg2KjYp9mE2Kcg2YXbjNin2K8uINqp2LTZiNixINiu2LHZiNis24zYtCDYsdmIINmF24zigIzYqtmI2YbbjCDYp9mG2KrYrtin2Kgg2qnZhtuMINuM2Kcg2KjYsNin2LHbjCDYsdmI24wg2K7ZiNiv2qnYp9ixLgoKKipQcm93bCoqINio2LHYp9uMINix2YjYstin24zbjNmHINqp2Ycg2KfZiNmGINiv2YjYqtinINqv24zYsSDZhduM4oCM2qnZhtmGLiDbjNmHINmE24zYs9iqINiz2LHZiNixINmG2q/ZhyDZhduM4oCM2K/Yp9ix2YfYjCDYsdmI24wg2q/ZiNi024wg2K7ZiNiv2Kog2KrYs9iq2LTZiNmGINmF24zigIzaqdmG2Ycg2Ygg2YfYsSDaqdiv2YjZhSDZiNin2YLYudin2Ysg2KrYsdin2YHbjNqpINix2K8g2qnYsdivINix2Ygg2KjYsdmF24zigIzYr9in2LHZhy4g24zaqSDZh9in2b7Zh9iMINm+2LMg2YjZgtiq24wg2YjYtdmEINi02K8g2LPYsduM2LnZhy4KCioqQmVhY29uKiog2KrZhtmH2Kcg2YXZiNiq2YjYsduM2Ycg2qnZhyDYqNix2KfbjCDYqNin2YTYpyDYp9mI2YXYr9mGINio2Ycg2YfbjNqGINmF2YjYqtmI2LEg2K/bjNqv2YfigIzYp9uMINin2K3YqtuM2KfYrCDZhtiv2KfYsdmHLiDYtNio2qnZh9mUINiu2YjYr9i0INix2Ygg2K/Yp9ix2Ycg2Ygg2K/Ysdiu2YjYp9iz2KrigIzZh9in2LQg2LHZiCDZhNin24wg2KrYsdin2YHbjNqpINi52KfYr9uMINiz2LHZiNuM2LPigIzZh9in24wg2KjYstix2q8g2YLYp9uM2YUg2YXbjOKAjNqp2YbZh9iMINio2LHYp9uMINmH2YXbjNmGINin2LIg24zZhyDYtNio2qnZh9mUINmB24zZhNiq2LHYtNiv2Ycg2YfZhSDYrtmI2K/YtCDYsdin2Ycg2K7YsdmI2Kwg2b7bjNiv2Kcg2YXbjOKAjNqp2YbZhy4g2K7YsdmI2KzbjNi0INiu2KfYsdis2YcuCgojIyBCZWFjb24g2obYt9mI2LEg2qnYp9ixINmF24zigIzaqdmG2YcKCtin24zZhiDbjNqp24wg2KjYpyDYqNmC24zZhyDZgdix2YIg2K/Yp9ix2Ycg2b7YsyDahtmG2K8g2K7YtyDYsdin2KzYueKAjNio2YfYtCDYqNmG2YjbjNiz2YUuCgpHbG9iYWwg2KjYr9mI2YYgVHVyYm8g2KfYtdmE2KfZiyDYqNin2YTYpyDZhtmF24zYp9ivINmIIFByb3dsINmH2YUg2LHZiNuMINiu24zZhNuMINin2LIg2LTYqNqp2YfigIzZh9in24wg2KfbjNix2KfZhiDYotiu2LHYtCDZhdis2KjZiNixINmF24zigIzYtNmHINin2LIgVHVyYm8g2LHYryDYtNmHLiDbjNi52YbbjCDYp9qv2YcgVHVyYm8g2Kjar9uM2LHZhyDYp9mI2YYg2K/ZiNiq2Kcg2YfZhSDYqNin2YfYp9i0INmF24zigIzar9uM2LHZhi4gQmVhY29uINin24zZhiDZiNin2KjYs9iq2q/bjCDYsdmIINmG2K/Yp9ix2YfYjCDYstuM2LHYs9in2K7YqiDYrtmI2K/YtCDYsdmIINiv2KfYsdmHINmIINiu2YjYr9i0INqp2KfZhtmB24zar9i0INix2Ygg2YXbjNin2LHZhy4KCtqG2YbYryDYqtinINqG24zYsiDaqdmHINiu2YjYqNmHINio2K/ZiNmG24w6CgotICoq2KfZhtiq2K7Yp9ioINqp2LTZiNixINmG2K/Yp9ix2YcuKiog2K7ZiNiv2LQg2KfYsiDYqNuM2YYg2YXYs9uM2LHZh9in24wg2LLZhtiv2YfigIzYp9uMINqp2Ycg2K/Yp9ix2Ycg24zaqduMINix2Ygg2KjYsdmF24zigIzYr9in2LHZh9iMINm+2LMg2YfYsSDYqNin2LEg2YXZhdqp2YbZhyDbjNmHINqp2LTZiNixINiv24zar9mHINio2KfYtNmHLiDaqdin2LHYqiDZhNmI2qnbjNi02YYg2YbYtNmI2YYg2YXbjOKAjNiv2Ycg2qnYrNinINiv2LHYp9mI2YXYr9uMLgotICoq2KfZiNmE24zZhiDYp9iq2LXYp9mEINio2LnYryDYp9iyINmG2LXYqCDaqdmG2K/Zhy4qKiDYqNin24zYryDYp9mI2YQg2qnYp9mG2YHbjNqv2LQg2LHZiCDYr9in2YbZhNmI2K8g2qnZhtmHINmIINiq2Kcg2KfZiNmGINmG24zYp9ivINis2KfbjNuMINio2LHYp9uMINmB2LHYs9iq2KfYr9mGINiq2LHYp9mB24zaqSDZhtiv2KfYsdmHLiDar9in2YfbjCDahtmG2K8g2K/ZgtuM2YLZhyDYt9mI2YQg2YXbjOKAjNqp2LTZhy4g2KjYudiv2LQg2qnYtCDZhduM4oCM2LTZhyDZiCDYr9mB2LnYp9iqINio2LnYryDYs9ix24zYudmHLgotICoqRE5TINiv2KfYrtmEINiq2YjZhtmEINis2YjYp9ioINiv2KfYr9mHINmF24zigIzYtNmHLioqINin24zZhiDZhdmI2KrZiNixIFVEUCDYsdivINmG2YXbjOKAjNqp2YbZh9iMINm+2LMg2b7ZhCDYrtmI2K/YtCDYp9iz2YXigIzZh9inINix2Ygg2K/Yp9iu2YQg2KrZiNmG2YQg2K3ZhCDZhduM4oCM2qnZhtmHLiDaqdin2LHbjCDZhtiv2KfYsduMINio2KfZh9in2LTYjCDZgdmC2Lcg2Kfar9mHINiq2YjbjCDZhNin2q8g2K/bjNiv24zYtCDYqNiv2YjZhtuMINi52KfYr9uM2YcuCi0gKirYp9qv2Ycg2KjYp9mE2Kcg2YbbjNin2K/YjCDZvtmG2KrYsSDZhduM4oCM2YbYr9in2LLYqiDYsdmI24wgVHVyYm8qKiDYqNmH4oCM2KzYp9uMINin24zZhtqp2Ycg2YLYt9i52Kog2qnZhtmHLiDYp9mI2YYg2YXZiNmC2Lkg2qnYtNmI2LHYqiDYp9uM2LHYp9mGINmF24zigIzZhdmI2YbZh9iMINqG2YjZhiBUdXJibyDZh9mF24zZhtmHLgoKIyMgUHJvd2wg2obYt9mI2LEg2LPYsdmI2LEg2b7bjNiv2Kcg2YXbjOKAjNqp2YbZhwoK2KfbjNmGINmH2YUg2KjYpyDYp9qp2KvYsSDYp9m+4oCM2YfYpyDZgdix2YIg2K/Yp9ix2YcuCgrahtmG2K8g2KrYpyDZhNuM2LPYqiDaqdin2YbZgduM2q8g2LnZhdmI2YXbjCDZhduM4oCM2q/bjNix2YfYjCDYs9ix2YjYsdin24zbjCDaqdmHINmF24zigIzYqtmI2YbZhyDYqNmH2LTZiNmGINmI2LXZhCDYtNmHINix2Ygg2Ybar9mHINmF24zigIzYr9in2LHZh9iMINmIINio2Ycg2YfYsSDaqdiv2YjZhSDYqNixINin2LPYp9izINin2KrZgdin2YLbjCDaqdmHINix2YjbjCDar9mI2LTbjCAq2K7ZiNiv2KoqINin2YHYqtin2K/ZhyDZhtmF2LHZhyDZhduM4oCM2K/Zhzog2YjYtdmEINi02K8g24zYpyDZhtmH2Iwg2obZgtiv2LEg2LPYsduM2Lkg2KjZiNiv2Iwg2KLYrtix24zZhiDYqNin2LEg2qnZkNuMINqp2KfYsSDaqdix2K8uINmG2YXYsdmH4oCM2YfYpyDYsNiu24zYsdmHINmF24zigIzYtNmG2Iwg2b7YsyDYp9iq2LXYp9mEINio2LnYr9uMINin2LIg2YfZhdmI2YbigIzYrNin24zbjCDaqdmHINuM2KfYryDar9ix2YHYqtmHINi02LHZiNi5INmF24zigIzaqdmG2YcuINin2q/ZhyDYqNmHINmE24zYs9iq4oCM2YfYpyDZhtix2LPZhyDYp9iyINmG2LPYrtmH2ZQg2K/Zgdi52YfZlCDZgtio2YQg2KfYs9iq2YHYp9iv2Ycg2YXbjOKAjNqp2YbZhy4g2LHZiNuMINi02KjaqdmH4oCM2KfbjCDaqdmHINmH2YXZh+KAjNqG24wg2LHZiCDYqNiz2KrZh9iMINqp2YQg2YHZhNiz2YHZh+KAjNin2LQg2YfZhduM2YbZhy4KCtuM2qnbjOKAjNuM2qnbjCDZh9mFINmG2YXbjOKAjNix2Ycg2KzZhNmILiDbjNmHINiv2LPYqtmHINix2Ygg2LHZiNuMINm+2YjYsdiq4oCM2YfYp9uMINis2K/YpyDYqNin2LIg2YXbjOKAjNqp2YbZhyDZiCDZh9mF2Ycg2LHZiCDYqNinINmH2YUg2KrYs9iqINmF24zigIzaqdmG2YcuINu027gg2KrYpyDYqtiz2Kog2b7YtNiq4oCM2LPYsdmH2YUg2K3Yr9mI2K8g2b7ZhtisINiv2YLbjNmC2Ycg2LfZiNmEINmF24zigIzaqdi02YfYjCDYqtmI24wg24zZhyDYr9iz2KrZhyDYrdiv2YjYryDZh9i02Kog2KvYp9mG24zZhy4g2KjYsdin24wg2YfZhduM2YYg2YjYp9mC2LnYp9mLINmE24zYs9iqINix2Ygg2YXbjOKAjNqv2LHYr9mHLgoK2YfYsSDYs9ix2YjYsSDYs9mHINis2YjYsSDYp9mF2KrYrdin2YYg2YXbjOKAjNi02Ycg2Ygg2KfZviDbjNin2K/YtCDZhduM4oCM2YXZiNmG2Ycg2qnYr9mI2YXYtCDYsdmI24wg2LTYqNqp2YfZlCDYqtmIINis2YjYp9ioINiv2KfYrzoKCi0gKirZhdiz2KrZgtuM2YUqKjog2KfYsiDYrtmI2K8g2KfYqti12KfZhNiqINmF24zigIzYstmG2Ycg2KjbjNix2YjZhi4g2Kfar9mHINi02KjaqdmH4oCM2KfYqiDYp9is2KfYstmHINio2K/ZhyDYs9ix24zYueKAjNiq2LHbjNmG2YcuCi0gKirYtNqp2YTigIzYr9in2K/Zh+KAjNi02K/ZhyoqOiDZh9mF2YjZhiDZhdiz2KrZgtuM2YXYjCDZiNmE24wg2K/Ys9iq4oCM2K/Yp9iv2YYgVExTINiq24zaqdmH4oCM2KrbjNqp2Ycg2Ygg2YbYp9mF2YbYuNmFINmB2LHYs9iq2KfYr9mHINmF24zigIzYtNmHINqp2Ycg2YHbjNmE2KrYsdmH2KfbjNuMINqp2Ycg2K/Zhtio2KfZhCDbjNmHINm+2qnYqiDZhdi02K7YtSDZhduM4oCM2q/Ysdiv2YYg2b7bjNiv2KfYtCDZhtqp2YbZhi4KLSAqKtin2LIg2K/Yp9iu2YQgVHVyYm8qKjog2KfYsiDYqtmI24wg2KrZiNmG2YQgVHVyYm8g2YXbjOKAjNiy2YbZhyDYqNuM2LHZiNmGLiDaqdmG2K/Yqtix2Ycg2YjZhNuMINmI2YLYqtuMINin2YjZhiDYr9mI2KrYpyDYrNmI2KfYqCDZhtiv2YYg2qnYp9ixINmF24zigIzaqdmG2YcuCgrYp9qv2Ycg2LTYqNqp2Ycg2LnZiNi2INi02K8g2Ygg2YXYs9uM2LEg2LDYrtuM2LHZh+KAjNi02K/ZhyDYr9uM2q/ZhyDYrNmI2KfYqCDZhtiv2KfYr9iMINin2LIgKipTZXR0aW5ncyDihpAgUmVzZXQgUHJvd2wgcm91dGUqKiDZvtin2qnYtCDaqdmGINiq2Kcg2KfYsiDYp9mI2YQg2KrYtdmF24zZhSDYqNqv24zYsdmHLgoKUHJvd2wg2YfZhSDYp9mG2KrYrtin2Kgg2qnYtNmI2LEg2YbYr9in2LHZhy4g2YfYsSDYrNinINqp2Ycg2LPYsdmI2LHbjCDaqdmHINio2YfYtCDYsdiz24zYr9mHINio2KfYtNmH2Iwg2KfYsiDZh9mF2YjZhuKAjNis2Kcg2K/YsdmF24zYp9uM2Iwg2Ygg2KfZiNmGINmE24zYs9iqINmF2K/Yp9mFINi52YjYtiDZhduM4oCM2LTZhy4KCiMjINin2YbYqtiu2KfYqCDaqdi02YjYsQoK2KfbjNmGINmF2KfZhCBHbG9iYWwg2YDZgNmHLiDYp9mG2KrYrtin2KjYtCDaqdmG24wg24zZhyDaqdin2LHYqiDYqNin2YTYpyDZhduM2KfYryDaqdmHINqp2LTZiNixINiu2LHZiNis24wg2LHZiCDYqtmI2LQg2YXbjOKAjNio24zZhtuMLiDZvtuM2LTigIzZgdix2LYg2K7ZiNiv2qnYp9ix2Ycg2Ygg2YXYudmF2YjZhNin2Ysg2LPYsduM2LnigIzYqtix24zZhtmH2Iwg2b7YsyDZgdmC2Lcg2YjZgtiq24wg2K/Ys9iq24wg2KfZhtiq2K7Yp9ioINqp2YYg2qnZhyDbjNmHINis2KfbjCDZhdi02K7YtSDZhNin2LLZhSDYr9in2LHbjC4KCtmH2LEg2KjYp9ixINqp2Ycg2YjYtdmEINmF24zigIzYtNuMINin2b4g24zYp9iv2K/Yp9i02Kog2YXbjOKAjNqp2YbZhyDYp9iyINqp2K/ZiNmFINqp2LTZiNixINiv2LHYp9mI2YXYr9uMLiDYr9mB2LnZh9mUINio2LnYryDaqdmHINmE24zYs9iqINix2Ygg2KjYp9iyINqp2YbbjNiMINin2YjZhtinINio2Kcg2YbYtNin2YYgwqvZgtio2YTYp9mLINmI2LXZhCDYtNiv2YfCuyDZhduM2KfZhiDZiCDYqNmC24zZhyDYqNmH4oCM2LnZhtmI2KfZhiDYp9mF2KrYrdin2YbigIzZhti02K/Zhy4KCtio24zYtNiq2LEg2KfYsiDYp9uM2YYg2KfYr9i52Kcg2YbZhduM4oCM2qnZhtmHLiDYp9uM2YbaqdmHINmB2YTYp9mGINiz2KfbjNiqINin2LIg2YHZhNin2YYg2K7YsdmI2KzbjCDYqNin2LIg2YXbjOKAjNi02Ycg24zYpyDZhtmHINmH2YHYqtmH4oCM2KjZh+KAjNmH2YHYqtmHINmB2LHZgiDZhduM4oCM2qnZhtmH2Iwg2Ygg24zZhyDYqtuM2qkg2LPYqNiyINmC2K/bjNmF24wg2YHZgti3INqv2YXYsdin2YfYqiDZhduM4oCM2qnZhtmHLgoKIyMg2qnYp9ix2Kog2YTZiNqp24zYtNmGCgrZiNmC2KrbjCDZiNi12YTbjNiMINi12YHYrdmH2ZQg2KfYtdmE24wg2YbYtNmI2YYg2YXbjOKAjNiv2Ycg2KfYsiDaqdis2Kcg2K/Ysdin2YjZhdiv24w6INqp2LTZiNix2Iwg2LTZh9ix2Iwg2KLbjOKAjNm+24wg2LnZhdmI2YXbjCDZiCDYtdin2K3YqCDYotuM4oCM2b7bjC4KCtio2LHYp9uMINqv2LHZgdiq2YbYtCDYp9iyINuM2Ycg2LPYsdmI24zYsyDYudmF2YjZhduMINmF24zigIzZvtix2LPZh9iMINmIINiv2LHYrtmI2KfYs9iqICrYp9iyINiv2KfYrtmEINiq2YjZhtmEKiDZhduM4oCM2LHZh9iMINin2LIg2YfZhdmI2YYg2b7ZiNix2KogU09DS1Mg2YXYrdmE24wg2qnZhyDZhdmI2KrZiNixINio2KfYsiDaqdix2K/Zhy4g2KfZiNmGINiz2LHZiNuM2LMg2YHZgti3INii2K/YsdizINiu2LHZiNis24wg2LHZiCDZhduM4oCM2KjbjNmG2YfYjCDZh9uM2obigIzZiNmC2Kog2q/ZiNi024zYqiDYsdmIINmG2YXbjOKAjNio24zZhtmHLiDZhtmHINqp2YTbjNivIEFQSSDZhduM4oCM2K7ZiNin2K8g2YbZhyDahtuM2LLbjCDYsNiu24zYsdmHINmF24zigIzYtNmHLiDYsdmI24wg2qnYp9ix2Kog2KjYstmG24wg2K/ZiNio2KfYsdmHINmF24zigIzar9uM2LHZhy4KCtio2Ycg2KrYsdiq24zYqCDYp9uM2YbYpyDYsdmIINin2YXYqtit2KfZhiDZhduM4oCM2qnZhtmHINiq2Kcg24zaqduMINis2YjYp9ioINio2K/ZhzoKCjEuIGB3d3cuY2xvdWRmbGFyZS5jb20vY2RuLWNnaS90cmFjZWAKMi4gYHNwZWVkLmNsb3VkZmxhcmUuY29tL21ldGFgCjMuIGBpcHdoby5pc2AKNC4gYGlwYXBpLmNvYAoK2KfZiNmE24wg2KzZhNmIINin2YHYqtin2K/ZhyDahtmI2YYgYC9tZXRhYCDYp9iyINiu24zZhNuMINin2LIg2K7YsdmI2KzbjOKAjNmH2KfbjCDYudmF2YjZhduMINu027DbsyDZhduM4oCM2K/Zhy4g2Kfar9mHINmH24zahuKAjNqp2K/ZiNmFINis2YjYp9ioINmG2K/ZhiDZhduM4oCM2YbZiNuM2LPZhyDCq2xvY2F0aW9uIHVuYXZhaWxhYmxlwrsg2Ygg2K3Yr9izINmG2YXbjOKAjNiy2YbZhy4KCtix2YjbjCBHbG9iYWwg2K7ZiNivINmF2YjYqtmI2LEg2YfZhSDZhduM4oCM2q/ZhyDYp9iyINqp2K/ZiNmFINqp2LTZiNixINmI2LXZhCDYtNiv2YcuINin2q/ZhyDYqNinINmG2KrbjNis2YfZlCDYotuM4oCM2b7bjCDZhtiu2YjZhtiv2Iwg2qnYp9ix2Kog2YfYsSDYr9mIINix2Ygg2YbYtNmI2YYg2YXbjOKAjNiv2Ycg2qnZhyDYqNmB2YfZhduMINuM2Ycg2KzYp9uMINqp2KfYsSDZhduM4oCM2YTZhtqv2YcuCgojIyBGYXN0IFR1bm5lbCAo2KjYqtinKQoK2KfYsiDbsi7bsduyINin2LbYp9mB2Ycg2LTYry4g2YfYsSDZhdmI2KrZiNix24wg2KrYsdin2YHbjNqp2LQg2LHZiCDZhduM4oCM2K/ZhyDYqNmHINuM2Ycg2b7ZhCDaqdmI2obbjNqpINqp2Ycg2KjbjNmGINix2KfYqNi3IFZQTiDYp9mG2K/YsdmI24zYryDZiCDYrtmI2K8g2YXZiNiq2YjYsSDZhduM4oCM2LTbjNmG2YcuINm+2YbYqtixINmH2YXbjNi02Ycg24zZhyDZvtmEINmF2LnYsdmI2YEg2YbZiNi02KrZh+KAjNi02K/ZhyDYqNinIEMg2LHZiCDYp9iz2KrZgdin2K/ZhyDaqdix2K/Zhy4g2K3Yp9mE2Kcg24zZhyDZvtmEINiv2YjZhSDZiCDYrNiv24zYr9iq2LEg2YfZhSDZh9iz2Kog2qnZhyDYp9iyICoqU2V0dGluZ3Mg4oaQIEZhc3QgVHVubmVsIChCZXRhKSoqINmF24zigIzYqtmI2YbbjCDYsdmI2LTZhti0INqp2YbbjC4KCi0g2b7bjNi04oCM2YHYsdi2INiu2KfZhdmI2LTZhy4g2LHZiNi02YbYtCDaqdmGINmIINiv2YjYqNin2LHZhyDZiNi12YQg2LTZiC4KLSDZgtio2YQg2KfYsiDYp9mG2KrYtNin2LEg2LHZiNuMINuM2Ycg2LHYp9io2LcgVFVOINmI2KfZgti524wg2KrYs9iqINi02K86IFRDUCDYr9ixINmH2LEg2K/ZiCDYrNmH2KrYjCBVRFDYjCDYr9uM4oCM2KfZhuKAjNin2LPYjCDZiCDYrtin2YXZiNi0INmIINix2YjYtNmGINqp2LHYr9mGINiv2YjYqNin2LHZhy4KLSDYp9qv2Ycg2LHZiNuMINqv2YjYtNuM2Kog2KjYp9mE2Kcg2YbbjNin2K/YjCDZvtmG2KrYsSDYqNuM4oCM2LPYsdmI2LXYr9inINio2LHZhduM4oCM2q/Ysdiv2Ycg2LHZiNuMINm+2YQg2YLYr9uM2YXbjCDZiCDYqNin2LLZhSDZiNi12YQg2YXbjOKAjNi024wuINmE2KfaryDYp9iq2LXYp9mEINmF24zigIzar9mHINqp2K/ZiNmFINiv2KfYsdmHINqp2KfYsSDZhduM4oCM2qnZhtmHLgotINin2q/ZhyDYqNinINix2YjYtNmGINio2YjYr9mG2LQg24zZhyDYs9in24zYqiDbjNinINin2b7bjCDYudis24zYqCDYsdmB2KrYp9ixINqp2LHYr9iMINiu2KfZhdmI2LTYtCDaqdmGINmIINio2Ycg2YXZhiDYrtio2LEg2KjYr9mHLgoK2KjZhtqG2YXYp9ix2qnigIzZh9in24wg2KjYp9mE2KfYr9iz2KrbjCDYsdmI24wg2LPYsdmI2LEg2q/YsdmB2KrZhyDYtNiv2YYg2YbZhyDYsdmI24wg2q/ZiNi024zYjCDZvtizINin2YbYqti42KfYsSDZh9mF2YjZhiDYudiv2K/Zh9inINix2Ygg2YbYr9in2LTYqtmHINio2KfYtC4g2KfbjNmG2qnZhyDYqNix2KfbjCDYqtmIINiz2LHbjNi54oCM2KrYsdmHINuM2Kcg2YbZh9iMINmB2YLYtyDar9mI2LTbjCDYrtmI2K/YqiDZhduM4oCM2KrZiNmG2Ycg2KzZiNin2Kgg2KjYr9mHLgoKIyMg2obbjNiy2KfbjNuMINqp2Ycg2K7ZiNio2Ycg2KjYr9mI2YbbjAoKLSAqKlR1cmJvINqp2LTZiNix2Kog2LHZiCDYudmI2LYg2YbZhduM4oCM2qnZhtmHLioqINqp2LTZiNixINiv24zar9mHINmF24zigIzYrtmI2KfbjNiMINio2LHZiCDYsdmI24wgR2xvYmFsINuM2KcgUHJvd2wg24zYpyBCZWFjb24uCi0gKipHbG9iYWwg2qnZhtiv2YcuKiog2K/ZiCDZh9in2b7Zh9iMINmH2LLbjNmG2YfZlCDYp9uM2YbZhyDaqdmHINuM2Ycg2KzYp9uMINiv24zar9mHINiv2LHYqNuM2KfbjC4KLSAqKtin2YjZhNuM2YYg2KfYqti12KfZhCBHbG9iYWwg2qnZhtiv2YcuKiog24zaqduMINiv2Ygg2K/ZgtuM2YLZhyDYqNmH2LQg2YjZgtiqINio2K/ZhyDYqtinINit2KfZhdmE2LQg2KjYp9mE2Kcg2KjbjNin2K8uINio2LnYr9i0INiz2LHbjNi54oCM2KrYsdmHLgotICoq2KfZiNmE24zZhiDYp9iq2LXYp9mEIEJlYWNvbiDZh9mFINqp2YbYr9mHLioqINio2KfbjNivINqp2KfZhtmB24zar9i0INix2Ygg2KfZiNmEINio2q/bjNix2YcuINio2LnYryDYp9iyINin2YjZhiDaqdi0INmF24zigIzYtNmHLgotICoqUHJvd2wg2LHZiNuMINiz2LHZiNix2KfbjCDYudmF2YjZhduMINiy2YbYr9qv24wg2YXbjOKAjNqp2YbZhy4qKiDZhdis2KfZhtuM2YYg2Ygg2YXYr9in2YUg2YXbjOKAjNmF24zYsdmGLiDYp9m+INmG2YXYsdmH4oCM2LTZiNmGINmF24zigIzYr9mHINmIINmF2LHYr9mH4oCM2YfYpyDYsdmIINix2K8g2YXbjOKAjNqp2YbZh9iMINmI2YTbjCDYqNi52LbbjCDYsdmI2LLYpyDZhNuM2LPYquKAjNmH2Kcg2YjYp9mC2LnYp9mLINiu2LHYp9io2YYuCi0gKirYrtix2YjYrNuMINmF24zigIzYqtmI2YbZhyDYqNio24zZhtmHINiq2LHYp9mB24zaqdiqINin2LIg2qnYrNinINmF24zigIzYstmG2Ycg2KjbjNix2YjZhi4qKiDZhdir2YQg2YfYsSDZiNuM4oCM2b7bjOKAjNin2YYg2K/bjNqv2YfigIzYp9uM2Iwg2b7YsyBIVFRQUyDYsdmIINmI2YQg2YbaqdmGLgotICoq2KfbjNmGINmG2KfYtNmG2KfYs+KAjNio2YjYr9mGINmG24zYs9iqLioqINmB2YLYtyDYrNin24zbjCDaqdmHINiq2LHYp9mB24zaqdiqINin2Ybar9in2LEg2KfYsiDYp9mI2YbYrNinINmF24zYp9ivINix2Ygg2LnZiNi2INmF24zigIzaqdmG2YcuINin2q/ZhyDZiNin2YLYudin2YsgVG9yINmE2KfYstmFINiv2KfYsduM2Iwg2KjYsdmIIFRvci4KLSAqKtmB2YLYtyDYp9mG2K/YsdmI24zYry4qKiDZhtiz2K7Zh9mUINmI24zZhtiv2YjYsiDYqtmI24wg27Iu27Au27Ag2K3YsNmBINi02K8uCgojIyDYqNuM2YTYryDYp9iyINix2YjbjCDYs9mI2LHYswoK2KjZhyBKREsgMTfYjCDYp9mG2K/YsdmI24zYryBTREsg2YggTkRLINmG2LPYrtmH2ZQgYDI3LjIuMTI0NzkwMThgINmG24zYp9iyINiv2KfYsduMLgoKYGBgYmFzaApnaXQgY2xvbmUgLS1yZWN1cnNlLXN1Ym1vZHVsZXMgaHR0cHM6Ly9naXRodWIuY29tL0FtaXJtYWhkYXZpMjAyMi9QYW50aGVyLVZQTi5naXQKY2QgUGFudGhlci1WUE4KbnBtIHJ1biBmZXRjaDphbmRyb2lkCmNkIGFuZHJvaWQgJiYgLi9ncmFkbGV3IGFzc2VtYmxlUmVsZWFzZQpgYGAKCmAtLXJlY3Vyc2Utc3VibW9kdWxlc2Ag2LHZiCDbjNin2K/YqiDZhtix2YcuINmF2YjYqtmI2LEgT3BlblZQTiDbjNmHINiz2KfYqOKAjNmF2KfamNmI2YQg2b7bjNmG4oCM2LTYr9mH4oCM2LPYqiDZiCDYqNiv2YjZhti0INio24zZhNivINmH2YXZiNmGINin2YjZhCDZhduM4oCM2K7ZiNin2KjZhy4KCmBucG0gcnVuIGZldGNoOmFuZHJvaWRgINmH2LPYqtmH4oCM2YfYp9uMINmG24zYqtuM2Ygg2LHZiCDYr9in2YbZhNmI2K8g2YXbjOKAjNqp2YbZhyDZiCDZh9ixINqp2K/ZiNmFINix2Ygg2KjYpyBTSEEtMjU2INqG2qkg2YXbjOKAjNqp2YbZhy4gR2xvYmFsINio2YfigIzYtdmI2LHYqiDbjNmHINqp2KrYp9io2K7ZiNmG2YfZlCDYp9mG2K/YsdmI24zYr9uMINii2YXYp9iv2YfZlCDYsdiz2YXbjCDZhduM2KfYr9iMINm+2LMg2YXYsdit2YTZh9mUIEdvINuM2KcgZ29tb2JpbGUg2YbYr9in2LHZhy4g2KfZiNmGINqp2KrYp9io2K7ZiNmG2Ycg2LHZiCDZhdmG2KrYtNix2qnZhtmG2K/Zh+KAjNin2LQg2KfZhdi22Kcg2YbZhduM4oCM2qnZhtmH2Iwg2KjYsdin24wg2YfZhduM2YYg2KjbjNmE2K8g2YfYtNi0INix2Ygg2b7bjNmGINqp2LHYr9mHINmIINin2q/ZhyDYudmI2LYg2LTYryDZhduM4oCM2KfbjNiz2KrZhy4g2KjYsdin24wg2qnYqtin2KjYrtmI2YbZh+KAjNmH2KfbjCBGYXN0IFR1bm5lbCDZh9mFINmH2YXbjNmG4oCM2LfZiNix2YcuCgrZh9iz2KrZh+KAjNmH2KfbjCBQcm93bCDZiCBCZWFjb24g2YfZhdmI2YbigIzYrNinINin2LIg2LHZiNuMINiz2YjYsdizINiz2KfYrtiq2Ycg2YXbjOKAjNi02YYuINio2LHYp9uMIEJlYWNvbiDYp9uM2YYg2LnZhdiv24zZh9iMINqG2YjZhiDaqdin2YbZgduM2q8g2KfZiNmE24zZh+KAjNin2LQg2KjYpyDar9iw2LTYqiDYstmF2KfZhiDYqNuM2KfYqiDZhduM4oCM2LTZhyDZiCDYs9in2K7YqtmGINiv2YjYqNin2LHZh+KAjNin2LQg2LPYsSDZh9ixINmG2LPYrtmHINiq2KfYstmHINmG2q/Zh9i0INmF24zigIzYr9in2LHZhy4KCtiz24zigIzYotuMINmH2YUg2Kfar9mHINmH2LEg2qnYqtin2KjYrtmI2YbZh9mUINmG24zYqtuM2Ygg2KfYsiBgam5pTGlic2Ag2LrYp9uM2Kgg2KjYp9i02Ycg2KjbjNmE2K8g2LHZiCDZgtix2YXYsiDZhduM4oCM2qnZhtmHLiDbjNmHINio2KfYsSDbjNmHINio24zZhNivINiz2KjYsiDYqNiv2YjZhiDbjNqp24zYtNmI2YYg2YXZhtiq2LTYsSDYtNiv2Iwg2K/bjNqv2Ycg2YbZhy4KCiMjIyDYqtiz2KrigIzZh9inCgpgYGBiYXNoCmNkIGFuZHJvaWQgJiYgLi9ncmFkbGV3IHRlc3RSZWxlYXNlVW5pdFRlc3QKYGBgCgrZhdmG2LfZgiDZvtin2LHYs+KAjNqp2LHYr9mGINmIINiq2LXZhduM2YXigIzar9uM2LHbjCDYrNin2YjYp9uMINiu2KfZhNuM2Ycg2Ygg2YfbjNqGINqp2YTYp9izINin2YbYr9ix2YjbjNiv24wg2KrZiNi0INmG24zYs9iq2Iwg2b7YsyDZiNin2YLYudin2Ysg2YXbjOKAjNi02Ycg2KrYs9iq2LQg2qnYsdivLiDZh9mF2YjZhuKAjNmH2KfbjNuMINmH2YUg2YfYs9iq2YYg2qnZhyDYr9uM2KjYp9qv4oCM2qnYsdiv2YbYtNmI2YYg2KfYsiDYsdmI24wg24zZhyDYp9iz2qnYsduM2YbigIzYtNin2Kog2KjYr9iq2LHbjNmGINqp2KfYsSDYr9mG24zYp9iz2KouCgojIyDYqNmH4oCM2LHZiNiyINmF2YjZhtiv2YYKCi0gKirZh9iz2KrZh+KAjNmH2KfbjCDZhtuM2KrbjNmIKio6INuM2Ycg2KzYp9ioINmH2YHYqtqv24wg2YjZgtiq24wg2KjYp9mE2KfYr9iz2Kog2YbYs9iu2YfZlCDYrNiv24zYryDYqNiv2YcgUFIg2KjYp9iyINmF24zigIzaqdmG2YcuINiu2YjYr9i0INmF2LHYrCDZhtmF24zigIzaqdmG2YfYjCDaqdivINmG24zYqtuM2YjbjCDaqdmHINmC2LHYp9ix2Ycg2LHZiNuMINqv2YjYtNuMINmH2YXZhyDYqNi024zZhtmHINin2YjZhCDYqNuM2YTYryDZiCDahtqpINmF24zigIzYtNmHLgotICoq2K7ZiNivINin2b4qKiDYsduM2YTbjNiy2YfYp9uMINqv24zYquKAjNmH2KfYqCDYsdmIINqG2qkg2YXbjOKAjNqp2YbZhyDZiCDZhduM4oCM2KrZiNmG2Ycg2K7ZiNiv2LQg2LHZiCDYotm+2K/bjNiqINqp2YbZhy4gU0hBLTI1NiDYsdmIINqG2qkg2YXbjOKAjNqp2YbZhyDZiCDZhdi32YXYptmGINmF24zigIzYtNmHIEFQSyDYrNiv24zYryDYqNinINmH2YXZiNmGINiz2LHYqtuM2YHbjNqp24zYqiDYp9mF2LbYpyDYtNiv2YcuCi0gKipOT1RJQ0UubWQqKiDYqtmI24wg2LPbjOKAjNii24wg2KjYpyDZhtiz2K7Zh9mUINmH2LPYqtmH4oCM2YfYp9uM24wg2qnZhyDYqNuM2YTYryDZvtuM2YYg2qnYsdiv2Ycg2YXZgtin24zYs9mHINmF24zigIzYtNmHLiDbjNmHINio2KfYsSDYp9iyINiv2YjYsSDYp9mB2KrYp9iv2Iwg2KfZhNin2YYg2KjbjNmE2K8g2YXYs9iq2YLbjNmFINmC2LHZhdiyINmF24zigIzYtNmHLgoKIyMg2YTYp9uM2LPZhtizCgrZvtmG2KrYsSBBR1BMLTMuMCDZgNmA2Ycg2Ygg2LHZiNuMINqp2KfYsSDYqNmC24zZhyDYs9in2K7YqtmHINi02K/Zhy4g2KfYs9mF4oCM2YfYpyDZiCDZhNin24zYs9mG2LPigIzZh9inINiq2YjbjCBbTk9USUNFLm1kXShOT1RJQ0UubWQpINmH2LPYqi4KCtm+2YbYqtixINio2Ycg2YfbjNqG4oCM2qnYr9mI2YUg2KfYsiDYp9mI2YYg2b7YsdmI2pjZh+KAjNmH2Kcg2YjYp9io2LPYqtmHINmG24zYs9iqINmIINin2LIg2LfYsdmB2LTZiNmGINiq2KPbjNuM2K8g2YbYtNiv2YfYjCDZvtizINmE2LfZgdin2Ysg2KjYp9qv4oCM2YfYp9uMINm+2YbYqtixINix2Ygg2KjYsdin2LTZiNmGINmG2YHYsdiz2KouCgojIyDbjNmHINiu2YjYp9mH2LQg2qnZiNqG24zaqQoK2Kfar9mHINm+2YbYqtixINio2LHYp9iqINqp2KfYsSDaqdix2K/YjCDbjNmHINiz2KrYp9ix2Ycg2LHZiNuMINix24zZvtmIINmI2KfZgti52KfZiyDaqdmF2qkg2YXbjOKAjNqp2YbZhyDYqNmC24zZhyDZvtuM2K/Yp9i0INqp2YbZhi4g2KjYp9qv24wg2K/bjNiv24wg24zYpyDYp9uM2K/Zh+KAjNin24wg2K/Yp9i02KrbjNiMINin24zYtNmIINio2KfYsiDaqdmG2Iwg2K/ZiNiz2Kog2K/Yp9ix2YUg2KjYtNmG2YjZhS4K"
+
+
+          def main():
+              root = os.getcwd()
+              failures = []
+              changes = {}
+              for path, old, new, note in EDITS:
+                  full = os.path.join(root, path)
+                  if not os.path.isfile(full):
+                      failures.append("missing file: " + path)
+                      continue
+                  text = changes.get(path)
+                  if text is None:
+                      with open(full, encoding="utf-8") as handle:
+                          text = handle.read()
+                  hits = text.count(old)
+                  if hits != 1:
+                      failures.append("%s: %d matches for [%s]" % (path, hits, note))
+                      continue
+                  changes[path] = text.replace(old, new, 1)
+
+              readme = base64.b64decode(README_B64)
+              if not readme.startswith("# Panther VPN".encode("utf-8")):
+                  failures.append("README did not decode to the expected document")
+
+              if failures:
+                  print("Nothing was written. Problems:")
+                  for line in failures:
+                      print("  - " + line)
+                  sys.exit(1)
+
+              for path, text in changes.items():
+                  with open(os.path.join(root, path), "w", encoding="utf-8") as handle:
+                      handle.write(text)
+                  print("patched " + path)
+              with open(os.path.join(root, README), "wb") as handle:
+                  handle.write(readme)
+              print("rewrote " + README + " (%d bytes)" % len(readme))
+              print("%d replacements applied" % len(EDITS))
+
+
+          if __name__ == "__main__":
+              main()
+          PYFILE
+
+      - name: Apply it
+        run: python3 patch.py
+
+      - name: Check the XML still parses
+        run: |
+          python3 - <<'CHECK'
+          import re, sys, xml.etree.ElementTree as ET
+          bad = []
+          for p in ["android/app/src/main/res/values/strings.xml",
+                    "android/app/src/main/res/layout/activity_main.xml"]:
+              ET.parse(p)
+              print("XML OK:", p)
+          # An unescaped apostrophe inside a <string> is valid XML and illegal to aapt, and the
+          # failure names neither the file nor the character. Catch it here, not in a build.
+          text = open("android/app/src/main/res/values/strings.xml", encoding="utf-8").read()
+          for m in re.finditer(r'<string name="([^"]+)"[^>]*>(.*?)</string>', text, re.S):
+              value = m.group(2)
+              for i, ch in enumerate(value):
+                  if ch == "'" and (i == 0 or value[i - 1] != "\\"):
+                      bad.append(m.group(1))
+                      break
+          if bad:
+              print("Unescaped apostrophes in:", bad)
+              sys.exit(1)
+          print("no unescaped apostrophes")
+          CHECK
+
+      - name: Commit
+        run: |
+          rm -f patch.py
+          if git diff --quiet; then
+            echo "Nothing changed - already applied."
+            exit 0
+          fi
+          git config user.name 'Panther'
+          git config user.email 'panther@users.noreply.invalid'
+          git add -A
+          git commit -m 'Put Beacon in About, and rewrite the README'
+          git push origin HEAD:main
