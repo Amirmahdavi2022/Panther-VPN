@@ -142,7 +142,7 @@
     <string name="tile_add_manual">Open Quick Settings edit mode and add Panther VPN.</string>
     <string name="nav_home">Home</string>
     <string name="state_label">Status</string>
-    <string name="about_tagline">Three engines, one connect button.\nNo account, nothing to paste in.</string>
+    <string name="about_tagline">Four engines, one connect button.\nNo account, nothing to paste in.</string>
     <string name="feature_fast">Fast</string>
     <string name="feature_secure">Encrypted</string>
     <string name="feature_stable">Free</string>
@@ -157,6 +157,8 @@
     <string name="about_mode_relay_body">Comes out in another country, which is what geo-restricted services need. It runs inside the Turbo tunnel rather than beside it, so it works on networks where it could not connect on its own. Slower by nature — two hops instead of one. If it cannot come up, Panther keeps you connected on Turbo instead of dropping you.</string>
     <string name="about_mode_stealth_title">Prowl</string>
     <string name="about_mode_stealth_body">The one that keeps going when the others are blocked. It keeps a list of servers, tests them on your own phone and dials whichever actually works, moving to another the moment one stops. On a network that blocks them outright it opens the connection through the Turbo tunnel instead, so the servers stay reachable — the country you come out in is still the server\'s own.</string>
+    <string name="about_mode_beacon_title">Beacon</string>
+    <string name="about_mode_beacon_body">The only engine that needs nothing else running first. It reaches its own network by hiding its requests inside ordinary traffic to large content providers, so it finds a way out of a filtered network on its own rather than borrowing a tunnel from another engine. The exit is abroad and the engine picks it, so there is no country to choose and it can differ each time you connect. The first connect after installing is slow, sometimes a few minutes, because it has to fetch its configuration before it has anywhere to send traffic; after that it is cached and quick. If it cannot come up, Panther keeps you connected on Turbo instead of dropping you.</string>
     <string name="about_support_title">Support channel</string>
     <string name="about_credits_title">Built on</string>
     <string name="about_credits_body">Panther bundles open-source components. Every one of them, with its full licence and attribution, is listed in NOTICE.md alongside the source.</string>

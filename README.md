@@ -1,94 +1,111 @@
 # Panther VPN
 
-Open-source VPN for Android. No account, no subscription, no configs to go find and paste in. You install it and tap Connect.
+وی‌پی‌ان متن‌باز برای اندروید. نه اکانت می‌خواد، نه اشتراک، نه کانفیگی که باید بگردی پیدا کنی و کپی کنی. نصبش می‌کنی و Connect رو می‌زنی.
 
-[Releases](https://github.com/Amirmahdavi2022/Panther-VPN/releases) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Licences](NOTICE.md)
+[نسخه‌ها](https://github.com/Amirmahdavi2022/Panther-VPN/releases) · [امنیت](SECURITY.md) · [مشارکت](CONTRIBUTING.md) · [لایسنس‌ها](NOTICE.md)
 
-## What it does
+## چیکار می‌کنه
 
-A lot of the free VPN apps on GitHub are basically config managers. The UI looks good, then you spend half an hour looking for a server that still works. Panther ships with its own ways to get out.
+خیلی از وی‌پی‌ان‌های رایگان روی گیت‌هاب در واقع کانفیگ‌منیجرن. ظاهرش قشنگه، بعد نیم ساعت می‌گردی دنبال سروری که هنوز کار کنه. پنتر راه خروج خودش رو با خودش میاره.
 
-| Engine | Where you come out | Speed | Your own server? |
+| موتور | از کجا درمیای | سرعت | سرور خودت لازمه؟ |
 |---|---|---|---|
-| **Turbo** | Closest Cloudflare datacenter | Fastest | No |
-| **Global** | Another country | Slower (two hops) | No |
-| **Prowl** | Wherever the server it found is | Fast (one hop) | No |
+| **Turbo** | نزدیک‌ترین دیتاسنتر کلادفلر | سریع‌ترین | نه |
+| **Global** | یه کشور دیگه | کندتر (دو هاپ) | نه |
+| **Prowl** | هر جا که سروری که پیدا کرده باشه | سریع (یک هاپ) | نه |
+| **Beacon** | یه کشور دیگه | متوسط | نه |
 
-They're the three cards above the connect button. Tap one to switch. Turbo is the default.
+اینا همون چهار تا کارتن که بالای دکمهٔ اتصال می‌بینی. بزنی روشون عوض می‌شه. پیش‌فرض Turbo ــه.
 
-**Turbo** hides your IP and your ISP, but you stay in roughly the same place. The network behind it is built to do that, so sites still see your own country.
+**Turbo** آی‌پی و اپراتورت رو قایم می‌کنه ولی تقریباً همون‌جا می‌مونی. شبکه‌ای که پشتشه اصلاً برای همین ساخته شده، برای همین سایت‌ها همچنان کشور خودت رو می‌بینن.
 
-**Global** is the one that actually moves you. It runs inside the Turbo tunnel instead of dialling out on its own, which is why it can come up on filtered networks at all. You can pick an exit country or leave it on automatic.
+**Global** اونیه که واقعاً جابه‌جات می‌کنه. به‌جای اینکه خودش مستقیم بزنه بیرون، داخل تونل Turbo می‌دوه، و دقیقاً به همین خاطره که روی شبکهٔ فیلترشده اصلاً بالا میاد. کشور خروجیش رو می‌تونی انتخاب کنی یا بذاری روی خودکار.
 
-**Prowl** is for days when the other two get blocked. It keeps a list of servers, tests them on your phone and uses whichever one really carries traffic. One hop, so it's quick once it connects.
+**Prowl** برای روزاییه که اون دوتا گیر می‌کنن. یه لیست سرور نگه می‌داره، روی گوشی خودت تستشون می‌کنه و هر کدوم واقعاً ترافیک رد کرد رو برمی‌داره. یک هاپه، پس وقتی وصل شد سریعه.
 
-## How Prowl finds a server
+**Beacon** تنها موتوریه که برای بالا اومدن به هیچ موتور دیگه‌ای احتیاج نداره. شبکهٔ خودش رو داره و درخواست‌هاش رو لای ترافیک عادی سرویس‌های بزرگ قایم می‌کنه، برای همین از یه شبکهٔ فیلترشده هم خودش راه خروج پیدا می‌کنه. خروجیش خارجه.
 
-This part is different from most apps so it's worth a few lines.
+## Beacon چطور کار می‌کنه
 
-It grabs a few public config lists, keeps the servers it can dial, and scores each one based on what happened on *your* phone: did it connect, how fast was it, when did it last work. Scores are saved, so the next connect starts from what it already learned. If the lists can't be reached, it uses the copy from last time. On a network that blocks stuff that's the whole point.
+این یکی با بقیه فرق داره پس چند خط راجع‌بهش بنویسم.
 
-It also doesn't go one server at a time. It opens a batch on separate local ports and tests them all at once. 48 tries in a row take around five minutes, in one batch it's about eight seconds. So it actually gets through the list.
+Global بدون Turbo اصلاً بالا نمیاد و Prowl هم روی خیلی از شبکه‌های ایران آخرش مجبور می‌شه از Turbo رد شه. یعنی اگه Turbo بگیره اون دوتا هم باهاش می‌گیرن. Beacon این وابستگی رو نداره، زیرساخت خودش رو داره و خودش کانفیگش رو میاره.
 
-Every server gets tried three ways and the app remembers which one worked on your network:
+چند تا چیز که خوبه بدونی:
 
-- **Direct**: straight out from your connection. Fastest if your network allows it.
-- **Shaped**: same, but the TLS handshake is sent in small random pieces so filters that look for one packet don't find it.
-- **Through Turbo**: goes out from inside the Turbo tunnel. Slower, but works when the other two don't.
+- **انتخاب کشور نداره.** خودش از بین مسیرهای زنده‌ای که داره یکی رو برمی‌داره، پس هر بار ممکنه یه کشور دیگه باشه. کارت لوکیشن نشون می‌ده کجا دراومدی.
+- **اولین اتصال بعد از نصب کنده.** باید اول کانفیگش رو دانلود کنه و تا اون نیاد جایی برای فرستادن ترافیک نداره. گاهی چند دقیقه طول می‌کشه. بعدش کش می‌شه و دفعات بعد سریعه.
+- **DNS داخل تونل جواب داده می‌شه.** این موتور UDP رد نمی‌کنه، پس پل خودش اسم‌ها رو داخل تونل حل می‌کنه. کاری نداری باهاش، فقط اگه توی لاگ دیدیش بدونی عادیه.
+- **اگه بالا نیاد، پنتر می‌ندازت روی Turbo** به‌جای اینکه قطعت کنه. اون موقع کشورت ایران می‌مونه، چون Turbo همینه.
 
-If you switch networks and the saved route stops working, **Settings → Reset Prowl route** clears it and it figures things out again.
+## Prowl چطور سرور پیدا می‌کنه
 
-There's no country picker for Prowl. It ends up wherever the server it reached happens to be, and that list changes all the time. The location card shows where you actually landed.
+این هم با اکثر اپ‌ها فرق داره.
 
-## Picking a country
+چند تا لیست کانفیگ عمومی می‌گیره، سرورایی که می‌تونه بهشون وصل شه رو نگه می‌داره، و به هر کدوم بر اساس اتفاقی که روی گوشی *خودت* افتاده نمره می‌ده: وصل شد یا نه، چقدر سریع بود، آخرین بار کِی کار کرد. نمره‌ها ذخیره می‌شن، پس اتصال بعدی از همون‌جایی که یاد گرفته شروع می‌کنه. اگه به لیست‌ها نرسه از نسخهٔ دفعهٔ قبل استفاده می‌کنه. روی شبکه‌ای که همه‌چی رو بسته، کل فلسفه‌اش همینه.
 
-That's for Global. Select it and a card appears at the top where you choose the exit country. Automatic is the default and usually the fastest, so only pick one if you need a specific place.
+یکی‌یکی هم نمی‌ره جلو. یه دسته رو روی پورت‌های جدا باز می‌کنه و همه رو با هم تست می‌کنه. ۴۸ تا تست پشت‌سرهم حدود پنج دقیقه طول می‌کشه، توی یه دسته حدود هشت ثانیه. برای همین واقعاً لیست رو می‌گرده.
 
-Each time you connect the app notes which country you came out in. Next time you open the list, those show as connected before and the rest as untried.
+هر سرور سه جور امتحان می‌شه و اپ یادش می‌مونه کدومش روی شبکهٔ تو جواب داد:
 
-It doesn't claim more than that. Whether a given site works from a given exit changes from week to week, and an old green tick would just mislead you.
+- **مستقیم**: از خود اتصالت می‌زنه بیرون. اگه شبکه‌ات اجازه بده سریع‌ترینه.
+- **شکل‌داده‌شده**: همون مستقیم، ولی دست‌دادن TLS تیکه‌تیکه و نامنظم فرستاده می‌شه که فیلترهایی که دنبال یه پکت مشخص می‌گردن پیداش نکنن.
+- **از داخل Turbo**: از توی تونل Turbo می‌زنه بیرون. کندتره ولی وقتی اون دوتا جواب ندن کار می‌کنه.
 
-## The location card
+اگه شبکه عوض شد و مسیر ذخیره‌شده دیگه جواب نداد، از **Settings ← Reset Prowl route** پاکش کن تا از اول تصمیم بگیره.
 
-When you're connected, the home screen shows where you came out: country, city, public IP and who owns the IP.
+Prowl هم انتخاب کشور نداره. هر جا که سروری که بهش رسیده باشه، از همون‌جا درمیای، و اون لیست مدام عوض می‌شه.
 
-To get that it asks a public service, and the request goes *through the tunnel* using the local SOCKS port the engine opened. The service only ever sees the exit address, never your phone. No API keys and nothing is stored. Tap the card to refresh.
+## انتخاب کشور
 
-It tries these in order until one answers:
+این مال Global ــه. انتخابش کنی یه کارت بالا میاد که کشور خروجی رو توش می‌بینی. پیش‌فرض خودکاره و معمولاً سریع‌ترینه، پس فقط وقتی دستی انتخاب کن که یه جای مشخص لازم داری.
+
+هر بار که وصل می‌شی اپ یادداشت می‌کنه از کدوم کشور دراومدی. دفعهٔ بعد که لیست رو باز کنی، اونا با نشان «قبلاً وصل شده» میان و بقیه به‌عنوان امتحان‌نشده.
+
+بیشتر از این ادعا نمی‌کنه. اینکه فلان سایت از فلان خروجی باز می‌شه یا نه هفته‌به‌هفته فرق می‌کنه، و یه تیک سبز قدیمی فقط گمراهت می‌کنه.
+
+## کارت لوکیشن
+
+وقتی وصلی، صفحهٔ اصلی نشون می‌ده از کجا دراومدی: کشور، شهر، آی‌پی عمومی و صاحب آی‌پی.
+
+برای گرفتنش از یه سرویس عمومی می‌پرسه، و درخواست *از داخل تونل* می‌ره، از همون پورت SOCKS محلی که موتور باز کرده. اون سرویس فقط آدرس خروجی رو می‌بینه، هیچ‌وقت گوشیت رو نمی‌بینه. نه کلید API می‌خواد نه چیزی ذخیره می‌شه. روی کارت بزنی دوباره می‌گیره.
+
+به ترتیب اینا رو امتحان می‌کنه تا یکی جواب بده:
 
 1. `www.cloudflare.com/cdn-cgi/trace`
 2. `speed.cloudflare.com/meta`
 3. `ipwho.is`
 4. `ipapi.co`
 
-`/cdn-cgi/trace` goes first because `/meta` returns 403 through lots of public exits. If none of them answer you get "location unavailable", the app won't guess.
+اولی جلو افتاده چون `/meta` از خیلی از خروجی‌های عمومی ۴۰۳ می‌ده. اگه هیچ‌کدوم جواب ندن می‌نویسه «location unavailable» و حدس نمی‌زنه.
 
-On Global the engine also reports which country it connected through. If that doesn't match the IP lookup, the card shows both so you can see something's off.
+روی Global خود موتور هم می‌گه از کدوم کشور وصل شده. اگه با نتیجهٔ آی‌پی نخوند، کارت هر دو رو نشون می‌ده که بفهمی یه جای کار می‌لنگه.
 
-## Fast Tunnel (beta)
+## Fast Tunnel (بتا)
 
-New in 2.12. Every engine hands its traffic to a small packet bridge that sits between Android's VPN interface and the engine. Panther has always used a well-known C bridge for that. Now there's a second, newer one you can switch to in **Settings → Fast Tunnel (Beta)**.
+از ۲.۱۲ اضافه شد. هر موتوری ترافیکش رو می‌ده به یه پل کوچیک که بین رابط VPN اندروید و خود موتور می‌شینه. پنتر همیشه یه پل معروف نوشته‌شده با C رو استفاده کرده. حالا یه پل دوم و جدیدتر هم هست که از **Settings ← Fast Tunnel (Beta)** می‌تونی روشنش کنی.
 
-- Off by default. Turn it on and reconnect.
-- It was tested on a real TUN interface before shipping: TCP both ways, UDP, DNS for Global, and stopping and starting again.
-- If it can't start on your phone, Panther quietly falls back to the old bridge and you still get connected. The connection log says which one is running.
-- If a site or app acts weird with it on, turn it off and let me know.
+- پیش‌فرض خاموشه. روشنش کن و دوباره وصل شو.
+- قبل از انتشار روی یه رابط TUN واقعی تست شد: TCP در هر دو جهت، UDP، دی‌ان‌اس، و خاموش و روشن کردن دوباره.
+- اگه روی گوشیت بالا نیاد، پنتر بی‌سروصدا برمی‌گرده روی پل قدیمی و بازم وصل می‌شی. لاگ اتصال می‌گه کدوم داره کار می‌کنه.
+- اگه با روشن بودنش یه سایت یا اپی عجیب رفتار کرد، خاموشش کن و به من خبر بده.
 
-The upstream benchmarks were run on a server, not a phone, so don't expect the same numbers on mobile. Whether it's faster for you is something only your phone can answer.
+بنچمارک‌های بالادستی روی سرور گرفته شدن نه روی گوشی، پس انتظار همون عددها رو نداشته باش. اینکه برای تو سریع‌تره یا نه، فقط گوشی خودت می‌تونه جواب بده.
 
-## Things worth knowing
+## چیزایی که خوبه بدونی
 
-- **Turbo doesn't change your country.** Want another country, use Global or Prowl.
-- **Global is slower.** Two hops, that's the price of coming out somewhere else.
-- **The first Global connect is slow.** Give it a minute or two while the carrier comes up. It's quicker after that.
-- **Prowl lives on public servers.** They're free and they die all the time. The app scores them and skips the dead ones, but some days the lists are just bad.
-- **The exit can see your traffic leave.** Same as with any VPN, so stick to HTTPS.
-- **It's not anonymity.** It changes where your traffic seems to come from. If you really need Tor, use Tor.
-- **Android only.** The Windows client was dropped in 2.0.0.
+- **Turbo کشورت رو عوض نمی‌کنه.** کشور دیگه می‌خوای، برو روی Global یا Prowl یا Beacon.
+- **Global کنده.** دو هاپه، هزینهٔ اینه که یه جای دیگه دربیای.
+- **اولین اتصال Global کنده.** یکی دو دقیقه بهش وقت بده تا حاملش بالا بیاد. بعدش سریع‌تره.
+- **اولین اتصال Beacon هم کنده.** باید کانفیگش رو اول بگیره. بعد از اون کش می‌شه.
+- **Prowl روی سرورای عمومی زندگی می‌کنه.** مجانین و مدام می‌میرن. اپ نمره‌شون می‌ده و مرده‌ها رو رد می‌کنه، ولی بعضی روزا لیست‌ها واقعاً خرابن.
+- **خروجی می‌تونه ببینه ترافیکت از کجا می‌زنه بیرون.** مثل هر وی‌پی‌ان دیگه‌ای، پس HTTPS رو ول نکن.
+- **این ناشناس‌بودن نیست.** فقط جایی که ترافیکت انگار از اونجا میاد رو عوض می‌کنه. اگه واقعاً Tor لازم داری، برو Tor.
+- **فقط اندروید.** نسخهٔ ویندوز توی ۲.۰.۰ حذف شد.
 
-## Building from source
+## بیلد از روی سورس
 
-You need JDK 17, the Android SDK and NDK `27.2.12479018`.
+به JDK 17، اندروید SDK و NDK نسخهٔ `27.2.12479018` نیاز داری.
 
 ```bash
 git clone --recurse-submodules https://github.com/Amirmahdavi2022/Panther-VPN.git
@@ -97,32 +114,34 @@ npm run fetch:android
 cd android && ./gradlew assembleRelease
 ```
 
-Don't forget `--recurse-submodules`. The OpenVPN engine is a pinned submodule and the build fails right away without it.
+`--recurse-submodules` رو یادت نره. موتور OpenVPN یه ساب‌ماژول پین‌شده‌ست و بدونش بیلد همون اول می‌خوابه.
 
-`npm run fetch:android` downloads the native cores and checks each one against a SHA-256. Global comes in as an official prebuilt Android library, so there's no Go or gomobile step. That library isn't signed by its publisher, so the build pins its hash and stops if it changes. Same for the Fast Tunnel libraries.
+`npm run fetch:android` هسته‌های نیتیو رو دانلود می‌کنه و هر کدوم رو با SHA-256 چک می‌کنه. Global به‌صورت یه کتابخونهٔ اندرویدی آمادهٔ رسمی میاد، پس مرحلهٔ Go یا gomobile نداره. اون کتابخونه رو منتشرکننده‌اش امضا نمی‌کنه، برای همین بیلد هشش رو پین کرده و اگه عوض شد می‌ایسته. برای کتابخونه‌های Fast Tunnel هم همین‌طوره.
 
-CI also fails if any native library is missing from `jniLibs`. A green build once shipped without one, never again.
+هسته‌های Prowl و Beacon همون‌جا از روی سورس ساخته می‌شن. برای Beacon این عمدیه، چون کانفیگ اولیه‌اش با گذشت زمان بیات می‌شه و ساختن دوباره‌اش سر هر نسخه تازه نگهش می‌داره.
 
-### Tests
+سی‌آی هم اگه هر کتابخونهٔ نیتیو از `jniLibs` غایب باشه بیلد رو قرمز می‌کنه. یه بار یه بیلد سبز بدون یکیشون منتشر شد، دیگه نه.
+
+### تست‌ها
 
 ```bash
 cd android && ./gradlew testReleaseUnitTest
 ```
 
-The parsing and decision logic is plain Java with no Android classes in it, so it can be tested for real. Those are also the parts that are the worst to debug from a screenshot.
+منطق پارس‌کردن و تصمیم‌گیری جاوای خالیه و هیچ کلاس اندرویدی توش نیست، پس واقعاً می‌شه تستش کرد. همون‌هایی هم هستن که دیباگ‌کردنشون از روی یه اسکرین‌شات بدترین کار دنیاست.
 
-## Staying current
+## به‌روز موندن
 
-- **Native cores**: a weekly job opens a PR when upstream ships a release. It doesn't merge by itself, native code that lands on everyone's phone gets built and checked first.
-- **The app** checks GitHub releases and can update itself. It checks the SHA-256 and makes sure the new APK is signed with the same certificate.
-- **NOTICE.md** is checked in CI against the core versions the build pins. It went out of date once, now the build just fails.
+- **هسته‌های نیتیو**: یه جاب هفتگی وقتی بالادست نسخهٔ جدید بده PR باز می‌کنه. خودش مرج نمی‌کنه، کد نیتیوی که قراره روی گوشی همه بشینه اول بیلد و چک می‌شه.
+- **خود اپ** ریلیزهای گیت‌هاب رو چک می‌کنه و می‌تونه خودش رو آپدیت کنه. SHA-256 رو چک می‌کنه و مطمئن می‌شه APK جدید با همون سرتیفیکیت امضا شده.
+- **NOTICE.md** توی سی‌آی با نسخهٔ هسته‌هایی که بیلد پین کرده مقایسه می‌شه. یه بار از دور افتاد، الان بیلد مستقیم قرمز می‌شه.
 
-## Licence
+## لایسنس
 
-Panther is AGPL-3.0 and it's built on other people's work. Credits and licences are in [NOTICE.md](NOTICE.md).
+پنتر AGPL-3.0 ــه و روی کار بقیه ساخته شده. اسم‌ها و لایسنس‌ها توی [NOTICE.md](NOTICE.md) هست.
 
-Panther isn't affiliated with or endorsed by any of those projects, so please don't send them Panther bugs.
+پنتر به هیچ‌کدوم از اون پروژه‌ها وابسته نیست و از طرفشون تأیید نشده، پس لطفاً باگ‌های پنتر رو براشون نفرست.
 
-## One small ask
+## یه خواهش کوچیک
 
-If Panther works for you, a star on the repo really helps other people find it. Found a bug or got an idea? Open an issue, I'd like to hear it.
+اگه پنتر برات کار کرد، یه ستاره روی ریپو واقعاً کمک می‌کنه بقیه پیداش کنن. باگی دیدی یا ایده‌ای داشتی، ایشو باز کن، دوست دارم بشنوم.
