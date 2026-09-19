@@ -1,0 +1,371 @@
+name: beacon diagnostics
+
+# One-shot. Two files, nine exact-match replacements; if any anchor does not match exactly once
+# nothing is written and the run fails loudly.
+#
+# Why this exists. The connection log is a fixed 24,000 characters that trims from the front, and
+# a measurement on a real log from the phone came to 23,905 bytes - right at the ceiling, so an
+# earlier connection attempt had already been pushed out of it before anyone could read it. Of
+# those 146 lines, 61 were the Prowl core repeating that a transport is deprecated and 61 were one
+# line per accepted connection from a single fanout round. The same log after this patch is 3,705
+# bytes, which leaves room for several whole connections instead of part of one.
+#
+# The rest makes a Beacon start legible: a first run has to fetch its bootstrap before it has any
+# route at all, which is a different task from reusing a cached one, so the two get different
+# budgets and the log says which one is happening and what has arrived so far.
+#
+# Nothing under .github/ is touched - the built-in token cannot push a commit that changes a
+# workflow file, so this file cannot delete itself. Remove it by hand afterwards.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/beacon-diagnostics.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Write the patcher
+        run: |
+          cat > patch.py <<'PYFILE'
+          """Applies the Beacon diagnostics patch. Every replacement must hit exactly once."""
+
+          import os
+          import sys
+
+          EDITS = []
+
+
+          def edit(path, old, new, note):
+              EDITS.append((path, old, new, note))
+
+
+          STEALTH = "android/app/src/main/java/com/firstham/aethergui/StealthCore.java"
+          LANTERN = "android/app/src/main/java/com/firstham/aethergui/LanternCore.java"
+
+
+          # --- 1. Keep the core's own chatter out of the connection log ----------------------------------
+          #
+          # The log is a fixed 24,000 characters and trims from the front, so whatever the core says last
+          # decides what survives. A single fanout round puts ~60 deprecation notices and one line per
+          # probed port into it, which is around 17,000 characters - enough to push an entire earlier
+          # connection attempt out of the buffer before anyone reads it. That is not a cosmetic problem:
+          # it is the reason a question about a failed connect could not be answered from the log that was
+          # built to answer it.
+          #
+          # Deprecation notices are dropped outright. They are the core telling its own developers to
+          # migrate a transport; nothing about them changes with the network, the endpoint or the day.
+          # Per-connection lines are kept, because they are genuinely diagnostic - they are what shows DNS
+          # taking the carrier while app traffic takes the proxy - but capped, because their value is in
+          # seeing a few, not forty-eight.
+
+          edit(
+              STEALTH,
+              """    private void drainOutput(final Process started) {
+                  Thread reader = new Thread(() -> {
+                      try (BufferedReader lines = new BufferedReader(
+                              new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8))) {
+                          String line;
+                          while ((line = lines.readLine()) != null) {
+                              if (!line.isEmpty()) listener.onLog("Stealth core: " + line);
+                          }
+                      } catch (Exception ignored) {
+                          // The stream closes when the process ends; that is not worth reporting.
+                      }
+                  });""",
+              """    private void drainOutput(final Process started) {
+                  Thread reader = new Thread(() -> {
+                      int kept = 0;
+                      boolean announced = false;
+                      try (BufferedReader lines = new BufferedReader(
+                              new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8))) {
+                          String line;
+                          while ((line = lines.readLine()) != null) {
+                              if (line.isEmpty() || isUpstreamNagging(line)) continue;
+                              if (isPerConnection(line)) {
+                                  if (kept >= PER_CONNECTION_LOG_LIMIT) {
+                                      if (!announced) {
+                                          announced = true;
+                                          listener.onLog("Stealth core: further per-connection lines are"
+                                                  + " suppressed for this run");
+                                      }
+                                      continue;
+                                  }
+                                  kept++;
+                              }
+                              listener.onLog("Stealth core: " + line);
+                          }
+                      } catch (Exception ignored) {
+                          // The stream closes when the process ends; that is not worth reporting.
+                      }
+                  });""",
+              "StealthCore: filter the core's output before it reaches the log",
+          )
+
+          edit(
+              STEALTH,
+              """    /**
+               * Reads the core's output on a background thread.
+               *
+               * <p>Not for the logging: a process whose output nobody reads fills its pipe buffer and then
+               * blocks forever, which would look exactly like a hung engine.
+               */""",
+              """    /**
+               * How many per-connection lines from one core run reach the connection log.
+               *
+               * <p>A fanout round opens forty-eight of them within a few milliseconds. The first handful
+               * say everything the rest do - which inbound went to which outbound, and whether DNS took the
+               * route it was supposed to - so the remainder are pure displacement in a buffer that trims
+               * from the front.
+               */
+              static final int PER_CONNECTION_LOG_LIMIT = 12;
+
+              /**
+               * Whether a line is the core reminding its own developers to migrate a transport.
+               *
+               * <p>Emitted once per configured inbound and outbound, so roughly sixty per fanout round, and
+               * identical every time regardless of network, endpoint or outcome. They were the single
+               * largest consumer of the connection log and have never once answered a question asked of it.
+               */
+              static boolean isUpstreamNagging(String line) {
+                  return line.contains("common/errors: The feature ");
+              }
+
+              /** Whether a line describes one accepted connection rather than the core's own state. */
+              static boolean isPerConnection(String line) {
+                  return line.contains(" accepted ");
+              }
+
+              /**
+               * Reads the core's output on a background thread.
+               *
+               * <p>Not for the logging: a process whose output nobody reads fills its pipe buffer and then
+               * blocks forever, which would look exactly like a hung engine.
+               */""",
+              "StealthCore: add the two filters and the cap",
+          )
+
+
+          # --- 2. Make a Beacon start legible -------------------------------------------------------------
+          #
+          # Beacon caches the bootstrap it fetches, and that cache is the difference between a start that
+          # takes seconds and one that has to pull several hundred kilobytes through domain fronting from a
+          # filtered network before it has anywhere to send traffic. Today both look identical from outside:
+          # a connect that either works or sits silent until the timeout.
+          #
+          # The config directory is what tells them apart, and it is the same signal that settled this
+          # engine's behaviour once before - empty after a minute means the bootstrap never arrived, and
+          # populated but still failing means it arrived and every route in it is dead.
+
+          edit(
+              LANTERN,
+              """    /** How long a cold start is given. Measured at about 15s on a real phone; this is generous. */
+              static final int START_TIMEOUT_MS = 120_000;""",
+              """    /** How long a start is given once the engine has its configuration cached on disk. */
+              static final int START_TIMEOUT_MS = 120_000;
+
+              /**
+               * How long a start is given when the engine has never fetched its configuration here.
+               *
+               * <p>A first run has to pull its bootstrap through domain fronting before it has a single
+               * route to offer, and on a filtered network that is a different order of task from reusing
+               * what is already on disk. The shorter budget above is right for the warm case and was
+               * spending the cold one's entire allowance on the fetch.
+               */
+              static final int COLD_START_TIMEOUT_MS = 210_000;""",
+              "LanternCore: separate cold and warm start budgets",
+          )
+
+          edit(
+              LANTERN,
+              """        if (!configDir.isDirectory() && !configDir.mkdirs()) {
+                      log("Beacon could not create its working directory");
+                      return false;
+                  }""",
+              """        if (!configDir.isDirectory() && !configDir.mkdirs()) {
+                      log("Beacon could not create its working directory");
+                      return false;
+                  }
+                  boolean cold = configBytes() == 0;
+                  int budget = cold ? Math.max(timeoutMs, COLD_START_TIMEOUT_MS) : timeoutMs;
+                  log(cold
+                          ? "Beacon has no cached configuration; fetching it can take a few minutes"
+                          : "Beacon config: " + describeConfig());""",
+              "LanternCore: pick the budget from the cache and say which",
+          )
+
+          edit(
+              LANTERN,
+              """        drain(process);
+                  return waitUntilUsable(timeoutMs);
+              }""",
+              """        drain(process);
+                  return waitUntilUsable(budget);
+              }
+
+              /** Total bytes the engine has cached. Zero means it has never completed a fetch here. */
+              private long configBytes() {
+                  File[] files = configDir.listFiles();
+                  if (files == null) return 0L;
+                  long total = 0L;
+                  for (File file : files) if (file.isFile()) total += file.length();
+                  return total;
+              }
+
+              /**
+               * The cache, in one line.
+               *
+               * <p>Worth logging rather than inferring, because it splits the two failures that look
+               * identical from outside: nothing here means the engine never reached its own bootstrap, and
+               * a populated directory with no working route means it did and the routes are dead. Guessing
+               * between those two cost a whole test cycle once already.
+               */
+              private String describeConfig() {
+                  File[] files = configDir.listFiles();
+                  if (files == null || files.length == 0) return "empty";
+                  int count = 0;
+                  long total = 0L;
+                  for (File file : files) {
+                      if (!file.isFile()) continue;
+                      count++;
+                      total += file.length();
+                  }
+                  return count == 0 ? "empty" : count + " files, " + total + " bytes";
+              }""",
+              "LanternCore: report the cache",
+          )
+
+          edit(
+              LANTERN,
+              """    private boolean waitUntilUsable(int timeoutMs) {
+                  long deadline = System.currentTimeMillis() + Math.max(1, timeoutMs);
+                  boolean listening = false;
+                  while (!cancelled && System.currentTimeMillis() < deadline) {""",
+              """    private boolean waitUntilUsable(int timeoutMs) {
+                  long started = System.currentTimeMillis();
+                  long deadline = started + Math.max(1, timeoutMs);
+                  long nextReport = started + PROGRESS_INTERVAL_MS;
+                  boolean listening = false;
+                  while (!cancelled && System.currentTimeMillis() < deadline) {
+                      // A silent wait and a frozen app are the same picture. Saying what the engine has
+                      // fetched so far turns a two-minute blank into something a person can read, and
+                      // leaves the answer in the log for whoever asks afterwards.
+                      if (System.currentTimeMillis() >= nextReport) {
+                          nextReport += PROGRESS_INTERVAL_MS;
+                          log("Beacon still starting after " + ((System.currentTimeMillis() - started) / 1000)
+                                  + "s; config " + describeConfig());
+                      }""",
+              "LanternCore: report progress while waiting",
+          )
+
+          edit(
+              LANTERN,
+              """        if (!cancelled) {
+                      log(listening
+                              ? "Beacon was listening but never carried a request"
+                              : "Beacon never opened its SOCKS5 listener");
+                  }""",
+              """        if (!cancelled) {
+                      log(listening
+                              ? "Beacon was listening but never carried a request; config " + describeConfig()
+                              : "Beacon never opened its SOCKS5 listener; config " + describeConfig());
+                  }""",
+              "LanternCore: name the cache on the failure path too",
+          )
+
+          edit(
+              LANTERN,
+              """    static final int START_TIMEOUT_MS = 120_000;""",
+              """    static final int START_TIMEOUT_MS = 120_000;
+
+              /** How often a start that is still running says where it has got to. */
+              static final long PROGRESS_INTERVAL_MS = 30_000L;""",
+              "LanternCore: progress interval",
+          )
+
+
+          # --- 3. Let the engine's own readiness line through ---------------------------------------------
+          #
+          # The core prints the address it settled on once it is serving. That line does not contain the
+          # word the filter looks for, so the one message worth having never reached the log.
+
+          edit(
+              LANTERN,
+              """                while ((line = lines.readLine()) != null) {
+                              String upper = line.toUpperCase(Locale.US);
+                              if (upper.contains("ERROR") || upper.contains("FATAL")) {""",
+              """                while ((line = lines.readLine()) != null) {
+                              String upper = line.toUpperCase(Locale.US);
+                              // The core announces the address it is serving on, and says so without the
+                              // word this filter was built around - so the one line worth keeping was the
+                              // one being dropped.
+                              if (upper.contains("SOCKS5 LISTENING ON")) {
+                                  log("Beacon: " + line.trim());
+                                  continue;
+                              }
+                              if (upper.contains("ERROR") || upper.contains("FATAL")) {""",
+              "LanternCore: keep the core's readiness line",
+          )
+
+
+          def main():
+              root = os.getcwd()
+              failures = []
+              changes = {}
+              for path, old, new, note in EDITS:
+                  full = os.path.join(root, path)
+                  if not os.path.isfile(full):
+                      failures.append("missing file: " + path)
+                      continue
+                  text = changes.get(path)
+                  if text is None:
+                      with open(full, encoding="utf-8") as handle:
+                          text = handle.read()
+                  hits = text.count(old)
+                  if hits != 1:
+                      failures.append("%s: %d matches for [%s]" % (path, hits, note))
+                      continue
+                  changes[path] = text.replace(old, new, 1)
+
+              if failures:
+                  print("Nothing was written. Anchors that did not match exactly once:")
+                  for line in failures:
+                      print("  - " + line)
+                  sys.exit(1)
+
+              for path, text in changes.items():
+                  with open(os.path.join(root, path), "w", encoding="utf-8") as handle:
+                      handle.write(text)
+                  print("patched " + path)
+              print("%d replacements applied across %d files" % (len(EDITS), len(changes)))
+
+
+          if __name__ == "__main__":
+              main()
+          PYFILE
+
+      - name: Apply it
+        run: python3 patch.py
+
+      - name: Commit
+        run: |
+          rm -f patch.py
+          if git diff --quiet; then
+            echo "Nothing changed - the patch was already applied."
+            exit 0
+          fi
+          git config user.name 'Panther'
+          git config user.email 'panther@users.noreply.invalid'
+          git add -A
+          git commit -m 'Stop the cores drowning the connection log, and say what Beacon is doing'
+          git push origin HEAD:main
