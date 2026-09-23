@@ -107,6 +107,8 @@ public final class AetherVpnService extends VpnService {
     private volatile String currentEndpoint = "";
     private volatile String currentLocationDetail = "";
     private volatile GlobalCore globalCore;
+    /** How long a Global connect may spend on volunteer relays before the carrier route. */
+    private static final long VOLUNTEER_TIMEOUT_MS = 60_000L;
     private volatile StealthCore stealthCore;
     private volatile LanternCore lanternCore;
     /** The pool the live Stealth engine is dialling from, kept so its history can be saved. */
@@ -612,10 +614,9 @@ public final class AetherVpnService extends VpnService {
         if (!startAetherWithMasqueFallback(request, SOCKS_TIMEOUT_MS)) {
             throw new IllegalStateException(aetherExitMessage(getString(R.string.service_global_carrier_failed)));
         }
-        sendLog("Carrier tunnel up on " + carrier + "; starting the Global engine over it");
         updateState("securing", getString(R.string.service_global_starting));
 
-        GlobalCore core = new GlobalCore(this, region, carrier, new GlobalCore.Listener() {
+        GlobalCore.Listener globalListener = new GlobalCore.Listener() {
             @Override public void onState(String state, String message) {
                 // The engine reports its own progress while it is still searching for a route.
                 // Only surface that before we are connected; afterwards the monitor owns the state.
@@ -635,7 +636,37 @@ public final class AetherVpnService extends VpnService {
             @Override public void onBytes(long sent, long received) { /* the stats poll owns this */ }
 
             @Override public void onLog(String line) { sendLog(line); }
-        });
+        };
+
+        // Volunteer relays first. They reach the engine's servers through someone's home
+        // connection abroad instead of through the carrier, so this route keeps working when
+        // the carrier's network is the thing being blocked. The carrier stays up regardless:
+        // it is the fallback below, and a first-ever run needs it to learn the relay details.
+        sendLog("Volunteer route: trying Global through a volunteer relay");
+        GlobalCore relay = new GlobalCore(this, region, null, true, globalListener);
+        globalCore = relay;
+        boolean relayUp = false;
+        try {
+            relayUp = relay.start(VOLUNTEER_TIMEOUT_MS) && relay.socksPort() > 0;
+        } catch (Exception error) {
+            sendLog("Volunteer route failed to start: " + safeMessage(error));
+        }
+        if (relayUp) {
+            int relayPort = relay.socksPort();
+            request.putExtra("socks", "127.0.0.1:" + relayPort);
+            sendLog("Volunteer route UP - Global is riding a volunteer relay on 127.0.0.1:" + relayPort);
+            return true;
+        }
+        String blocked = relay.volunteerBlocked();
+        sendLog(blocked != null
+                ? "Volunteer route not usable yet (" + blocked + "); using the carrier route"
+                : "Volunteer route: no relay carried a tunnel in time; using the carrier route");
+        relay.stop();
+        globalCore = null;
+        if (stopping || generation.get() != session) return false;
+
+        sendLog("Carrier tunnel up on " + carrier + "; starting the Global engine over it");
+        GlobalCore core = new GlobalCore(this, region, carrier, globalListener);
         globalCore = core;
         if (!core.start(GLOBAL_TIMEOUT_MS)) {
             core.stop();
@@ -661,8 +692,9 @@ public final class AetherVpnService extends VpnService {
                 throw new IllegalStateException(getString(R.string.service_global_stopped));
             }
             Process carrier = aetherProcess;
-            if (carrier == null || !carrier.isAlive()) {
+            if (!core.onVolunteerRoute() && (carrier == null || !carrier.isAlive())) {
                 // Global rides inside the carrier, so losing the carrier takes Global with it.
+                // Not on the volunteer route, which never touched the carrier.
                 throw new IllegalStateException(getString(R.string.service_global_carrier_lost));
             }
             Thread.sleep(2_000L);

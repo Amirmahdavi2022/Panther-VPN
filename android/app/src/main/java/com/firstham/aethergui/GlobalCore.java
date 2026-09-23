@@ -39,6 +39,26 @@ public final class GlobalCore {
         void onLog(String line);
     }
 
+    /**
+     * Every relay-capable transport the engine knows, read from the pinned library's own
+     * protocol table: every supported protocol, prefixed, except the two refraction ones
+     * (not relay-compatible) and FRONTED-MEEK-QUIC-OSSH (which the library keeps off).
+     * The first hop is WebRTC to a volunteer's machine; the second hop, volunteer to server,
+     * is the named transport.
+     */
+    static final String[] VOLUNTEER_PROTOCOLS = {
+            "INPROXY-WEBRTC-OSSH",
+            "INPROXY-WEBRTC-TLS-OSSH",
+            "INPROXY-WEBRTC-SHADOWSOCKS-OSSH",
+            "INPROXY-WEBRTC-QUIC-OSSH",
+            "INPROXY-WEBRTC-SSH",
+            "INPROXY-WEBRTC-UNFRONTED-MEEK-OSSH",
+            "INPROXY-WEBRTC-UNFRONTED-MEEK-HTTPS-OSSH",
+            "INPROXY-WEBRTC-UNFRONTED-MEEK-SESSION-TICKET-OSSH",
+            "INPROXY-WEBRTC-FRONTED-MEEK-OSSH",
+            "INPROXY-WEBRTC-FRONTED-MEEK-HTTP-OSSH",
+    };
+
     /** Set on the config to let the engine choose. Empty means "wherever is best". */
     public static final String REGION_AUTOMATIC = "";
 
@@ -53,6 +73,10 @@ public final class GlobalCore {
     private final Listener listener;
     private final String requestedRegion;
     private final String upstreamProxy;
+    /** True when this run may only use volunteer relays; see {@link #VOLUNTEER_PROTOCOLS}. */
+    private final boolean volunteerRoute;
+    /** Why the volunteer route cannot be used on this device yet, or null. */
+    private final AtomicReference<String> volunteerBlocked = new AtomicReference<>();
 
     private final AtomicReference<String> connectedRegion = new AtomicReference<>();
     private final AtomicReference<List<String>> availableRegions = new AtomicReference<>();
@@ -70,6 +94,17 @@ public final class GlobalCore {
      *                      null to dial the network directly.
      */
     public GlobalCore(VpnService host, String requestedRegion, String upstreamProxy, Listener listener) {
+        this(host, requestedRegion, upstreamProxy, false, listener);
+    }
+
+    /**
+     * @param volunteerRoute when true the engine dials only through volunteer relays, and
+     *                       never through {@code upstreamProxy}: the engine cannot use a
+     *                       relay and an upstream proxy together, so the proxy is ignored.
+     */
+    public GlobalCore(VpnService host, String requestedRegion, String upstreamProxy,
+                      boolean volunteerRoute, Listener listener) {
+        this.volunteerRoute = volunteerRoute;
         this.host = host;
         this.listener = listener;
         this.requestedRegion = requestedRegion == null ? REGION_AUTOMATIC : requestedRegion.trim();
@@ -86,6 +121,16 @@ public final class GlobalCore {
     public int socksPort() { return socksPort.get(); }
 
     public boolean isConnected() { return connected.get() && !stopped.get(); }
+
+    /** True when this instance was started on the volunteer relay route. */
+    public boolean onVolunteerRoute() { return volunteerRoute; }
+
+    /**
+     * Why the volunteer route could not even be tried, or null. The engine needs two things it
+     * only learns from an earlier ordinary connection - where the matchmaker is, and the access
+     * IDs for the shared relay pool - so a fresh install reports one of these once.
+     */
+    public String volunteerBlocked() { return volunteerBlocked.get(); }
 
     /**
      * Starts the engine and waits for it to publish a working SOCKS port.
@@ -146,7 +191,19 @@ public final class GlobalCore {
         // host that is unreachable from some of the networks this app exists for, and its own
         // servers are filtered on those same networks. Carried inside the other tunnel, both the
         // fetch and the handshake go through. Standalone it simply never finds a route.
-        if (!upstreamProxy.isEmpty()) append(json, "UpstreamProxyURL", "socks5://" + upstreamProxy);
+        if (volunteerRoute) {
+            // Listing the relay variants explicitly is what turns them on (they are off unless
+            // named), and naming nothing else keeps this run from quietly falling back to a
+            // direct dial. No UpstreamProxyURL here: the engine refuses relays when one is set.
+            json.append("\"LimitTunnelProtocols\":[");
+            for (int i = 0; i < VOLUNTEER_PROTOCOLS.length; i++) {
+                if (i > 0) json.append(',');
+                json.append('"').append(VOLUNTEER_PROTOCOLS[i]).append('"');
+            }
+            json.append("],");
+        } else if (!upstreamProxy.isEmpty()) {
+            append(json, "UpstreamProxyURL", "socks5://" + upstreamProxy);
+        }
         json.append("\"LocalSocksProxyPort\":0,");
         json.append("\"DisableLocalHTTPProxy\":true,");
         json.append("\"AllowDefaultDNSResolverWithBindToDevice\":true,");
@@ -226,6 +283,9 @@ public final class GlobalCore {
         @Override public void onExiting() {
             connected.set(false);
             ready.countDown();
+            // A stop we asked for (a volunteer attempt being abandoned before the fallback,
+            // or a disconnect) must not flash an error on screen.
+            if (stopped.get()) return;
             listener.onState("error", host.getString(R.string.service_engine_stopped));
         }
 
@@ -236,6 +296,23 @@ public final class GlobalCore {
         @Override public void onUpstreamProxyError(String message) { listener.onLog(message); }
 
         @Override public void onDiagnosticMessage(String message) {
+            if (volunteerRoute && message != null) {
+                String reason = null;
+                if (message.contains("in-proxy protocol selection failed: no broker specs")) {
+                    reason = "no matchmaker address cached yet";
+                } else if (message.contains("in-proxy protocol selection failed: no common compartment IDs")) {
+                    reason = "no relay pool access IDs cached yet";
+                }
+                if (reason != null) {
+                    // Retrying cannot fix this inside one run, so stop waiting now rather
+                    // than burning the whole timeout before the fallback.
+                    if (volunteerBlocked.compareAndSet(null, reason)) {
+                        listener.onLog("Volunteer route: " + reason);
+                        ready.countDown();
+                    }
+                    return;
+                }
+            }
             // One refusal per UDP datagram would otherwise bury everything else in the log.
             // Counted and reported in batches rather than dropped - see GlobalNoise.
             if (GlobalNoise.isRepeatedUdpRefusal(message)) {
