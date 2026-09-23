@@ -314,6 +314,18 @@ public final class GlobalCore {
             // metrics. Measured on a real device log: those lines were 65% of a log that hit
             // its size cap, and the cap trims from the front - which is where the volunteer
             // attempt's verdict was. Count the attempts, drop the metrics.
+            if (message != null && message.startsWith("ActiveTunnel:")) {
+                // The only honest answer to "did a volunteer carry this?": the protocol of
+                // the tunnel the engine actually kept. Relay protocols carry the prefix.
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                        .compile("\"protocol\":\"([^\"]+)\"").matcher(message);
+                if (m.find()) {
+                    String protocol = m.group(1);
+                    listener.onLog(protocol.startsWith("INPROXY-WEBRTC")
+                            ? "Tunnel protocol " + protocol + ": riding a VOLUNTEER relay"
+                            : "Tunnel protocol " + protocol + ": direct to the server, NOT through a volunteer");
+                }
+            }
             if (message != null) {
                 if (message.startsWith("ConnectingServer:")) {
                     int tried = connectingServers.incrementAndGet();
@@ -330,7 +342,9 @@ public final class GlobalCore {
             }
             if (volunteerRoute && message != null) {
                 String reason = null;
-                if (message.contains("in-proxy protocol selection failed: no broker specs")) {
+                if (message.contains("in-proxy protocol selection failed: no broker specs")
+                        || (message.contains("NewInproxyBrokerClientInstance")
+                            && message.contains("no broker specs"))) {
                     reason = "no matchmaker address cached yet";
                 } else if (message.contains("in-proxy protocol selection failed: no common compartment IDs")) {
                     reason = "no relay pool access IDs cached yet";

@@ -657,7 +657,9 @@ public final class AetherVpnService extends VpnService {
         if (relayUp) {
             int relayPort = relay.socksPort();
             request.putExtra("socks", "127.0.0.1:" + relayPort);
-            sendLog("Volunteer route UP - Global is riding a volunteer relay on 127.0.0.1:" + relayPort);
+            // Which road it took is logged by the engine itself ("Tunnel protocol ..."):
+            // the network's own settings can let a direct protocol win this run too.
+            sendLog("Global came up WITHOUT the carrier on 127.0.0.1:" + relayPort);
             return true;
         }
         String blocked = relay.volunteerBlocked();
