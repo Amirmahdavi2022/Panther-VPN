@@ -1,26 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Sits where the bare glyph used to. The glyph alone said nothing about what tapping it does,
      which is the whole reason a first-time user never tapped it. Small type, one accent, and a
-     chevron that says it leaves the app. -->
+     chevron that says it leaves the app.
+     Sized in dp, not sp: with a large system font the sp text grew the chip past the right edge
+     of the toolbar on some phones. It is a fixed-size control, not body text. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/support_chip"
     android:layout_width="wrap_content"
-    android:layout_height="30dp"
+    android:layout_height="26dp"
     android:layout_gravity="center_vertical"
-    android:layout_marginEnd="6dp"
+    android:layout_marginEnd="12dp"
     android:background="@drawable/support_chip"
     android:clickable="true"
     android:contentDescription="@string/menu_telegram"
     android:focusable="true"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="9dp"
-    android:paddingEnd="7dp">
+    android:paddingStart="8dp"
+    android:paddingEnd="6dp">
 
     <androidx.appcompat.widget.AppCompatImageView
-        android:layout_width="13dp"
-        android:layout_height="13dp"
+        android:layout_width="11dp"
+        android:layout_height="11dp"
         android:contentDescription="@null"
         android:src="@drawable/ic_telegram"
         app:tint="@color/blue_600" />
@@ -28,16 +30,18 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="6dp"
+        android:layout_marginStart="5dp"
+        android:includeFontPadding="false"
         android:letterSpacing="0.03"
+        android:maxLines="1"
         android:text="@string/support_channel"
         android:textColor="@color/blue_600"
-        android:textSize="10sp"
+        android:textSize="9dp"
         android:textStyle="bold" />
 
     <androidx.appcompat.widget.AppCompatImageView
-        android:layout_width="11dp"
-        android:layout_height="11dp"
+        android:layout_width="9dp"
+        android:layout_height="9dp"
         android:layout_marginStart="2dp"
         android:contentDescription="@null"
         android:src="@drawable/ic_chevron_right"

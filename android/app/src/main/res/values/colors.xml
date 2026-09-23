@@ -5,10 +5,11 @@
          One accent colour only: an electric blue used for the connected state and nothing else,
          so it always means the same thing. -->
 
-    <color name="background">#000000</color>
-    <color name="surface">#0A0A0C</color>
-    <color name="card">#121216</color>
-    <color name="card_border">#22222A</color>
+    <!-- A hair of navy in the near-blacks: still dark enough that OLED pixels stay all but off. -->
+    <color name="background">#020308</color>
+    <color name="surface">#0A0C12</color>
+    <color name="card">#11141C</color>
+    <color name="card_border">#212634</color>
     <color name="border">#26262F</color>
 
     <color name="text">#FFFFFF</color>
@@ -47,6 +48,12 @@
     <color name="hero_center">#F2F2F5</color>
     <color name="hero_end">#8E8E9A</color>
     <color name="on_hero">#08080A</color>
+
+    <!-- Support chip in the toolbar: pale-blue hairline over a faint blue-black fill. -->
+    <color name="support_chip_fill">#0D1420</color>
+    <color name="support_chip_stroke">#664DA3FF</color>
+    <!-- Bottom navigation active pill: blue_600 at low alpha, replacing Material's default violet. -->
+    <color name="nav_indicator">#334DA3FF</color>
 
     <color name="log_surface">#050506</color>
     <color name="log_text">#D8D8E0</color>
