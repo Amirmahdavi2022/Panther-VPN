@@ -1,0 +1,7 @@
+<resources>
+    <!-- The pill behind the selected bottom-nav item. Material 3 otherwise paints it with its own
+         default secondary container, a pale violet that belongs to no colour in this palette. -->
+    <style name="BottomNavActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@color/nav_indicator</item>
+    </style>
+</resources>

@@ -21,7 +21,7 @@
             android:titleTextColor="@color/text"
             app:menu="@menu/main_toolbar"
             app:navigationIcon="@drawable/ic_menu">
-            <TextView android:id="@+id/toolbar_title" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="@string/app_name" android:textColor="@color/text" android:textSize="17sp" android:textStyle="bold" android:letterSpacing="0.06" />
+            <TextView android:id="@+id/toolbar_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:gravity="center" android:maxLines="1" android:ellipsize="end" android:text="@string/app_name" android:textColor="@color/text" android:textSize="17sp" android:textStyle="bold" android:letterSpacing="0.06" />
         </com.google.android.material.appbar.MaterialToolbar>
 
         <FrameLayout android:id="@+id/page_container" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
@@ -356,6 +356,7 @@
             android:layout_height="wrap_content"
             android:background="@color/surface"
             app:elevation="0dp"
+            app:itemActiveIndicatorStyle="@style/BottomNavActiveIndicator"
             app:itemIconTint="@color/bottom_nav_item"
             app:itemTextColor="@color/bottom_nav_item"
             app:labelVisibilityMode="labeled"
