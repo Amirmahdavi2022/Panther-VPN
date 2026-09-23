@@ -69,6 +69,14 @@ public final class GlobalCore {
     private static final String SERVER_LIST_KEY =
             "MIICIDANBgkqhkiG9w0BAQEFAAOCAg0AMIICCAKCAgEAt7Ls+/39r+T6zNW7GiVpJfzq/xvL9SBH5rIFnk0RXYEYavax3WS6HOD35eTAqn8AniOwiH+DOkvgSKF2caqk/y1dfq47Pdymtwzp9ikpB1C5OfAysXzBiwVJlCdajBKvBZDerV1cMvRzCKvKwRmvDmHgphQQ7WfXIGbRbmmk6opMBh3roE42KcotLFtqp0RRwLtcBRNtCdsrVsjiI1Lqz/lH+T61sGjSjQ3CHMuZYSQJZo/KrvzgQXpkaCTdbObxHqb6/+i1qaVOfEsvjoiyzTxJADvSytVtcTjijhPEV6XskJVHE1Zgl+7rATr/pDQkw6DPCNBS1+Y6fy7GstZALQXwEDN/qhQI9kWkHijT8ns+i1vGg00Mk/6J75arLhqcodWsdeG/M/moWgqQAnlZAGVtJI1OgeF5fsPpXu4kctOfuZlGjVZXQNW34aOzm8r8S0eVZitPlbhcPiR4gT/aSMz/wd8lZlzZYsje/Jr8u/YtlwjjreZrGRmG8KMOzukV3lLmMppXFMvl4bxv6YFEmIuTsOhbLTwFgh7KYNjodLj/LsqRVfwz31PgWQFTEPICV7GCvgVlPRxnofqKSjgTWI4mxDhBpVcATvaoBl1L/6WLbFvBsoAUBItWwctO2xalKxF5szhGm8lccoc5MZr8kfE0uxMgsxz4er68iCID+rsCAQM=";
 
+    /**
+     * Public ed25519 key for verifying individual server entries. The engine refuses to offer a
+     * server to the volunteer-relay matchmaker, or to accept servers from discovery, without it.
+     * Taken from the network's own volunteer-relay client config (GPL-3.0), which carries the
+     * same server-list key as {@link #SERVER_LIST_KEY} - so it is the same network's key.
+     */
+    private static final String SERVER_ENTRY_KEY = "sHuUVTWaRyh5pZwy4UguSgkwmBe0EHtJJkoF5WrxmvA=";
+
     private final VpnService host;
     private final Listener listener;
     private final String requestedRegion;
@@ -182,6 +190,7 @@ public final class GlobalCore {
         append(json, "SponsorId", SPONSOR_ID);
         append(json, "RemoteServerListUrl", SERVER_LIST_URL);
         append(json, "RemoteServerListSignaturePublicKey", SERVER_LIST_KEY);
+        append(json, "ServerEntrySignaturePublicKey", SERVER_ENTRY_KEY);
         append(json, "RemoteServerListDownloadFilename", "remote_server_list");
         append(json, "DataRootDirectory", data.getAbsolutePath());
         append(json, "MigrateDataStoreDirectory", data.getAbsolutePath());
