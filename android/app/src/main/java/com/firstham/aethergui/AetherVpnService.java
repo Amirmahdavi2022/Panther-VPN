@@ -108,7 +108,10 @@ public final class AetherVpnService extends VpnService {
     private volatile String currentLocationDetail = "";
     private volatile GlobalCore globalCore;
     /** How long a Global connect may spend on volunteer relays before the carrier route. */
-    private static final long VOLUNTEER_TIMEOUT_MS = 60_000L;
+    // 120s, not 60: the first on-device run made 26 concurrent relay dials and none had
+    // finished at 60s. A relay dial is a matchmaker round trip plus a WebRTC handshake to
+    // a home connection abroad, before the tunnel handshake itself even starts.
+    private static final long VOLUNTEER_TIMEOUT_MS = 120_000L;
     private volatile StealthCore stealthCore;
     private volatile LanternCore lanternCore;
     /** The pool the live Stealth engine is dialling from, kept so its history can be saved. */
@@ -660,7 +663,8 @@ public final class AetherVpnService extends VpnService {
         String blocked = relay.volunteerBlocked();
         sendLog(blocked != null
                 ? "Volunteer route not usable yet (" + blocked + "); using the carrier route"
-                : "Volunteer route: no relay carried a tunnel in time; using the carrier route");
+                : "Volunteer route: no relay carried a tunnel in " + (VOLUNTEER_TIMEOUT_MS / 1000)
+                        + "s after " + relay.dialAttempts() + " dial attempt(s); using the carrier route");
         relay.stop();
         globalCore = null;
         if (stopping || generation.get() != session) return false;

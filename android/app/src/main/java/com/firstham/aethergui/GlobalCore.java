@@ -85,6 +85,8 @@ public final class GlobalCore {
     private final AtomicBoolean stopped = new AtomicBoolean();
     /** Counts the UDP refusals swallowed by onDiagnosticMessage; see GlobalNoise. */
     private final AtomicInteger udpRefusals = new AtomicInteger();
+    /** Dial attempts the engine announced; counted instead of logged one per line. */
+    private final AtomicInteger connectingServers = new AtomicInteger();
     private final CountDownLatch ready = new CountDownLatch(1);
 
     private volatile PsiphonTunnel tunnel;
@@ -131,6 +133,9 @@ public final class GlobalCore {
      * IDs for the shared relay pool - so a fresh install reports one of these once.
      */
     public String volunteerBlocked() { return volunteerBlocked.get(); }
+
+    /** How many dials the engine started on this run. */
+    public int dialAttempts() { return connectingServers.get(); }
 
     /**
      * Starts the engine and waits for it to publish a working SOCKS port.
@@ -296,6 +301,24 @@ public final class GlobalCore {
         @Override public void onUpstreamProxyError(String message) { listener.onLog(message); }
 
         @Override public void onDiagnosticMessage(String message) {
+            // The engine announces every dial attempt and dumps periodic memory/datastore/DNS
+            // metrics. Measured on a real device log: those lines were 65% of a log that hit
+            // its size cap, and the cap trims from the front - which is where the volunteer
+            // attempt's verdict was. Count the attempts, drop the metrics.
+            if (message != null) {
+                if (message.startsWith("ConnectingServer:")) {
+                    int tried = connectingServers.incrementAndGet();
+                    if (tried == 1 || tried % 25 == 0) {
+                        listener.onLog((volunteerRoute ? "Volunteer route" : "Global")
+                                + ": " + tried + " dial attempt(s) so far");
+                    }
+                    return;
+                }
+                if (message.contains("Memory metrics at ") || message.contains("Datastore metrics at ")
+                        || message.contains("DNS metrics at ")) {
+                    return;
+                }
+            }
             if (volunteerRoute && message != null) {
                 String reason = null;
                 if (message.contains("in-proxy protocol selection failed: no broker specs")) {
