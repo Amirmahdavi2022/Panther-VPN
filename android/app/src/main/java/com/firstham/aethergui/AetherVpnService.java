@@ -107,6 +107,23 @@ public final class AetherVpnService extends VpnService {
     private volatile boolean smartBenchmarking;
     private volatile boolean masqueH3GatewayUnavailable;
     private volatile boolean aetherRegistering;
+    // Registering Turbo's identity through another engine: see bootstrapIdentity.
+    private static final long BEACON_REGISTRATION_TIMEOUT_MS = 180_000L;
+    private static final long GLOBAL_REGISTRAR_START_MS = 100_000L;
+    private volatile boolean aetherRegistrationStruggling;
+    // The connect a worker thread is running for. A connect that has been replaced by a newer one
+    // (a second tap, an engine or country switch) must not start anything any more: see
+    // ensureCurrentSession.
+    private final ThreadLocal<Long> threadSession = new ThreadLocal<>();
+    // Every Turbo process this service has started and not yet seen exit. Only the newest is in
+    // aetherProcess; one started by a replaced connect would otherwise be forgotten and keep
+    // holding the SOCKS port, so the next Turbo cannot bind it.
+    private final Set<Process> startedAetherProcesses = ConcurrentHashMap.newKeySet();
+    private static final String REGISTRAR_SOCKS = "127.0.0.1:1829";
+    private volatile boolean aetherNeedsIdentity;
+    private volatile boolean aetherIdentityReady;
+    private volatile boolean identityBootstrapAvailable;
+    private volatile String aetherUpstreamOverride;
     private volatile String currentState = "disconnected";
     private volatile String currentMessage = "Ready to connect";
     private volatile String currentEndpoint = "";
@@ -220,7 +237,9 @@ public final class AetherVpnService extends VpnService {
                 stopping = false;
                 active = true;
                 killSwitch = request.getBooleanExtra("killSwitch", false);
-                runConnection(request, session);
+                threadSession.set(session);
+                try { runConnection(request, session); }
+                finally { threadSession.remove(); }
             });
             return START_STICKY;
         }
@@ -248,7 +267,9 @@ public final class AetherVpnService extends VpnService {
             boolean stealth = "stealth".equals(engine);
             boolean lantern = "lantern".equals(engine);
             if (lantern) {
-                if (!startLanternCore(request, session)) {
+                boolean lanternUp = startLanternCore(request, session);
+                if (superseded(session)) return;
+                if (!lanternUp) {
                     // Unlike Global, there is no carrier already running to fall back on - Beacon
                     // needs nothing up first, which is its whole point. So one has to be raised
                     // here. Doing that beats handing back an error screen when the other engine
@@ -267,7 +288,9 @@ public final class AetherVpnService extends VpnService {
                 // Same contract as Global: whichever engine ends up carrying the connection has
                 // written its own loopback port into the socks extra by the time this block ends,
                 // and everything downstream goes on reading that one extra.
-                if (!startStealthCore(request, session)) {
+                boolean stealthUp = startStealthCore(request, session);
+                if (superseded(session)) return;
+                if (!stealthUp) {
                     // Stealth may well have brought a carrier tunnel up on its way to failing -
                     // it fetches its endpoint list through one. A working tunnel sitting right
                     // there is worth more than an error screen, so keep it. If there is no
@@ -287,7 +310,12 @@ public final class AetherVpnService extends VpnService {
                 // anything downstream reads the socks extra. Everything after this point - the TUN
                 // bridge, the location lookup, the ping probe - goes on reading that one extra and
                 // does not need to know which engine filled it in.
-                if (!startGlobalCore(request, session)) {
+                boolean globalUp = startGlobalCore(request, session);
+                // A newer connect stops this one's engine, which looks exactly like the engine
+                // failing. Without this check the replaced connect went on to "degrade", start the
+                // bridge and fight the new connect for the tunnel.
+                if (superseded(session)) return;
+                if (!globalUp) {
                     // Global failed, but it only gets this far once the carrier tunnel is already
                     // up and serving SOCKS. Tearing that down would hand the user a dead app when
                     // a working tunnel is sitting right there. Carry on with the carrier alone:
@@ -303,6 +331,7 @@ public final class AetherVpnService extends VpnService {
                 throw new IllegalStateException(aetherExitMessage("Turbo did not open its SOCKS5 listener"));
             }
 
+            if (superseded(session)) return;
             connectionEstablished = true;
             if ("manual".equals(connectionMode)) {
                 connectedAt = System.currentTimeMillis();
@@ -345,6 +374,24 @@ public final class AetherVpnService extends VpnService {
                 stopSelf();
             }
         }
+    }
+
+    private boolean superseded(long session) {
+        return stopping || generation.get() != session;
+    }
+
+    /**
+     * Refuses to start an engine for a connect that a newer one has already replaced. The shared
+     * stopping flag is not enough: the newer connect clears it again once it has stopped the old
+     * engines, so the replaced thread would carry on as if nothing had happened.
+     */
+    private void ensureCurrentSession() {
+        if (replaced()) throw new IllegalStateException("This connect was replaced by a newer one");
+    }
+
+    private boolean replaced() {
+        Long session = threadSession.get();
+        return session != null && session != generation.get();
     }
 
     private void establishVpn(Intent request, boolean mappedDns) throws Exception {
@@ -451,9 +498,25 @@ public final class AetherVpnService extends VpnService {
 
         masqueH3GatewayUnavailable = false;
         aetherRegistering = false;
+        aetherNeedsIdentity = false;
+        aetherRegistrationStruggling = false;
+        aetherIdentityReady = false;
+        String upstreamOverride = aetherUpstreamOverride;
+        if (upstreamOverride != null) {
+            // A one-off registrar run: dial out through another engine, and listen somewhere that
+            // cannot be mistaken for the real Turbo listener.
+            env.put("AETHER_UPSTREAM", upstreamOverride);
+            env.put("AETHER_SOCKS", REGISTRAR_SOCKS);
+        }
 
         synchronized (runtimeLock) {
-            aetherProcess = builder.start();
+            ensureCurrentSession();
+            // Only one Turbo may hold the port. Anything still running here belongs to a connect
+            // that has already been replaced or torn down.
+            killStartedAetherProcesses();
+            Process started = builder.start();
+            startedAetherProcesses.add(started);
+            aetherProcess = started;
         }
         Process process = aetherProcess;
         sendLog("Turbo engine started for " + Build.SUPPORTED_ABIS[0]);
@@ -535,6 +598,22 @@ public final class AetherVpnService extends VpnService {
                         && lower.contains("no usable masque gateway found")) {
                     masqueH3GatewayUnavailable = true;
                 }
+                if (process == aetherProcess && lower.contains("identity found; provisioning")) {
+                    aetherNeedsIdentity = true;
+                }
+                // The first sign that this network does not let registration through: a direct
+                // attempt timed out (about 20 s) or the core gave up on the direct route. On an
+                // open network registration answers in a second and none of these appear.
+                if (process == aetherProcess && (lower.contains("registration retry")
+                        || lower.contains("enrollment retry")
+                        || lower.contains("failed over the direct route")
+                        || lower.contains("retrying over a camouflaged route"))) {
+                    aetherRegistrationStruggling = true;
+                }
+                // Printed only after every identity the protocol needs has been saved to disk.
+                if (process == aetherProcess && (lower.contains("identity ready") || lower.contains("outer device="))) {
+                    aetherIdentityReady = true;
+                }
                 if (process == aetherProcess && (lower.contains("identity found; provisioning")
                         || lower.contains("retrying over a camouflaged route"))) {
                     if (!aetherRegistering) sendLog("Registering a new identity; allowing up to "
@@ -566,6 +645,7 @@ public final class AetherVpnService extends VpnService {
      */
     private boolean startLanternCore(Intent request, long session) {
         updateState("securing", getString(R.string.service_lantern_starting));
+        ensureCurrentSession();
         LanternCore core = new LanternCore(this, line -> sendLog(line));
         lanternCore = core;
         // Published before starting, so a stop arriving during the start has something to cancel
@@ -628,6 +708,7 @@ public final class AetherVpnService extends VpnService {
         sendLog("Carrier tunnel up on " + carrier + "; starting the Global engine over it");
         updateState("securing", getString(R.string.service_global_starting));
 
+        ensureCurrentSession();
         GlobalCore core = new GlobalCore(this, region, carrier, new GlobalCore.Listener() {
             @Override public void onState(String state, String message) {
                 // The engine reports its own progress while it is still searching for a route.
@@ -789,6 +870,7 @@ public final class AetherVpnService extends VpnService {
         int preferredRoute = networks.preferredRouteOn(networkKey, stateStore.getInt("stealthRoute",
                 stateStore.getBoolean("stealthChained", false)
                         ? StealthPlan.MODE_CHAINED : StealthPlan.MODE_DIRECT));
+        ensureCurrentSession();
         StealthCore core = new StealthCore(this, pool, XrayConfig.SOCKS_PORT, carrierAddress,
                 preferredRoute, new StealthCore.Listener() {
             @Override public void onState(String state, String message) {
@@ -1214,21 +1296,45 @@ public final class AetherVpnService extends VpnService {
             Process process = aetherProcess;
             if (process != null && !process.isAlive()) return false;
             if (masqueH3GatewayUnavailable) return false;
+            // Registration is stuck on the direct route: hand over to another engine now rather
+            // than sitting through the remaining direct and camouflaged attempts.
+            if (identityBootstrapAvailable && aetherNeedsIdentity && aetherRegistrationStruggling) return false;
             try (Socket socket = new Socket()) {
                 socket.connect(new InetSocketAddress(target.host, target.port), 700);
-                return true;
             } catch (Exception ignored) {
                 try { Thread.sleep(400); }
                 catch (InterruptedException error) { Thread.currentThread().interrupt(); return false; }
+                continue;
             }
+            // Something answered on the port. It is only this Turbo if this Turbo is still
+            // running: a core that could not bind the port exits at once, and whatever answered
+            // is a leftover that the tunnel must not be handed to.
+            if (process == null) return true;
+            try {
+                if (!process.waitFor(300, TimeUnit.MILLISECONDS)) return true;
+            } catch (InterruptedException error) { Thread.currentThread().interrupt(); return false; }
+            sendLog("Turbo's port " + address + " is held by something else; Turbo could not start");
+            return false;
         }
         return false;
     }
 
     private boolean startAetherWithMasqueFallback(Intent request, long timeoutMs) throws Exception {
+        identityBootstrapAvailable = true;
         startAether(request);
         String socks = value(request, "socks", "127.0.0.1:1819");
-        if (waitForSocks(socks, timeoutMs)) return true;
+        boolean up = waitForSocks(socks, timeoutMs);
+        boolean needed = !up && !stopping && identityBootstrapAvailable && aetherNeedsIdentity;
+        identityBootstrapAvailable = false;
+        if (up) return true;
+        if (needed) {
+            stopAetherOnly();
+            bootstrapIdentity(request);
+            if (stopping || replaced()) return false;
+            updateState("scanning", getString(R.string.service_scanning));
+            startAether(request);
+            if (waitForSocks(socks, timeoutMs)) return true;
+        }
         if (stopping || !"masque".equals(value(request, "protocol", ConnectionDefaults.PROTOCOL))
                 || !"h3".equals(value(request, "transport", "h3")) || !masqueH3GatewayUnavailable) {
             return false;
@@ -1239,6 +1345,103 @@ public final class AetherVpnService extends VpnService {
         updateState("scanning", getString(R.string.service_scanning));
         startAether(request);
         return waitForSocks(socks, timeoutMs);
+    }
+
+    /**
+     * Registers Turbo's identity once, through another engine, for networks that block
+     * Cloudflare's registration API. Global goes first (its engine is already in the app and keeps
+     * its server list between runs), then Beacon. Returns whether an identity was saved; either
+     * way the caller starts Turbo normally next, and that run falls back to the usual route.
+     */
+    private boolean bootstrapIdentity(Intent request) {
+        sendLog("Turbo has no identity and this network blocks registration; registering it once through another engine");
+        if (registerThroughGlobal(request)) return true;
+        if (stopping || replaced()) return false;
+        return registerThroughBeacon(request);
+    }
+
+    private boolean registerThroughGlobal(Intent request) {
+        updateState("scanning", getString(R.string.service_registering_global));
+        ensureCurrentSession();
+        GlobalCore core = new GlobalCore(this, GlobalCore.REGION_AUTOMATIC, null, new GlobalCore.Listener() {
+            // Only the log matters here; this engine is a one-off courier, not the connection.
+            @Override public void onState(String state, String message) { }
+            @Override public void onRegion(String countryCode) { }
+            @Override public void onBytes(long sent, long received) { }
+            @Override public void onLog(String line) { sendLog(line); }
+        });
+        // Held in the field so a disconnect during registration stops it like any other engine.
+        globalCore = core;
+        try {
+            if (stopping) return false;
+            if (!core.start(GLOBAL_REGISTRAR_START_MS) || core.socksPort() <= 0) {
+                sendLog("Global did not come up for registration; trying Beacon");
+                return false;
+            }
+            if (stopping) return false;
+            boolean saved = runRegistrar(request, "socks5://127.0.0.1:" + core.socksPort());
+            sendLog(saved ? "Turbo identity registered through Global and saved"
+                    : "Registering through Global did not finish; trying Beacon");
+            return saved;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Exception error) {
+            sendLog("Registering through Global failed: " + safeMessage(error));
+            return false;
+        } finally {
+            aetherUpstreamOverride = null;
+            stopAetherOnly();
+            if (globalCore == core) globalCore = null;
+            core.stop();
+        }
+    }
+
+    private boolean registerThroughBeacon(Intent request) {
+        updateState("scanning", getString(R.string.service_registering_beacon));
+        if (replaced()) return false;
+        LanternCore core = new LanternCore(this, line -> sendLog(line));
+        lanternCore = core;
+        try {
+            if (stopping) { core.cancel(); return false; }
+            if (!core.start(LanternCore.START_TIMEOUT_MS)) {
+                sendLog("Beacon did not come up, so Turbo registers the usual way");
+                return false;
+            }
+            if (stopping) return false;
+            boolean saved = runRegistrar(request, "socks5://" + LanternCore.address());
+            sendLog(saved ? "Turbo identity registered through Beacon and saved"
+                    : "Registering through Beacon did not finish; Turbo registers the usual way");
+            return saved;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Exception error) {
+            sendLog("Registering through Beacon failed: " + safeMessage(error));
+            return false;
+        } finally {
+            aetherUpstreamOverride = null;
+            stopAetherOnly();
+            stopLanternOnly();
+        }
+    }
+
+    /**
+     * Runs the Turbo core once with {@code upstream} as its way out, until it says its identity is
+     * ready - it saves the identity to disk before saying so - or the time runs out. The caller
+     * stops the core afterwards.
+     */
+    private boolean runRegistrar(Intent request, String upstream) throws Exception {
+        aetherUpstreamOverride = upstream;
+        try { startAether(request); }
+        finally { aetherUpstreamOverride = null; }
+        long deadline = System.currentTimeMillis() + BEACON_REGISTRATION_TIMEOUT_MS;
+        while (!stopping && !aetherIdentityReady && System.currentTimeMillis() < deadline) {
+            Process registrar = aetherProcess;
+            if (registrar == null || !registrar.isAlive()) break;
+            Thread.sleep(500L);
+        }
+        return aetherIdentityReady;
     }
 
     private String chooseSmartProtocol(Intent request, long session) throws Exception {
@@ -1676,13 +1879,22 @@ public final class AetherVpnService extends VpnService {
     }
 
     private void stopAetherOnly() {
-        Process process = aetherProcess;
         aetherProcess = null;
-        if (process != null) {
-            process.destroy();
-            try {
-                if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly();
-            } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+        killStartedAetherProcesses();
+    }
+
+    private void killStartedAetherProcesses() {
+        for (Process process : new ArrayList<>(startedAetherProcesses)) {
+            if (process.isAlive()) {
+                process.destroy();
+                try {
+                    if (!process.waitFor(2, TimeUnit.SECONDS)) {
+                        process.destroyForcibly();
+                        process.waitFor(1, TimeUnit.SECONDS);
+                    }
+                } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+            }
+            if (!process.isAlive()) startedAetherProcesses.remove(process);
         }
     }
 
