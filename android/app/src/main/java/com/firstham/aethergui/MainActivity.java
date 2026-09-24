@@ -178,16 +178,8 @@ public final class MainActivity extends AppCompatActivity {
 
     private void setupNavigation() {
         binding.toolbar.setNavigationOnClickListener(v -> binding.root.openDrawer(GravityCompat.START));
-        binding.toolbar.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() != R.id.action_telegram) return false;
-            openTelegram();
-            return true;
-        });
-        // An item with an action view draws its own view and swallows its own taps, so the
-        // listener above never fires for it. Wiring the view itself is not belt and braces: it
-        // is the only thing that makes the chip do anything at all.
-        android.view.MenuItem support = binding.toolbar.getMenu().findItem(R.id.action_telegram);
-        View supportChip = support == null ? null : support.getActionView();
+        // The Support Channel chip is a direct child of the toolbar (see activity_main.xml).
+        View supportChip = findViewById(R.id.support_chip);
         if (supportChip != null) supportChip.setOnClickListener(v -> openTelegram());
         binding.navigationView.setNavigationItemSelectedListener(item -> {
             binding.root.closeDrawer(GravityCompat.START);

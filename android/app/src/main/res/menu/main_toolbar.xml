@@ -1,6 +1,0 @@
-<menu xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
-    <!-- actionLayout rather than a plain icon, so the item can say what it is. A consequence
-         worth knowing: an item with an action view does not fire onMenuItemClick, so the click
-         is wired on the view itself in MainActivity. -->
-    <item android:id="@+id/action_telegram" android:title="@string/menu_telegram" app:actionLayout="@layout/view_support_chip" app:showAsAction="always" />
-</menu>

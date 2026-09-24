@@ -19,9 +19,13 @@
             android:layout_height="?attr/actionBarSize"
             android:background="@color/background"
             android:titleTextColor="@color/text"
-            app:menu="@menu/main_toolbar"
+            app:contentInsetEnd="12dp"
+            app:contentInsetEndWithActions="12dp"
             app:navigationIcon="@drawable/ic_menu">
             <TextView android:id="@+id/toolbar_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:gravity="center" android:maxLines="1" android:ellipsize="end" android:text="@string/app_name" android:textColor="@color/text" android:textSize="17sp" android:textStyle="bold" android:letterSpacing="0.06" />
+            <!-- A direct toolbar child, not a menu action view: an action view loses its margins
+                 and was pushed flush against the right edge. Here the end inset keeps it on screen. -->
+            <include layout="@layout/view_support_chip" android:layout_width="wrap_content" android:layout_height="26dp" android:layout_gravity="end|center_vertical" />
         </com.google.android.material.appbar.MaterialToolbar>
 
         <FrameLayout android:id="@+id/page_container" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
