@@ -5,7 +5,7 @@
 # half-updated pin gets caught rather than shipped.
 set -euo pipefail
 
-AETHER_VERSION="${AETHER_CORE_VERSION:-v2.0.0}"
+AETHER_VERSION="${AETHER_CORE_VERSION:-v2.1.0}"
 BYEDPI_VERSION="v0.17.3"
 BYEDPI_COMMIT="7efde1b1296eaaa187b70e951894dde17527489c"
 HEV_VERSION="2.16.0"

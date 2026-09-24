@@ -19,7 +19,7 @@ This application bundles the Aether core from https://github.com/CluvexStudio/Ae
 licensed under GNU AGPL v3.0.
 
 The Android cores for ARMv7, ARM64 and x86_64 are downloaded from the official
-**v2.0.0** release during the build and verified against the publisher-provided
+**v2.1.0** release during the build and verified against the publisher-provided
 SHA-256 files. The pinned version lives in `scripts/fetch-android-assets.sh`, and
 the release workflow fails the build if that pin and the version named here ever
 disagree.

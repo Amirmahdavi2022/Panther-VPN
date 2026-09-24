@@ -63,6 +63,10 @@ public final class AetherVpnService extends VpnService {
     private static final String CHANNEL_ID = "aether_vpn";
     private static final int NOTIFICATION_ID = 1819;
     private static final int SOCKS_TIMEOUT_MS = 120_000;
+    // How long Turbo may take while it registers a brand-new WARP identity. Its direct
+    // attempts alone use about 110 s on a network that drops them, and the camouflaged
+    // route only starts after that; MASQUE then enrolls a key the same way.
+    private static final long REGISTRATION_TIMEOUT_MS = 420_000L;
     private static final int SMART_PROTOCOL_TIMEOUT_MS = 35_000;
     // The Global engine sweeps for a working route on a cold start, which is slower
     // than the other core's endpoint scan.
@@ -102,6 +106,7 @@ public final class AetherVpnService extends VpnService {
     private volatile boolean killSwitch;
     private volatile boolean smartBenchmarking;
     private volatile boolean masqueH3GatewayUnavailable;
+    private volatile boolean aetherRegistering;
     private volatile String currentState = "disconnected";
     private volatile String currentMessage = "Ready to connect";
     private volatile String currentEndpoint = "";
@@ -445,6 +450,7 @@ public final class AetherVpnService extends VpnService {
         if (peer != null && !peer.trim().isEmpty()) env.put("AETHER_PEER", peer.trim());
 
         masqueH3GatewayUnavailable = false;
+        aetherRegistering = false;
 
         synchronized (runtimeLock) {
             aetherProcess = builder.start();
@@ -528,6 +534,13 @@ public final class AetherVpnService extends VpnService {
                 if (process == aetherProcess && "masque".equals(protocol) && "h3".equals(transport)
                         && lower.contains("no usable masque gateway found")) {
                     masqueH3GatewayUnavailable = true;
+                }
+                if (process == aetherProcess && (lower.contains("identity found; provisioning")
+                        || lower.contains("retrying over a camouflaged route"))) {
+                    if (!aetherRegistering) sendLog("Registering a new identity; allowing up to "
+                            + (REGISTRATION_TIMEOUT_MS / 60_000L) + " minutes");
+                    aetherRegistering = true;
+                    if (!smartBenchmarking) updateState("scanning", getString(R.string.service_registering));
                 }
                 if (!smartBenchmarking) {
                     if (lower.contains("identity ready")) updateState("scanning", getString(R.string.service_identity_ready));
@@ -1193,8 +1206,11 @@ public final class AetherVpnService extends VpnService {
         HostPort target;
         try { target = HostPort.parse(address); }
         catch (IllegalArgumentException error) { throw error; }
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (!stopping && System.currentTimeMillis() < deadline) {
+        long started = System.currentTimeMillis();
+        while (!stopping) {
+            // Re-read every pass: the registering flag can turn on part-way through the wait.
+            long limit = aetherRegistering ? Math.max(timeoutMs, REGISTRATION_TIMEOUT_MS) : timeoutMs;
+            if (System.currentTimeMillis() - started >= limit) break;
             Process process = aetherProcess;
             if (process != null && !process.isAlive()) return false;
             if (masqueH3GatewayUnavailable) return false;
