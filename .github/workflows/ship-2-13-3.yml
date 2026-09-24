@@ -1,0 +1,85 @@
+name: ship 2.13.3
+
+# One-shot. The UI pass (compact Support Channel chip, navy-tinted palette, blue bottom-nav pill)
+# was committed on volunteer-route only, so v2.13.2 was tagged on a main that never had it and
+# shipped the same code as v2.13.1.
+#
+# This takes ONLY that one commit onto main. The rest of volunteer-route (the Conduit / volunteer
+# relay trial) stays off main on purpose: it makes Global wait up to 120 s before its normal route.
+#
+# Then it moves the version to 2.13.3 / versionCode 36, tags v2.13.3 and starts the release build.
+# A tag pushed with the built-in token does not start other workflows, so the release build is
+# started explicitly with a workflow_dispatch on the tag, which is allowed.
+#
+# Safe to run twice: if v2.13.3 already exists it stops. Remove this file by hand afterwards.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/ship-2-13-3.yml' ]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    env:
+      UI_COMMIT: b2a82d823a1a843ed57b9a313b35d9b04e76d9be
+      TAG: v2.13.3
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Stop if already shipped
+        id: guard
+        run: |
+          git fetch --tags -q origin
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists, nothing to do."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Take only the UI commit onto main
+        if: steps.guard.outputs.skip != '1'
+        run: |
+          set -euo pipefail
+          git config user.name "Panther"
+          git config user.email "panther@users.noreply.invalid"
+          git fetch -q origin volunteer-route
+          git cat-file -e "$UI_COMMIT^{commit}"
+          git cherry-pick "$UI_COMMIT"
+          # The cherry-pick must touch exactly the 7 resource files of the UI pass, nothing else.
+          n=$(git diff --name-only HEAD~1 HEAD | wc -l)
+          git diff --name-only HEAD~1 HEAD
+          [ "$n" -eq 7 ] || { echo "Expected 7 files, got $n"; exit 1; }
+          ! git diff --name-only HEAD~1 HEAD | grep -v '^android/app/src/main/res/' || { echo "Touched a non-resource file"; exit 1; }
+
+      - name: Move the version to 2.13.3
+        if: steps.guard.outputs.skip != '1'
+        run: |
+          set -euo pipefail
+          sed -i "s/versionCode 35$/versionCode 36/; s/versionName '2.13.1'/versionName '2.13.3'/" android/app/build.gradle
+          sed -i 's/"version": "2.13.1"/"version": "2.13.3"/' package.json
+          grep -q "versionCode 36$" android/app/build.gradle
+          grep -q "versionName '2.13.3'" android/app/build.gradle
+          grep -q '"version": "2.13.3"' package.json
+          git commit -qam "Release 2.13.3"
+          git log -3 --format='%h %an %s'
+
+      - name: Push main and the tag
+        if: steps.guard.outputs.skip != '1'
+        run: |
+          set -euo pipefail
+          git push origin HEAD:main
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Start the release build on the tag
+        if: steps.guard.outputs.skip != '1'
+        run: gh workflow run release.yml --ref "$TAG" --repo "$GITHUB_REPOSITORY"
