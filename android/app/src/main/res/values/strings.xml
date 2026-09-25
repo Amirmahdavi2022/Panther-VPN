@@ -189,6 +189,8 @@
     <string name="service_global_degraded">Global is unreachable right now — staying connected on Turbo</string>
     <string name="service_stealth_degraded">Prowl could not get through right now — staying connected on Turbo</string>
     <string name="service_scanning_edges">Finding a reachable edge for your network</string>
+    <string name="service_registering_global">Registering a new identity through Global; this happens only once</string>
+    <string name="service_registering_beacon">Registering a new identity through Beacon; this happens only once</string>
     <string name="service_registering">Registering a new identity; the first connect can take a few minutes</string>
     <string name="service_identity_ready">Identity ready; finding the best gateway</string>
     <string name="service_testing_gateways">Testing reachable gateways</string>
