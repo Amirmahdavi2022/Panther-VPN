@@ -4,7 +4,7 @@ package com.firstham.aethergui;
  * The decisions behind registering Turbo's identity through another engine, kept free of Android
  * so they can be tested on a plain JVM.
  *
- * <p>The log phrases below are the pinned core's own (Aether v2.1.0, {@code lib.rs} and
+ * <p>The log phrases below are the pinned core's own (Aether v2.1.0, re-checked against v2.3.0, {@code lib.rs} and
  * {@code account.rs}), not guesses:
  * <ul>
  *   <li>{@code [+] no warp identity found; provisioning ...} and
