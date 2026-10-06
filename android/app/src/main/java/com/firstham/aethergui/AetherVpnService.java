@@ -120,6 +120,8 @@ public final class AetherVpnService extends VpnService {
     // holding the SOCKS port, so the next Turbo cannot bind it.
     private final Set<Process> startedAetherProcesses = ConcurrentHashMap.newKeySet();
     private static final String REGISTRAR_SOCKS = "127.0.0.1:1829";
+    /** Per port; a closed loopback port refuses at once, this only bounds a stuck listener. */
+    private static final int LOCAL_PROXY_PROBE_MS = 800;
     private volatile boolean aetherNeedsIdentity;
     private volatile boolean aetherIdentityReady;
     // Which Turbo process printed its identity-ready line. A registrar only trusts its own.
@@ -1371,14 +1373,45 @@ public final class AetherVpnService extends VpnService {
     private boolean bootstrapIdentity(Intent request) {
         sendLog("Turbo has no identity and this network blocks registration; registering it once through another engine");
         IdentityBootstrap.Route route = IdentityBootstrap.run(
-                via -> via == IdentityBootstrap.Route.BEACON
-                        ? registerThroughBeacon(request)
-                        : registerThroughGlobal(request),
+                via -> {
+                    switch (via) {
+                        case LOCAL_PROXY: return registerThroughLocalProxy(request);
+                        case BEACON: return registerThroughBeacon(request);
+                        default: return registerThroughGlobal(request);
+                    }
+                },
                 () -> stopping || replaced());
         if (route == null && !stopping && !replaced()) {
-            sendLog("Neither Beacon nor Global could register Turbo; trying the usual route");
+            sendLog("No local proxy, Beacon or Global could register Turbo; trying the usual route");
         }
         return route != null;
+    }
+
+    /**
+     * Registers through a SOCKS5 proxy another app already runs on this phone (a v2ray client, a
+     * Tor app, Clash), found on its usual loopback port. Costs nothing when there is none.
+     */
+    private boolean registerThroughLocalProxy(Intent request) {
+        if (stopping || replaced()) return false;
+        int port = LocalProxies.find(LocalProxies.CANDIDATE_PORTS, LOCAL_PROXY_PROBE_MS);
+        if (port < 0) {
+            sendLog("No local proxy from another app found; trying Beacon");
+            return false;
+        }
+        updateState("scanning", getString(R.string.service_registering_local));
+        sendLog("Found a local proxy on port " + port + "; registering Turbo through it");
+        try {
+            boolean saved = runRegistrar(request, LocalProxies.upstream(port));
+            sendLog(saved ? "Turbo identity registered through the local proxy on port " + port + " and saved"
+                    : "Registering through the local proxy on port " + port + " did not finish; trying Beacon");
+            return saved;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Exception error) {
+            sendLog("Registering through the local proxy failed: " + safeMessage(error));
+            return false;
+        }
     }
 
     private boolean registerThroughGlobal(Intent request) {

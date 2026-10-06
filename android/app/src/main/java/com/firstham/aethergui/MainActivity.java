@@ -61,6 +61,8 @@ public final class MainActivity extends AppCompatActivity {
     private static final int VPN_REQUEST = 41;
     private static final int NOTIFICATION_REQUEST = 42;
     private static final int APPS_REQUEST = 43;
+    private static final int IDENTITY_BACKUP_REQUEST = 44;
+    private static final int IDENTITY_RESTORE_REQUEST = 45;
     private static final String INTERNAL_PERMISSION = "io.github.amirmahdavi2023.panther.permission.INTERNAL";
     private ActivityMainBinding binding;
     private SharedPreferences preferences;
@@ -241,6 +243,8 @@ public final class MainActivity extends AppCompatActivity {
         binding.engineLantern.setOnClickListener(v -> selectEngine("lantern"));
         binding.locationCard.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY); refreshLocation(); });
         binding.chooseAppsButton.setOnClickListener(v -> openAppSelection());
+        binding.identityBackupButton.setOnClickListener(v -> startIdentityBackup());
+        binding.identityRestoreButton.setOnClickListener(v -> startIdentityRestore());
         binding.advancedToggle.setOnClickListener(v -> { boolean show = binding.advancedContainer.getVisibility() != View.VISIBLE; binding.advancedContainer.setVisibility(show ? View.VISIBLE : View.GONE); binding.advancedToggle.setText(show ? R.string.hide_advanced : R.string.show_advanced); });
         binding.resetButton.setOnClickListener(v -> resetDefaults());
         binding.checkUpdatesButton.setOnClickListener(v -> checkForUpdates());
@@ -392,7 +396,7 @@ public final class MainActivity extends AppCompatActivity {
         startActivityForResult(new Intent(this, AppSelectionActivity.class).putExtra(AppSelectionActivity.EXTRA_PACKAGES, preferences.getString(key, "")), APPS_REQUEST);
     }
 
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) { super.onActivityResult(requestCode, resultCode, data); if (requestCode == VPN_REQUEST) { if (resultCode == RESULT_OK) startSelectedEngine(); else Toast.makeText(this, R.string.vpn_permission_denied, Toast.LENGTH_LONG).show(); } else if (requestCode == APPS_REQUEST) { if (data != null && data.getBooleanExtra(AppSelectionActivity.EXTRA_RETURN_HOME, false)) showPage("connect"); else if (resultCode == RESULT_OK && data != null) { String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; preferences.edit().putString(key, data.getStringExtra(AppSelectionActivity.EXTRA_PACKAGES)).apply(); updateSelectedCount(); saveSettings(); } } }
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) { super.onActivityResult(requestCode, resultCode, data); if (requestCode == IDENTITY_BACKUP_REQUEST || requestCode == IDENTITY_RESTORE_REQUEST) { if (resultCode == RESULT_OK && data != null && data.getData() != null) { if (requestCode == IDENTITY_BACKUP_REQUEST) writeIdentityBackup(data.getData()); else restoreIdentity(data.getData()); } return; } if (requestCode == VPN_REQUEST) { if (resultCode == RESULT_OK) startSelectedEngine(); else Toast.makeText(this, R.string.vpn_permission_denied, Toast.LENGTH_LONG).show(); } else if (requestCode == APPS_REQUEST) { if (data != null && data.getBooleanExtra(AppSelectionActivity.EXTRA_RETURN_HOME, false)) showPage("connect"); else if (resultCode == RESULT_OK && data != null) { String key = binding.routingGroup.getCheckedRadioButtonId() == R.id.exclude_apps_radio ? "splitExcludeApps" : "splitIncludeApps"; preferences.edit().putString(key, data.getStringExtra(AppSelectionActivity.EXTRA_PACKAGES)).apply(); updateSelectedCount(); saveSettings(); } } }
 
     /**
      * Keeps the connection log reachable without giving it a row in the drawer.
@@ -734,4 +738,65 @@ public final class MainActivity extends AppCompatActivity {
 
     @Override protected void onStart() { super.onStart(); if (!receiverRegistered) { IntentFilter filter = new IntentFilter(); filter.addAction(AetherVpnService.ACTION_STATUS); filter.addAction(AetherVpnService.ACTION_STATS); filter.addAction(UpdateConfig.ACTION_STATE); ContextCompat.registerReceiver(this, receiver, filter, INTERNAL_PERMISSION, null, ContextCompat.RECEIVER_NOT_EXPORTED); receiverRegistered = true; } if (!relayMode) startService(new Intent(this, AetherVpnService.class).setAction(AetherVpnService.ACTION_QUERY)); updateHandler.removeCallbacks(updateProgressPoll); updateHandler.post(updateProgressPoll); }
     @Override protected void onStop() { timerHandler.removeCallbacks(timerTick); updateHandler.removeCallbacks(updateProgressPoll); if (receiverRegistered) { unregisterReceiver(receiver); receiverRegistered = false; } super.onStop(); }
+
+    /** The identity files the Turbo core keeps next to aether.toml, as they are on disk now. */
+    private java.util.Map<String, byte[]> readIdentityFiles() {
+        java.util.Map<String, byte[]> files = new java.util.LinkedHashMap<>();
+        for (String name : IdentityBundle.FILE_NAMES) {
+            java.io.File file = new java.io.File(getFilesDir(), name);
+            if (!file.isFile() || file.length() > IdentityBundle.MAX_FILE_BYTES) continue;
+            try { files.put(name, java.nio.file.Files.readAllBytes(file.toPath())); } catch (Exception unreadable) { }
+        }
+        return files;
+    }
+
+    private void startIdentityBackup() {
+        if (IdentityBundle.encode(readIdentityFiles()) == null) { Toast.makeText(this, R.string.identity_none, Toast.LENGTH_LONG).show(); return; }
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain").putExtra(Intent.EXTRA_TITLE, "panther-turbo-identity.txt");
+        try { startActivityForResult(intent, IDENTITY_BACKUP_REQUEST); } catch (ActivityNotFoundException missing) { Toast.makeText(this, getString(R.string.identity_failed, "no file picker on this phone"), Toast.LENGTH_LONG).show(); }
+    }
+
+    private void startIdentityRestore() {
+        if (shouldDisconnect()) { Toast.makeText(this, R.string.identity_restore_while_connected, Toast.LENGTH_LONG).show(); return; }
+        // Any type: a backup sent through a messenger often comes back without a text/plain type.
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+        try { startActivityForResult(intent, IDENTITY_RESTORE_REQUEST); } catch (ActivityNotFoundException missing) { Toast.makeText(this, getString(R.string.identity_failed, "no file picker on this phone"), Toast.LENGTH_LONG).show(); }
+    }
+
+    private void writeIdentityBackup(Uri target) {
+        String text = IdentityBundle.encode(readIdentityFiles());
+        if (text == null) { Toast.makeText(this, R.string.identity_none, Toast.LENGTH_LONG).show(); return; }
+        try (java.io.OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
+            if (out == null) throw new java.io.IOException("the file could not be opened");
+            out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            Toast.makeText(this, R.string.identity_saved, Toast.LENGTH_LONG).show();
+        } catch (Exception error) {
+            Toast.makeText(this, getString(R.string.identity_failed, String.valueOf(error.getMessage())), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void restoreIdentity(Uri source) {
+        if (shouldDisconnect()) { Toast.makeText(this, R.string.identity_restore_while_connected, Toast.LENGTH_LONG).show(); return; }
+        try (java.io.InputStream in = getContentResolver().openInputStream(source)) {
+            if (in == null) throw new java.io.IOException("the file could not be opened");
+            java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = in.read(chunk)) != -1) {
+                buffer.write(chunk, 0, read);
+                if (buffer.size() > IdentityBundle.MAX_BUNDLE_CHARS) throw new IllegalArgumentException("This file is not a Panther identity backup");
+            }
+            java.util.Map<String, byte[]> files = IdentityBundle.decode(new String(buffer.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+            for (java.util.Map.Entry<String, byte[]> entry : files.entrySet()) {
+                // Written beside the target and renamed over it, so a failure never leaves half a file.
+                java.io.File target = new java.io.File(getFilesDir(), entry.getKey());
+                java.io.File temp = new java.io.File(getFilesDir(), entry.getKey() + ".restore");
+                java.nio.file.Files.write(temp.toPath(), entry.getValue());
+                java.nio.file.Files.move(temp.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            Toast.makeText(this, R.string.identity_restored, Toast.LENGTH_LONG).show();
+        } catch (Exception error) {
+            Toast.makeText(this, getString(R.string.identity_failed, String.valueOf(error.getMessage())), Toast.LENGTH_LONG).show();
+        }
+    }
 }

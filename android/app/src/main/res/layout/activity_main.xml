@@ -216,6 +216,14 @@
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/fast_bridge_summary" android:textColor="@color/muted" android:textSize="12sp" />
 
                     <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="24dp" android:background="@color/border" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/identity_title" android:textColor="@color/text" android:textSize="17sp" android:textStyle="bold" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/identity_summary" android:textColor="@color/muted" android:textSize="13sp" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="horizontal">
+                        <com.google.android.material.button.MaterialButton android:id="@+id/identity_backup_button" style="@style/Widget.Material3.Button.TonalButton" android:layout_width="0dp" android:layout_height="56dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:text="@string/identity_backup" />
+                        <com.google.android.material.button.MaterialButton android:id="@+id/identity_restore_button" style="@style/Widget.Material3.Button.TonalButton" android:layout_width="0dp" android:layout_height="56dp" android:layout_marginStart="6dp" android:layout_weight="1" android:text="@string/identity_restore" />
+                    </LinearLayout>
+
+                    <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginVertical="24dp" android:background="@color/border" />
                     <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/split_switch" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/split_tunneling" android:textColor="@color/text" android:textSize="17sp" android:textStyle="bold" />
                     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/split_tunneling_summary" android:textColor="@color/muted" android:textSize="13sp" />
                     <LinearLayout android:id="@+id/split_container" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
