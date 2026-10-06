@@ -6,6 +6,11 @@
 set -euo pipefail
 
 AETHER_VERSION="${AETHER_CORE_VERSION:-v2.1.0}"
+# A newer core used ONLY to register Turbo's identity (its --register mode), never to run the
+# tunnel. It can send the registration to a chosen address, over ECH or through a local proxy,
+# which the tunnel core above cannot. Its identity files are byte-compatible with the tunnel core's
+# (config.rs is unchanged between the two), so the tunnel core simply finds them on disk.
+AETHER_REGISTRAR_VERSION="v2.3.0"
 BYEDPI_VERSION="v0.17.3"
 BYEDPI_COMMIT="7efde1b1296eaaa187b70e951894dde17527489c"
 HEV_VERSION="2.16.0"
@@ -89,6 +94,30 @@ for i in "${!abis[@]}"; do
   if [ -z "$core" ]; then echo "Aether executable was not found in $archive." >&2; exit 1; fi
   cp -f "$core" "$destination/$abi/libaether.so"
   echo "Prepared verified Aether core for $abi"
+done
+
+# --- Aether registrar (newer core, --register only) --------------------------------------------
+for i in "${!abis[@]}"; do
+  abi="${abis[$i]}"
+  archive="${archives[$i]}"
+  base="https://github.com/CluvexStudio/Aether/releases/download/$AETHER_REGISTRAR_VERSION"
+  curl -fsSL -o "$temp/reg-$archive" "$base/$archive"
+  curl -fsSL -o "$temp/reg-$archive.sha256" "$base/$archive.sha256"
+  expected="$(awk '{print $1}' "$temp/reg-$archive.sha256" | tr -d '\r' | tr 'A-F' 'a-f')"
+  if ! [[ "$expected" =~ ^[a-f0-9]{64}$ ]]; then
+    echo "Invalid Aether registrar checksum file for $abi." >&2; exit 1
+  fi
+  actual="$(sha256 "$temp/reg-$archive")"
+  if [ "$actual" != "$expected" ]; then
+    echo "Aether registrar checksum mismatch for $abi. Expected $expected, got $actual." >&2; exit 1
+  fi
+  expanded="$temp/aether-reg-$abi"
+  mkdir -p "$expanded"
+  tar -xzf "$temp/reg-$archive" -C "$expanded"
+  core="$(find "$expanded" -type f -name aether | head -n 1)"
+  if [ -z "$core" ]; then echo "Aether registrar executable was not found in $archive." >&2; exit 1; fi
+  cp -f "$core" "$destination/$abi/libaetherreg.so"
+  echo "Prepared verified Aether registrar for $abi"
 done
 
 # --- Fast TUN bridge ------------------------------------------------------------------------

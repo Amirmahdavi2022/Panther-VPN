@@ -25,17 +25,18 @@ package com.firstham.aethergui;
 final class IdentityBootstrap {
 
     /** A way out that can carry the one registration request Turbo cannot make itself. */
-    enum Route { LOCAL_PROXY, BEACON, GLOBAL }
+    enum Route { LOCAL_PROXY, KEY_ROUTES, BEACON, GLOBAL }
 
     /**
      * A proxy another app already runs on the phone goes first: if the user has one, it is a way
      * out they know works on this network, and when there is none, finding that out costs a few
-     * milliseconds of loopback probes. Then Beacon, which needs nothing else to be running, which
+     * milliseconds of loopback probes. Then the hidden key routes (see KeyRoutes), which need no
+     * other engine and no server: a few direct attempts at Cloudflare. Then Beacon, which needs nothing else to be running, which
      * is the whole situation here: Turbo has no identity yet. Global normally rides on Turbo, and
      * on a fresh install it has no server list of its own either, so asked early it spends its
      * whole start budget failing.
      */
-    static final Route[] ORDER = {Route.LOCAL_PROXY, Route.BEACON, Route.GLOBAL};
+    static final Route[] ORDER = {Route.LOCAL_PROXY, Route.KEY_ROUTES, Route.BEACON, Route.GLOBAL};
 
     interface Courier {
         /** Registers through {@code route}; true only once the identity is saved on disk. */

@@ -1376,15 +1376,98 @@ public final class AetherVpnService extends VpnService {
                 via -> {
                     switch (via) {
                         case LOCAL_PROXY: return registerThroughLocalProxy(request);
+                        case KEY_ROUTES: return registerThroughKeyRoutes(request);
                         case BEACON: return registerThroughBeacon(request);
                         default: return registerThroughGlobal(request);
                     }
                 },
                 () -> stopping || replaced());
         if (route == null && !stopping && !replaced()) {
-            sendLog("No local proxy, Beacon or Global could register Turbo; trying the usual route");
+            sendLog("No route could register Turbo; trying the usual route");
         }
         return route != null;
+    }
+
+    /**
+     * Registers with the newer core's register-only mode over the hidden key routes in
+     * {@link KeyRoutes}: ECH, and a shaped TLS hello through Panther's own packet-shaping proxy,
+     * each against Cloudflare over IPv6 and IPv4. Needs no other engine and no server.
+     */
+    private boolean registerThroughKeyRoutes(Intent request) {
+        File registrar = new File(getApplicationInfo().nativeLibraryDir, "libaetherreg.so");
+        if (!registrar.isFile()) {
+            sendLog("Key routes are not available on this build; trying Beacon");
+            return false;
+        }
+        String set = KeyRoutes.registerSet(value(request, "protocol", ConnectionDefaults.PROTOCOL));
+        String config = new File(getFilesDir(), "aether.toml").getAbsolutePath();
+        updateState("scanning", getString(R.string.service_registering_key));
+        SpoofProxy spoof = new SpoofProxy(this);
+        boolean spoofUp = false;
+        try {
+            for (KeyRoutes.Attempt attempt : KeyRoutes.ATTEMPTS) {
+                if (stopping || replaced()) return false;
+                if (attempt.shaped && !spoofUp) {
+                    spoofUp = spoof.start();
+                    if (!spoofUp) {
+                        sendLog("Key route skipped (" + attempt.label + "): the shaping proxy did not start");
+                        continue;
+                    }
+                }
+                sendLog("Trying a key route: " + attempt.label);
+                if (runKeyAttempt(registrar, KeyRoutes.environment(attempt, set, config,
+                        SpoofProxy.address(), getCacheDir().getAbsolutePath()))
+                        && KeyRoutes.saved(getFilesDir(), set)) {
+                    sendLog("Turbo identity registered through a key route (" + attempt.label + ") and saved");
+                    return true;
+                }
+            }
+            sendLog("No key route got through; trying Beacon");
+            return false;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Exception error) {
+            sendLog("Key routes failed: " + safeMessage(error));
+            return false;
+        } finally {
+            spoof.stop();
+        }
+    }
+
+    /** One register-only run, bounded, its output forwarded to the log. True when it exited 0. */
+    private boolean runKeyAttempt(File registrar, Map<String, String> extra) throws Exception {
+        ProcessBuilder builder = new ProcessBuilder(registrar.getAbsolutePath());
+        builder.directory(getFilesDir());
+        builder.redirectErrorStream(true);
+        builder.environment().putAll(extra);
+        Process process = builder.start();
+        // Tracked with the Turbo processes, so a disconnect or a newer connect kills it too.
+        startedAetherProcesses.add(process);
+        Thread reader = new Thread(() -> {
+            try (java.io.BufferedReader lines = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = lines.readLine()) != null) sendLog("[Key] " + line);
+            } catch (Exception ignored) { }
+        }, "aether-key-log");
+        reader.setDaemon(true);
+        reader.start();
+        try {
+            long deadline = System.currentTimeMillis() + KeyRoutes.ATTEMPT_MS;
+            while (System.currentTimeMillis() < deadline) {
+                if (stopping || replaced()) return false;
+                if (process.waitFor(500, TimeUnit.MILLISECONDS)) return process.exitValue() == 0;
+            }
+            sendLog("[Key] route timed out");
+            return false;
+        } finally {
+            if (process.isAlive()) {
+                process.destroy();
+                if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly();
+            }
+            startedAetherProcesses.remove(process);
+        }
     }
 
     /**

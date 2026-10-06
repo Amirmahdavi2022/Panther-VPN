@@ -122,8 +122,8 @@ public class IdentityBootstrapTest {
     }
 
     @Test
-    public void aLocalProxyIsAskedFirstThenBeaconThenGlobal() {
-        assertEquals(Arrays.asList(IdentityBootstrap.Route.LOCAL_PROXY,
+    public void aLocalProxyIsAskedFirstThenKeyRoutesThenBeaconThenGlobal() {
+        assertEquals(Arrays.asList(IdentityBootstrap.Route.LOCAL_PROXY, IdentityBootstrap.Route.KEY_ROUTES,
                         IdentityBootstrap.Route.BEACON, IdentityBootstrap.Route.GLOBAL),
                 Arrays.asList(IdentityBootstrap.ORDER));
     }
@@ -139,7 +139,16 @@ public class IdentityBootstrapTest {
     public void beaconSuccessNeverStartsGlobal() {
         Recorder recorder = new Recorder(false, true, true);
         assertEquals(IdentityBootstrap.Route.BEACON, IdentityBootstrap.run(recorder, () -> false));
-        assertEquals(Arrays.asList(IdentityBootstrap.Route.LOCAL_PROXY, IdentityBootstrap.Route.BEACON),
+        assertEquals(Arrays.asList(IdentityBootstrap.Route.LOCAL_PROXY, IdentityBootstrap.Route.KEY_ROUTES,
+                IdentityBootstrap.Route.BEACON), recorder.tried);
+    }
+
+    @Test
+    public void keyRoutesSuccessNeverStartsAnEngine() {
+        Recorder recorder = new Recorder(false, true, true);
+        recorder.key = true;
+        assertEquals(IdentityBootstrap.Route.KEY_ROUTES, IdentityBootstrap.run(recorder, () -> false));
+        assertEquals(Arrays.asList(IdentityBootstrap.Route.LOCAL_PROXY, IdentityBootstrap.Route.KEY_ROUTES),
                 recorder.tried);
     }
 
@@ -147,7 +156,7 @@ public class IdentityBootstrapTest {
     public void globalIsTheLastTry() {
         Recorder recorder = new Recorder(false, false, true);
         assertEquals(IdentityBootstrap.Route.GLOBAL, IdentityBootstrap.run(recorder, () -> false));
-        assertEquals(Arrays.asList(IdentityBootstrap.Route.LOCAL_PROXY,
+        assertEquals(Arrays.asList(IdentityBootstrap.Route.LOCAL_PROXY, IdentityBootstrap.Route.KEY_ROUTES,
                         IdentityBootstrap.Route.BEACON, IdentityBootstrap.Route.GLOBAL),
                 recorder.tried);
     }
@@ -156,7 +165,7 @@ public class IdentityBootstrapTest {
     public void allFailingReportsNothing() {
         Recorder recorder = new Recorder(false, false, false);
         assertNull(IdentityBootstrap.run(recorder, () -> false));
-        assertEquals(3, recorder.tried.size());
+        assertEquals(4, recorder.tried.size());
     }
 
     @Test
@@ -168,7 +177,7 @@ public class IdentityBootstrapTest {
             return true;
         }, () -> false);
         assertEquals(IdentityBootstrap.Route.GLOBAL, route);
-        assertEquals(3, tried.size());
+        assertEquals(4, tried.size());
     }
 
     @Test
@@ -233,6 +242,7 @@ public class IdentityBootstrapTest {
 
     private static final class Recorder implements IdentityBootstrap.Courier {
         final List<IdentityBootstrap.Route> tried = new ArrayList<>();
+        boolean key;
         private final boolean local;
         private final boolean beacon;
         private final boolean global;
@@ -247,6 +257,7 @@ public class IdentityBootstrapTest {
             tried.add(route);
             switch (route) {
                 case LOCAL_PROXY: return local;
+                case KEY_ROUTES: return key;
                 case BEACON: return beacon;
                 default: return global;
             }

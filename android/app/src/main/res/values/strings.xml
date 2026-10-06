@@ -191,6 +191,7 @@
     <string name="service_scanning_edges">Finding a reachable edge for your network</string>
     <string name="service_registering_global">Registering a new identity through Global; this happens only once</string>
     <string name="service_registering_beacon">Registering a new identity through Beacon; this happens only once</string>
+    <string name="service_registering_key">Getting a Turbo key through a hidden route; this happens only once</string>
     <string name="service_registering_local">Registering a new identity through a proxy already running on this phone; this happens only once</string>
     <string name="identity_title">Turbo identity</string>
     <string name="identity_summary">Turbo registers an identity once. Back it up, and clearing the app or a new install will never need to register again, even on networks that block it. Keep the file private and use it on one phone at a time.</string>
