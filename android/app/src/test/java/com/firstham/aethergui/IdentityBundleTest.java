@@ -61,7 +61,7 @@ public class IdentityBundleTest {
     public void survivesWindowsLineEndingsAndAByteOrderMark() {
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("aether-masque.toml", identity("masque"));
-        String text = "﻿" + IdentityBundle.encode(files).replace("\n", "\r\n") + "\r\n\r\n";
+        String text = String.valueOf((char) 0xFEFF) + IdentityBundle.encode(files).replace("\n", "\r\n") + "\r\n\r\n";
         assertArrayEquals(files.get("aether-masque.toml"), IdentityBundle.decode(text).get("aether-masque.toml"));
     }
 

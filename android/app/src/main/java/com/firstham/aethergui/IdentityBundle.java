@@ -89,7 +89,7 @@ final class IdentityBundle {
         while (first < lines.length && lines[first].trim().isEmpty()) first++;
         // A UTF-8 byte order mark from an editor must not make a good backup look foreign.
         if (first >= lines.length
-                || !lines[first].replace("﻿", "").trim().equals(HEADER)) {
+                || !lines[first].replace(String.valueOf((char) 0xFEFF), "").trim().equals(HEADER)) {
             throw new IllegalArgumentException("This file is not a Panther identity backup");
         }
         Map<String, byte[]> files = new LinkedHashMap<>();
